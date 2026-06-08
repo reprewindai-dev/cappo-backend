@@ -11,11 +11,7 @@ from cappo_backend.config import Settings
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.ei_builder import (
-    ExecutionIdentityBuilder,
-    HmacSigner,
-    canonical_body,
-)
+from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
 
 SIGNING_KEY = "test-signing-key"
 

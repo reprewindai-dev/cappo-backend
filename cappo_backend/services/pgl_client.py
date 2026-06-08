@@ -89,6 +89,57 @@ class PGLClient:
 
         return cert
 
+    def mint_post_certificate(
+        self,
+        *,
+        pre_certificate_id: str,
+        run_id: str,
+        workspace_id: str,
+        genome_hash: str,
+        constitution_hash: str,
+        plan_hash: str,
+        governance_decision: str,
+        risk_tier: str,
+        output_hash: str,
+        outcome_hash: str,
+        input_hash: str | None = None,
+        provenance: dict[str, Any] | None = None,
+    ) -> PGLCertificate:
+        """Mint a post-execution PGL certificate linked back to the pre-cert.
+
+        Records the execution ``output_hash`` and ``outcome_hash`` and chains a
+        ``post_certificate_minted`` ledger event. The pre-certificate is updated
+        with a forward ``post_execution_certificate_id`` link (migration note
+        §1.4 pre/post linkage).
+        """
+        cert = PGLCertificate(
+            certificate_id=str(uuid.uuid4()),
+            run_id=run_id,
+            workspace_id=workspace_id,
+            pre_execution_certificate_id=pre_certificate_id,
+            genome_hash=genome_hash,
+            constitution_hash=constitution_hash,
+            plan_hash=plan_hash,
+            input_hash=input_hash,
+            output_hash=output_hash,
+            outcome_hash=outcome_hash,
+            governance_decision=governance_decision,
+            risk_tier=risk_tier,
+            provenance_json=provenance or {},
+            persisted=self.persistent,
+        )
+
+        if self._db is not None:
+            self._db.add(cert)
+            self._db.flush()
+            pre = self._db.get(PGLCertificate, pre_certificate_id)
+            if pre is not None:
+                pre.post_execution_certificate_id = cert.certificate_id
+                self._db.flush()
+            self._append_ledger_event(cert, "post_certificate_minted")
+
+        return cert
+
     def get_certificate(self, certificate_id: str) -> PGLCertificate | None:
         if self._db is None:
             return None
