@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     cors_allow_origins: str = "*"
     log_level: str = "INFO"
 
+    # --- Authentication (separate, earlier layer than LAW 0 authority) ---
+    # When true, every non-public route requires a valid X-API-Key. This is
+    # authentication only; it never substitutes for EI authority (auth != authority).
+    # Disabled by default for local dev; production must enable it.
+    auth_enabled: bool = False
+    # Comma-separated set of accepted API keys.
+    api_keys: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
@@ -55,6 +63,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
+    @property
+    def api_key_set(self) -> frozenset[str]:
+        return frozenset(k.strip() for k in self.api_keys.split(",") if k.strip())
 
     def validate_production(self) -> None:
         """Fail-closed: refuse to run production with unsafe defaults.
@@ -87,6 +99,15 @@ class Settings(BaseSettings):
             problems.append(
                 "DATABASE_URL must point to a production-grade database "
                 "(SQLite is not permitted in production)."
+            )
+        if not self.auth_enabled:
+            problems.append(
+                "AUTH_ENABLED must be true in production (every non-public route "
+                "requires authentication)."
+            )
+        elif not self.api_key_set:
+            problems.append(
+                "API_KEYS must contain at least one key when AUTH_ENABLED is true."
             )
 
         if problems:
