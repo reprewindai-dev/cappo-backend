@@ -23,6 +23,7 @@ from cappo_backend.services.cache import (
     CachingExecutor,
     HotCache,
     InMemoryWarmCache,
+    RedisWarmCache,
     UpstashWarmCache,
     WarmCache,
 )
@@ -151,7 +152,12 @@ def _breaker(settings: Settings, name: str) -> CircuitBreaker:
 
 
 def _build_warm_cache(settings: Settings) -> WarmCache:
-    if settings.cache_warm_backend.lower() == "upstash":
+    backend = settings.cache_warm_backend.lower()
+    if backend == "redis":
+        if not settings.redis_url:
+            raise ValueError("cache_warm_backend='redis' requires REDIS_URL")
+        return RedisWarmCache(url=settings.redis_url)
+    if backend == "upstash":
         if not (settings.upstash_redis_rest_url and settings.upstash_redis_rest_token):
             raise ValueError(
                 "cache_warm_backend='upstash' requires UPSTASH_REDIS_REST_URL "

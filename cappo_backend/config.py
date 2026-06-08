@@ -84,8 +84,12 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 300
     cache_namespace: str = "cappo"
     hot_cache_max_size: int = 1024
-    # Warm tier backend: "memory" (process-local; dev/test) or "upstash".
+    # Warm tier backend: "memory" (process-local; dev/test), "redis" (TCP/TLS,
+    # self-hosted or managed), or "upstash" (REST).
     cache_warm_backend: str = "memory"
+    # Used when cache_warm_backend="redis" (redis:// or rediss:// for TLS).
+    redis_url: str = ""
+    # Used when cache_warm_backend="upstash".
     upstash_redis_rest_url: str = ""
     upstash_redis_rest_token: str = ""
 

@@ -135,6 +135,56 @@ class UpstashWarmCache:
         return self._client
 
 
+class RedisWarmCache:
+    """Warm tier backed by a Redis server over TCP (redis-py).
+
+    Reads a standard connection URL (``redis://`` or ``rediss://`` for TLS), so
+    it works against a self-hosted Redis *and* managed Redis (e.g. Upstash's
+    ``rediss://`` endpoint). Values are canonical JSON. Any Redis error degrades
+    to a miss — the cache must never break execution.
+    """
+
+    def __init__(self, url: str, timeout: float = 2.0, client: Any | None = None) -> None:
+        self._url = url
+        self._timeout = timeout
+        self._client = client
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        import json
+
+        try:
+            raw = self._redis().get(key)
+        except Exception as exc:  # redis.exceptions.RedisError and connection issues
+            logger.warning("warm cache (redis) unavailable", extra={"error": str(exc)})
+            return None
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+
+    def set(self, key: str, value: dict[str, Any], ttl: int) -> None:
+        import json
+
+        try:
+            self._redis().set(key, json.dumps(value), ex=ttl)
+        except Exception as exc:
+            logger.warning("warm cache (redis) set failed", extra={"error": str(exc)})
+
+    def _redis(self) -> Any:
+        if self._client is None:
+            import redis
+
+            self._client = redis.Redis.from_url(
+                self._url,
+                socket_timeout=self._timeout,
+                socket_connect_timeout=self._timeout,
+                decode_responses=True,
+            )
+        return self._client
+
+
 class HotCache:
     """In-process exact-match cache with TTL + LRU eviction."""
 

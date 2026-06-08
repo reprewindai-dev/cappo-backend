@@ -16,6 +16,7 @@ from cappo_backend.services.cache import (
     CachingExecutor,
     HotCache,
     InMemoryWarmCache,
+    RedisWarmCache,
     UpstashWarmCache,
     cache_key,
 )
@@ -155,6 +156,44 @@ def test_upstash_fails_soft_to_miss_on_error():
 
 
 # --------------------------------------------------------------------------
+# RedisWarmCache (injected fake client)
+# --------------------------------------------------------------------------
+
+
+class FakeRedis:
+    """Minimal stand-in for redis.Redis (get/set with ex)."""
+
+    def __init__(self):
+        self.store = {}
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def set(self, key, value, ex=None):
+        self.store[key] = value
+
+
+def test_redis_set_then_get_roundtrip():
+    warm = RedisWarmCache(url="redis://x", client=FakeRedis())
+    warm.set("k", {"v": 9}, ttl=60)
+    assert warm.get("k") == {"v": 9}
+    assert warm.get("missing") is None
+
+
+def test_redis_fails_soft_to_miss_on_error():
+    class Boom:
+        def get(self, key):
+            raise RuntimeError("connection refused")
+
+        def set(self, key, value, ex=None):
+            raise RuntimeError("connection refused")
+
+    warm = RedisWarmCache(url="redis://x", client=Boom())
+    assert warm.get("k") is None  # must not raise
+    warm.set("k", {"v": 1}, ttl=60)  # must not raise
+
+
+# --------------------------------------------------------------------------
 # CachingExecutor
 # --------------------------------------------------------------------------
 
@@ -236,6 +275,14 @@ def test_build_executor_no_cache_by_default():
 def test_upstash_backend_requires_credentials():
     settings = Settings(
         executor_mode="echo", cache_enabled=True, cache_warm_backend="upstash"
+    )
+    with pytest.raises(ValueError):
+        build_executor(settings)
+
+
+def test_redis_backend_requires_url():
+    settings = Settings(
+        executor_mode="echo", cache_enabled=True, cache_warm_backend="redis"
     )
     with pytest.raises(ValueError):
         build_executor(settings)
