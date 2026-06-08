@@ -25,7 +25,9 @@ from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
 from cappo_backend.services.executor import EchoExecutor
 from cappo_backend.services.orchestrator import RunOrchestrator
+from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
 from cappo_backend.services.pgl_client import PGLClient
+from cappo_backend.services.revocation_service import RevocationService
 
 router = APIRouter(prefix="/v1")
 
@@ -38,6 +40,7 @@ class ExecRequest(BaseModel):
     tenant_id: str = "default"
     delegation_depth: int = 0
     budget_approved_cents: int = 0
+    action_cost_cents: int = 0
     scope: dict[str, Any] | None = None
     genome_hash: str | None = None
     constitution_hash: str | None = None
@@ -67,14 +70,32 @@ def governed_exec(
     """Single governed execution entry path (Option A)."""
     start = time.monotonic()
 
+    audit = AuditService(db)
+
+    # Payment/kill-switch gate runs FIRST: a 402 takes precedence over the LAW 0
+    # 403 (migration note §7 / EI Plan §Priority rule). It short-circuits before
+    # any governed pipeline work or EI enforcement.
+    try:
+        PaymentGate(db).check(body.workspace_id, cost_cents=body.action_cost_cents)
+    except PaymentRequiredError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail={"error": "PAYMENT_REQUIRED", "detail": exc.detail, "reason": exc.reason},
+        )
+
     # Assemble orchestrator collaborators.
     pgl = PGLClient(db=db, settings=settings)
     signer = HmacSigner(settings.ei_signing_key)
     builder = ExecutionIdentityBuilder(signer=signer)
-    audit = AuditService(db)
     executor = EchoExecutor()  # will be swapped for real provider
+    revocation = RevocationService(db, audit)
     # The gateway enforces LAW 0 *inside* the pipeline, before the side effect.
-    gateway = MCPGateway(audit, pgl_lookup=pgl.get_certificate, settings=settings)
+    gateway = MCPGateway(
+        audit,
+        pgl_lookup=pgl.get_certificate,
+        revocation_lookup=revocation.is_revoked,
+        settings=settings,
+    )
     orchestrator = RunOrchestrator(
         db=db, pgl=pgl, builder=builder, executor=executor, audit=audit, gateway=gateway
     )

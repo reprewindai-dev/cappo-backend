@@ -44,12 +44,15 @@ class MCPGateway:
         audit: AuditService,
         *,
         pgl_lookup: Any | None = None,
+        revocation_lookup: Any | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._audit = audit
         self._settings = settings or get_settings()
         # Callable (certificate_id -> PGLCertificate|None) used for rule 1/2.
         self._pgl_lookup = pgl_lookup
+        # Callable (execution_id -> bool) used for rule 9 (DB-backed revocation).
+        self._revocation_lookup = revocation_lookup
 
     def require_execution_identity(
         self,
@@ -183,11 +186,17 @@ class MCPGateway:
     def _rule_9_not_revoked(self, ei: dict[str, Any]) -> None:
         """Rule 9 — identity is not revoked.
 
-        Phase 1: trust the ``revoked`` flag in the identity itself. Later phases
-        will check the ``execution_identities`` table.
+        Checks the in-object ``revoked`` flag *and* (when wired) the
+        ``execution_identities`` table via ``revocation_lookup``. Revocation is
+        post-issuance mutable state, so the durable row is authoritative — an
+        attacker cannot un-revoke by stripping the flag from a replayed object.
         """
         if ei.get("revoked"):
             self._reject("execution identity has been revoked")
+        if self._revocation_lookup is not None:
+            execution_id = ei.get("execution_id")
+            if execution_id and self._revocation_lookup(execution_id):
+                self._reject(f"execution identity {execution_id} has been revoked")
 
     # ------------------------------------------------------------------
     # Rejection
