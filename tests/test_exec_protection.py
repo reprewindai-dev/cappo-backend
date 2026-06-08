@@ -32,11 +32,37 @@ class TestGovernedExecPath:
         assert run is not None
         assert run.state == RunState.ATTESTED.value
 
-    def test_pgl_certificate_created(self, client: TestClient, db: Session) -> None:
+    def test_pgl_certificates_created_pre_and_post(
+        self, client: TestClient, db: Session
+    ) -> None:
         client.post("/v1/exec", json={"prompt": "hello"})
         certs = db.query(PGLCertificate).all()
-        assert len(certs) == 1
-        assert certs[0].persisted is True
+        # A pre-execution cert (commit) and a post-execution cert (attest).
+        assert len(certs) == 2
+        assert all(c.persisted is True for c in certs)
+
+        pre = [c for c in certs if c.pre_execution_certificate_id is None]
+        post = [c for c in certs if c.pre_execution_certificate_id is not None]
+        assert len(pre) == 1 and len(post) == 1
+        # Pre links forward to post; post links back to pre.
+        assert pre[0].post_execution_certificate_id == post[0].certificate_id
+        assert post[0].pre_execution_certificate_id == pre[0].certificate_id
+        # Post cert records execution outcome hashes.
+        assert post[0].output_hash is not None
+        assert post[0].outcome_hash is not None
+
+    def test_ei_row_links_post_certificate(
+        self, client: TestClient, db: Session
+    ) -> None:
+        client.post("/v1/exec", json={"prompt": "hello"})
+        ei = db.query(ExecutionIdentity).first()
+        post = (
+            db.query(PGLCertificate)
+            .filter(PGLCertificate.pre_execution_certificate_id.isnot(None))
+            .first()
+        )
+        assert ei is not None and post is not None
+        assert ei.pgl_post_certificate_id == post.certificate_id
 
     def test_execution_identity_persisted(self, client: TestClient, db: Session) -> None:
         client.post("/v1/exec", json={"prompt": "hello"})
