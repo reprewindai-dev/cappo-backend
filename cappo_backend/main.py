@@ -13,11 +13,13 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from cappo_backend.api.routers.admin_router import router as admin_router
 from cappo_backend.api.routers.exec_router import router as exec_router
 
 app = FastAPI(title="CAPPO Runtime", version="0.1.0")
 
 app.include_router(exec_router)
+app.include_router(admin_router)
 
 
 @app.get("/health")
