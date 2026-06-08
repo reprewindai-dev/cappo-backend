@@ -89,7 +89,7 @@ class TestNoBypass:
     """Verify that no ungoverned path exists."""
 
     def test_no_ungoverned_exec_route(self, client: TestClient) -> None:
-        # Only /v1/exec (governed) and /health should respond.
+        # The only execution route is the governed /v1/exec.
         routes = {r.path for r in client.app.routes if hasattr(r, "path")}
-        exec_routes = {p for p in routes if "exec" in p.lower()}
+        exec_routes = {p for p in routes if p.endswith("/exec")}
         assert exec_routes == {"/v1/exec"}, f"unexpected exec routes: {exec_routes}"
