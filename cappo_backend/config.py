@@ -76,6 +76,19 @@ class Settings(BaseSettings):
     breaker_recovery_timeout: float = 30.0
     breaker_success_threshold: int = 1
 
+    # --- Completion cache (latency) ---
+    # When true, a tiered hot (in-process) + warm (shared) cache fronts the
+    # providers. Cache hits short-circuit the provider call only; the governed
+    # pipeline (PGL/EI/LAW 0) still runs on every request.
+    cache_enabled: bool = False
+    cache_ttl_seconds: int = 300
+    cache_namespace: str = "cappo"
+    hot_cache_max_size: int = 1024
+    # Warm tier backend: "memory" (process-local; dev/test) or "upstash".
+    cache_warm_backend: str = "memory"
+    upstash_redis_rest_url: str = ""
+    upstash_redis_rest_token: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}

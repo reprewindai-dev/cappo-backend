@@ -53,6 +53,8 @@ class ExecResponse(BaseModel):
     provider: str | None = None
     tokens: int | None = None
     latency_ms: float | None = None
+    cached: bool | None = None
+    cache_tier: str | None = None
     log_id: str | None = None
     run_id: str | None = None
     execution_id: str | None = None
@@ -124,6 +126,8 @@ def governed_exec(
         provider=result.get("provider"),
         tokens=result.get("tokens"),
         latency_ms=round(elapsed_ms, 2),
+        cached=result.get("cached"),
+        cache_tier=result.get("cache_tier"),
         run_id=run.run_id if run else None,
         execution_id=(run.execution_identity or {}).get("execution_id") if run else None,
     )
