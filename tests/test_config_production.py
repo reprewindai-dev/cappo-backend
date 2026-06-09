@@ -24,6 +24,8 @@ def _prod(**overrides) -> Settings:
         ei_signing_key=_SECURE_KEY,
         cappo_require_persistent_pgl=True,
         database_url=_PG_URL,
+        auth_enabled=True,
+        api_keys="prod-key-1",
     )
     base.update(overrides)
     return Settings(**base)
@@ -59,6 +61,14 @@ class TestProductionFailClosed:
     def test_sqlite_rejected_in_prod(self) -> None:
         with pytest.raises(InsecureProductionConfigError, match="DATABASE_URL"):
             _prod(database_url="sqlite+pysqlite:///./cappo.db").validate_production()
+
+    def test_auth_disabled_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="AUTH_ENABLED"):
+            _prod(auth_enabled=False).validate_production()
+
+    def test_auth_enabled_without_keys_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="API_KEYS"):
+            _prod(api_keys="").validate_production()
 
     def test_multiple_problems_aggregated(self) -> None:
         with pytest.raises(InsecureProductionConfigError) as exc:
