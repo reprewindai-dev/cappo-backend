@@ -23,10 +23,10 @@ from cappo_backend.db.session import get_session
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
-from cappo_backend.services.executor import EchoExecutor
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
 from cappo_backend.services.pgl_client import PGLClient
+from cappo_backend.services.providers import build_executor
 from cappo_backend.services.revocation_service import RevocationService
 
 router = APIRouter(prefix="/v1")
@@ -87,7 +87,7 @@ def governed_exec(
     pgl = PGLClient(db=db, settings=settings)
     signer = HmacSigner(settings.ei_signing_key)
     builder = ExecutionIdentityBuilder(signer=signer)
-    executor = EchoExecutor()  # will be swapped for real provider
+    executor = build_executor(settings)  # echo stub or real provider(s) per config
     revocation = RevocationService(db, audit)
     # The gateway enforces LAW 0 *inside* the pipeline, before the side effect.
     gateway = MCPGateway(

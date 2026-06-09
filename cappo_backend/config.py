@@ -56,6 +56,26 @@ class Settings(BaseSettings):
     # Comma-separated set of accepted API keys.
     api_keys: str = ""
 
+    # --- Execution layer (real provider + circuit breaker) ---
+    # "echo" uses the deterministic stub (default; tests/local dev). "openai"
+    # wires the OpenAI-compatible HTTP client (OpenAI / Groq / Ollama).
+    executor_mode: str = "echo"
+    # Primary provider.
+    llm_provider_name: str = "openai"
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-4o-mini"
+    llm_api_key: str = ""
+    # Optional fallback provider; enabled only when a fallback base_url is set.
+    llm_fallback_provider_name: str = ""
+    llm_fallback_base_url: str = ""
+    llm_fallback_model: str = ""
+    llm_fallback_api_key: str = ""
+    llm_timeout_seconds: float = 30.0
+    # Circuit-breaker tuning (applied per provider).
+    breaker_failure_threshold: int = 3
+    breaker_recovery_timeout: float = 30.0
+    breaker_success_threshold: int = 1
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
