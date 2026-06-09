@@ -42,9 +42,19 @@ class Settings(BaseSettings):
     # --- Authority limits ---
     max_delegation_depth: int = 4
 
+    # --- Observability / CORS ---
+    # Comma-separated list of allowed CORS origins. Default "*" suits a headless
+    # API in dev; production should pin explicit origins.
+    cors_allow_origins: str = "*"
+    log_level: str = "INFO"
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
     def validate_production(self) -> None:
         """Fail-closed: refuse to run production with unsafe defaults.
