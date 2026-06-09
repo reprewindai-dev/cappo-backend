@@ -17,14 +17,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.models.audit_event import AuditEvent
+from cappo_backend.services.alerting import AlertSink, default_alert_sink
 from cappo_backend.services.canonical import sha256_json
 
 LAW0_VIOLATION = "law0_violation"
 
+# Operation types that raise an out-of-band alert in addition to being persisted.
+ALERTING_OPERATIONS = frozenset({LAW0_VIOLATION})
+
 
 class AuditService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, *, alert_sink: AlertSink | None = None) -> None:
         self._db = db
+        # Pluggable alert transport (EI Plan §Phase 4 alerting). Defaults to the
+        # module-level logging sink; tests inject an in-memory sink to assert.
+        self._alert_sink: AlertSink = alert_sink or default_alert_sink
 
     def _latest_hash(self) -> str | None:
         row = self._db.execute(
@@ -59,6 +66,18 @@ class AuditService:
         )
         self._db.add(event)
         self._db.flush()
+
+        # Fire an out-of-band alert for governance-critical events. The audit row
+        # is already persisted (fail-loud); the alert is a best-effort notify on
+        # top and must never mask the recorded event.
+        if operation_type in ALERTING_OPERATIONS:
+            self._alert_sink(
+                operation_type,
+                payload,
+                workspace_id=workspace_id,
+                run_id=run_id,
+            )
+
         return event
 
     def record_law0_violation(
