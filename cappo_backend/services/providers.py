@@ -19,6 +19,14 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from cappo_backend.services.cache import (
+    CachingExecutor,
+    HotCache,
+    InMemoryWarmCache,
+    RedisWarmCache,
+    UpstashWarmCache,
+    WarmCache,
+)
 from cappo_backend.services.circuit_breaker import CircuitBreaker
 from cappo_backend.services.executor import (
     EchoExecutor,
@@ -143,16 +151,53 @@ def _breaker(settings: Settings, name: str) -> CircuitBreaker:
     )
 
 
+def _build_warm_cache(settings: Settings) -> WarmCache:
+    backend = settings.cache_warm_backend.lower()
+    if backend == "redis":
+        if not settings.redis_url:
+            raise ValueError("cache_warm_backend='redis' requires REDIS_URL")
+        return RedisWarmCache(url=settings.redis_url)
+    if backend == "upstash":
+        if not (settings.upstash_redis_rest_url and settings.upstash_redis_rest_token):
+            raise ValueError(
+                "cache_warm_backend='upstash' requires UPSTASH_REDIS_REST_URL "
+                "and UPSTASH_REDIS_REST_TOKEN"
+            )
+        return UpstashWarmCache(
+            url=settings.upstash_redis_rest_url,
+            token=settings.upstash_redis_rest_token,
+        )
+    return InMemoryWarmCache()
+
+
+def _maybe_wrap_cache(executor: Executor, settings: Settings) -> Executor:
+    """Front the executor with the tiered completion cache when enabled."""
+    if not settings.cache_enabled:
+        return executor
+    hot = HotCache(
+        max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds
+    )
+    warm = _build_warm_cache(settings)
+    return CachingExecutor(
+        inner=executor,
+        hot=hot,
+        warm=warm,
+        ttl=settings.cache_ttl_seconds,
+        namespace=settings.cache_namespace,
+    )
+
+
 def build_executor(settings: Settings) -> Executor:
     """Construct the execution-layer executor from configuration.
 
     ``executor_mode="echo"`` (default) returns the deterministic stub. Otherwise
     the primary OpenAI-compatible provider is wired behind its own breaker, with
     an optional fallback provider (enabled when ``llm_fallback_base_url`` is set),
-    yielding a :class:`ResilientExecutor`.
+    yielding a :class:`ResilientExecutor`. When ``cache_enabled`` is set the
+    result is fronted by the tiered hot/warm completion cache.
     """
     if settings.executor_mode.lower() == "echo":
-        return EchoExecutor()
+        return _maybe_wrap_cache(EchoExecutor(), settings)
 
     providers: list[Provider] = [
         Provider(
@@ -182,4 +227,4 @@ def build_executor(settings: Settings) -> Executor:
                 breaker=_breaker(settings, fallback_name),
             )
         )
-    return ResilientExecutor(providers)
+    return _maybe_wrap_cache(ResilientExecutor(providers), settings)
