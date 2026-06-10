@@ -12,6 +12,15 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# The development default for the EI signing key. It is intentionally obvious so
+# that production refuses to boot with it (see ``validate_production``).
+INSECURE_EI_SIGNING_KEY = "dev-insecure-ei-signing-key"
+MIN_EI_SIGNING_KEY_LEN = 16
+
+
+class InsecureProductionConfigError(RuntimeError):
+    """Raised at startup when production config still carries unsafe defaults."""
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -28,14 +37,121 @@ class Settings(BaseSettings):
     cappo_require_persistent_pgl: bool = False
 
     # Signing key for ExecutionIdentityV1. Must be overridden in production.
-    ei_signing_key: str = "dev-insecure-ei-signing-key"
+    ei_signing_key: str = INSECURE_EI_SIGNING_KEY
 
     # --- Authority limits ---
     max_delegation_depth: int = 4
 
+    # --- Observability / CORS ---
+    # Comma-separated list of allowed CORS origins. Default "*" suits a headless
+    # API in dev; production should pin explicit origins.
+    cors_allow_origins: str = "*"
+    log_level: str = "INFO"
+
+    # --- Authentication (separate, earlier layer than LAW 0 authority) ---
+    # When true, every non-public route requires a valid X-API-Key. This is
+    # authentication only; it never substitutes for EI authority (auth != authority).
+    # Disabled by default for local dev; production must enable it.
+    auth_enabled: bool = False
+    # Comma-separated set of accepted API keys.
+    api_keys: str = ""
+
+    # --- Execution layer (real provider + circuit breaker) ---
+    # "echo" uses the deterministic stub (default; tests/local dev). "openai"
+    # wires the OpenAI-compatible HTTP client (OpenAI / Groq / Ollama).
+    executor_mode: str = "echo"
+    # Primary provider.
+    llm_provider_name: str = "openai"
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-4o-mini"
+    llm_api_key: str = ""
+    # Optional fallback provider; enabled only when a fallback base_url is set.
+    llm_fallback_provider_name: str = ""
+    llm_fallback_base_url: str = ""
+    llm_fallback_model: str = ""
+    llm_fallback_api_key: str = ""
+    llm_timeout_seconds: float = 30.0
+    # Circuit-breaker tuning (applied per provider).
+    breaker_failure_threshold: int = 3
+    breaker_recovery_timeout: float = 30.0
+    breaker_success_threshold: int = 1
+
+    # --- Completion cache (latency) ---
+    # When true, a tiered hot (in-process) + warm (shared) cache fronts the
+    # providers. Cache hits short-circuit the provider call only; the governed
+    # pipeline (PGL/EI/LAW 0) still runs on every request.
+    cache_enabled: bool = False
+    cache_ttl_seconds: int = 300
+    cache_namespace: str = "cappo"
+    hot_cache_max_size: int = 1024
+    # Warm tier backend: "memory" (process-local; dev/test), "redis" (TCP/TLS,
+    # self-hosted or managed), or "upstash" (REST).
+    cache_warm_backend: str = "memory"
+    # Used when cache_warm_backend="redis" (redis:// or rediss:// for TLS).
+    redis_url: str = ""
+    # Used when cache_warm_backend="upstash".
+    upstash_redis_rest_url: str = ""
+    upstash_redis_rest_token: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
+    @property
+    def api_key_set(self) -> frozenset[str]:
+        return frozenset(k.strip() for k in self.api_keys.split(",") if k.strip())
+
+    def validate_production(self) -> None:
+        """Fail-closed: refuse to run production with unsafe defaults.
+
+        Called at application startup. In non-production environments this is a
+        no-op so local development stays frictionless. In production it raises
+        :class:`InsecureProductionConfigError` if any governance-critical setting
+        is still at an insecure default — there is no silent degradation.
+        """
+        if not self.is_production:
+            return
+
+        problems: list[str] = []
+        if self.ei_signing_key == INSECURE_EI_SIGNING_KEY:
+            problems.append(
+                "EI_SIGNING_KEY is still the insecure development default; "
+                "set a strong unique key in production."
+            )
+        elif len(self.ei_signing_key) < MIN_EI_SIGNING_KEY_LEN:
+            problems.append(
+                f"EI_SIGNING_KEY must be at least {MIN_EI_SIGNING_KEY_LEN} characters "
+                "in production."
+            )
+        if not self.cappo_require_persistent_pgl:
+            problems.append(
+                "CAPPO_REQUIRE_PERSISTENT_PGL must be true in production "
+                "(no simulated/non-persisted PGL certificates allowed)."
+            )
+        if self.database_url.lower().startswith("sqlite"):
+            problems.append(
+                "DATABASE_URL must point to a production-grade database "
+                "(SQLite is not permitted in production)."
+            )
+        if not self.auth_enabled:
+            problems.append(
+                "AUTH_ENABLED must be true in production (every non-public route "
+                "requires authentication)."
+            )
+        elif not self.api_key_set:
+            problems.append(
+                "API_KEYS must contain at least one key when AUTH_ENABLED is true."
+            )
+
+        if problems:
+            raise InsecureProductionConfigError(
+                "Refusing to start with insecure production configuration: "
+                + " ".join(problems)
+            )
 
 
 @lru_cache
