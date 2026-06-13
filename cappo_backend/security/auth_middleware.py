@@ -20,7 +20,16 @@ from starlette.responses import JSONResponse, Response
 from cappo_backend.config import Settings
 
 # Non-side-effecting, safe-to-expose paths. Note: /v1/exec is deliberately absent.
-PUBLIC_PATHS = frozenset({"/health", "/docs", "/redoc", "/openapi.json"})
+# License endpoints use their own X-License-Admin-Key header for admin operations;
+# /validate and /activate are intentionally public for veklom-byos-backend to call.
+PUBLIC_PATHS = frozenset({
+    "/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/v1/license/validate",
+    "/v1/license/activate",
+})
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

@@ -19,11 +19,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi.middleware.cors import CORSMiddleware
-
 from cappo_backend.api.routers.admin_router import router as admin_router
 from cappo_backend.api.routers.audit_router import router as audit_router
 from cappo_backend.api.routers.exec_router import router as exec_router
+from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
@@ -62,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(exec_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
+    app.include_router(license_router)
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:

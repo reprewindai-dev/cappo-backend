@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     # Comma-separated set of accepted API keys.
     api_keys: str = ""
 
+    # --- License Server (this service acts as license authority) ---
+    license_admin_key: str = ""  # Shared secret for /v1/license admin endpoints
+    # Set the same value in veklom-byos-backend as LICENSE_ADMIN_KEY
+
+    # --- Veklom BYOS Backend (Real PGL) ---
+    veklom_byos_backend_url: str | None = None  # https://api.veklom.com/v1
+    veklom_api_key: str | None = None  # API key for veklom-byos-backend
+
     # --- Execution layer (real provider + circuit breaker) ---
     # "echo" uses the deterministic stub (default; tests/local dev). "openai"
     # wires the OpenAI-compatible HTTP client (OpenAI / Groq / Ollama).
