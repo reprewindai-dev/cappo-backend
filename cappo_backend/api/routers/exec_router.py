@@ -22,11 +22,12 @@ from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
+from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
+from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
 from cappo_backend.services.executor import EchoExecutor
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
-from cappo_backend.services.pgl_client import PGLClient
+from cappo_backend.services.pgl_adapter import create_pgl_client
 from cappo_backend.services.revocation_service import RevocationService
 
 router = APIRouter(prefix="/v1")
@@ -36,6 +37,7 @@ router = APIRouter(prefix="/v1")
 
 class ExecRequest(BaseModel):
     prompt: str
+    agent_id: str | None = None  # Veklom agent ID (e.g., "agent_alpha")
     workspace_id: str = "default"
     tenant_id: str = "default"
     delegation_depth: int = 0
@@ -45,6 +47,10 @@ class ExecRequest(BaseModel):
     genome_hash: str | None = None
     constitution_hash: str | None = None
     plan_hash: str | None = None
+    action: str | None = None
+    directive: str | None = None
+    risk_tier: str | None = None
+
 
 
 class ExecResponse(BaseModel):
@@ -84,8 +90,9 @@ def governed_exec(
         )
 
     # Assemble orchestrator collaborators.
-    pgl = PGLClient(db=db, settings=settings)
-    signer = HmacSigner(settings.ei_signing_key)
+    # Use real veklom-byos-backend if configured, otherwise local DB
+    pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
+    signer = create_enterprise_signer_from_settings(settings)
     builder = ExecutionIdentityBuilder(signer=signer)
     executor = EchoExecutor()  # will be swapped for real provider
     revocation = RevocationService(db, audit)
@@ -96,8 +103,23 @@ def governed_exec(
         revocation_lookup=revocation.is_revoked,
         settings=settings,
     )
+    from cappo_backend.adapters.local import SQLiteStoreAdapter, SQLiteGraphAdapter
+    from cappo_backend.services.genome_service import GenomeService
+    from cappo_backend.api.routers.genome_router import _global_cache, _global_queue
+    genome_service = GenomeService(
+        store=SQLiteStoreAdapter(db),
+        graph=SQLiteGraphAdapter(db),
+        cache=_global_cache,
+        queue=_global_queue,
+    )
     orchestrator = RunOrchestrator(
-        db=db, pgl=pgl, builder=builder, executor=executor, audit=audit, gateway=gateway
+        db=db,
+        pgl=pgl,
+        builder=builder,
+        executor=executor,
+        audit=audit,
+        gateway=gateway,
+        genome_service=genome_service,
     )
 
     payload: dict[str, Any] = body.model_dump()
@@ -111,7 +133,13 @@ def governed_exec(
         db.commit()  # persist the FAILED run + law0_violation audit event
         raise HTTPException(
             status_code=403,
-            detail={"error": "EXECUTION_IDENTITY_REQUIRED", "detail": exc.detail, "law0": True},
+            detail={
+                "error": "EXECUTION_IDENTITY_REQUIRED",
+                "code": getattr(exc, "code", "LAW0_EI_INVALID"),
+                "detail": exc.detail,
+                "law0": True,
+                "incident_logged": True,
+            },
         )
 
     run = orchestrator.last_run

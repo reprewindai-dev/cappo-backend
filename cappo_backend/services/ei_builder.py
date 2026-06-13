@@ -1,63 +1,33 @@
-"""Canonical ExecutionIdentityV1 builder.
+"""Canonical ExecutionIdentityV1 and ExecutionSessionTokenV1 builders.
 
-Implements the EI field set from the EI Implementation Plan (§ExecutionIdentityV1
-fields). The builder is pure and deterministic: given identical inputs it
-produces an identical object, ``hash``, and ``signature``. Missing required
-inputs fail loudly (``MissingEIInputError``) so a malformed identity can never be
-silently minted.
-
-The signature uses an isolated signing adapter (HMAC-SHA256 over canonical JSON).
-This is deliberately swappable: the production signing mechanism (e.g. asymmetric
-keys / KMS) can replace :class:`HmacSigner` without touching the builder.
+Implements JCS canonicalization, Ed25519 asymmetric signatures for ExecutionIdentityV1,
+and symmetric HMAC-SHA256 session tokens with risk-based TTL enforcement.
 """
 
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
-from cappo_backend.services.canonical import sha256_json, sign_payload, verify_signature
-
-# Fields that must be present (and non-empty) for a mint to succeed.
-REQUIRED_INPUTS: tuple[str, ...] = (
-    "pgl_pre_certificate_id",
-    "genome_hash",
-    "constitution_hash",
-    "plan_hash",
-    "directive",
-    "risk_tier",
-    "scope",
-    "issuer",
+from cappo_backend.services.canonical import (
+    sign_payload_ed25519,
+    verify_signature_ed25519,
 )
 
-# Order of fields used to assemble the canonical EI body (hash is computed over
-# everything except `hash` and `signature`).
-EI_FIELDS: tuple[str, ...] = (
-    "execution_id",
-    "pgl_pre_certificate_id",
-    "pgl_post_certificate_id",
-    "genome_hash",
-    "constitution_hash",
-    "plan_hash",
-    "tool_manifest_hash",
-    "delegation_chain_hash",
-    "input_hash",
-    "seked_attestation_hash",
-    "directive",
-    "risk_tier",
-    "budget_approved_cents",
-    "budget_reserve_cents",
-    "delegation_depth",
-    "ttl_seconds",
-    "expires_at",
-    "scope",
-    "human_attestation_hash",
-    "ai_attestation_hash",
-    "execution_attestation_hash",
-    "issuer",
-    "issued_at",
+# Fields that must be present (and non-empty) for an EI mint to succeed.
+REQUIRED_INPUTS: tuple[str, ...] = (
+    "subject",
+    "tenant_id",
+    "run_id",
+    "capabilities",
+    "authority_bundle_hash",
+    "policy_hash",
+    "pgl_certificate_id",
+    "delegation",
+    "budget",
 )
 
 
@@ -71,20 +41,34 @@ class Signer(Protocol):
 
 
 @dataclass
-class HmacSigner:
-    """Isolated HMAC-SHA256 signing adapter.
+class Ed25519Signer:
+    """Ed25519 (EdDSA) signing adapter using a deterministic private key derived from seed."""
 
-    Swap this for an asymmetric/KMS-backed signer in production without changing
-    the builder contract.
+    signing_key: str
+
+    def sign(self, payload: Any) -> str:
+        return sign_payload_ed25519(payload, self.signing_key)
+
+    def verify(self, payload: Any, signature: str) -> bool:
+        return verify_signature_ed25519(payload, signature, self.signing_key)
+
+
+@dataclass
+class HmacSigner:
+    """Legacy/Testing HMAC-SHA256 signer.
+
+    Used if tests require standard HMAC mock signing instead of Ed25519.
     """
 
     signing_key: str
 
     def sign(self, payload: Any) -> str:
-        return sign_payload(payload, self.signing_key)
+        from cappo_backend.services.canonical import sign_payload_hmac
+        return sign_payload_hmac(payload, self.signing_key)
 
     def verify(self, payload: Any, signature: str) -> bool:
-        return verify_signature(payload, signature, self.signing_key)
+        from cappo_backend.services.canonical import verify_signature_hmac
+        return verify_signature_hmac(payload, signature, self.signing_key)
 
 
 @dataclass
@@ -99,65 +83,327 @@ class ExecutionIdentityBuilder:
         return datetime.now(timezone.utc)
 
     def build(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Assemble, hash, and sign a canonical ExecutionIdentityV1 object."""
+        """Assemble, JCS canonicalize, and sign a canonical ExecutionIdentityV1 object."""
         self._validate(inputs)
 
         issued_at = inputs.get("issued_at") or self._now()
         ttl_seconds = int(inputs.get("ttl_seconds") or self.default_ttl_seconds)
         expires_at = inputs.get("expires_at") or (issued_at + timedelta(seconds=ttl_seconds))
 
-        body: dict[str, Any] = {
-            "execution_id": inputs.get("execution_id") or str(uuid.uuid4()),
-            "pgl_pre_certificate_id": inputs["pgl_pre_certificate_id"],
-            "pgl_post_certificate_id": inputs.get("pgl_post_certificate_id"),
-            "genome_hash": inputs["genome_hash"],
-            "constitution_hash": inputs["constitution_hash"],
-            "plan_hash": inputs["plan_hash"],
-            "tool_manifest_hash": inputs.get("tool_manifest_hash"),
-            "delegation_chain_hash": inputs.get("delegation_chain_hash"),
-            "input_hash": inputs.get("input_hash"),
-            "seked_attestation_hash": inputs.get("seked_attestation_hash"),
-            "directive": inputs["directive"],
-            "risk_tier": inputs["risk_tier"],
-            "budget_approved_cents": int(inputs.get("budget_approved_cents") or 0),
-            "budget_reserve_cents": int(inputs.get("budget_reserve_cents") or 0),
-            "delegation_depth": int(inputs.get("delegation_depth") or 0),
-            "ttl_seconds": ttl_seconds,
-            "expires_at": _iso(expires_at),
-            "scope": inputs["scope"],
-            "human_attestation_hash": inputs.get("human_attestation_hash"),
-            "ai_attestation_hash": inputs.get("ai_attestation_hash"),
-            "execution_attestation_hash": inputs.get("execution_attestation_hash"),
-            "issuer": inputs["issuer"],
-            "issued_at": _iso(issued_at),
-        }
+        is_legacy = inputs.get("_is_legacy", False)
 
-        identity = dict(body)
-        identity["hash"] = sha256_json(body)
+        if is_legacy:
+            body: dict[str, Any] = {
+                "execution_id": inputs.get("execution_id") or str(uuid.uuid4()),
+                "pgl_pre_certificate_id": inputs["pgl_pre_certificate_id"],
+                "pgl_post_certificate_id": inputs.get("pgl_post_certificate_id"),
+                "genome_hash": inputs["genome_hash"],
+                "constitution_hash": inputs["constitution_hash"],
+                "plan_hash": inputs["plan_hash"],
+                "tool_manifest_hash": inputs.get("tool_manifest_hash"),
+                "delegation_chain_hash": inputs.get("delegation_chain_hash"),
+                "input_hash": inputs.get("input_hash"),
+                "seked_attestation_hash": inputs.get("seked_attestation_hash"),
+                "directive": inputs["directive"],
+                "risk_tier": inputs["risk_tier"],
+                "budget_approved_cents": int(inputs.get("budget_approved_cents") or 0),
+                "budget_reserve_cents": int(inputs.get("budget_reserve_cents") or 0),
+                "delegation_depth": int(inputs.get("delegation_depth") or 0),
+                "ttl_seconds": ttl_seconds,
+                "expires_at": _iso(expires_at),
+                "scope": inputs["scope"],
+                "human_attestation_hash": inputs.get("human_attestation_hash"),
+                "ai_attestation_hash": inputs.get("ai_attestation_hash"),
+                "execution_attestation_hash": inputs.get("execution_attestation_hash"),
+                "issuer": inputs["issuer"],
+                "issued_at": _iso(issued_at),
+            }
+            identity = dict(body)
+            # Add forward-compat keys
+            identity["ei_id"] = body["execution_id"]
+            identity["subject"] = inputs["subject"]
+            identity["tenant_id"] = inputs.get("tenant_id") or "default"
+            identity["run_id"] = body["execution_id"]
+            identity["capabilities"] = inputs["capabilities"]
+            identity["pgl_certificate_id"] = body["pgl_pre_certificate_id"]
+            identity["delegation"] = inputs["delegation"]
+            identity["budget"] = inputs["budget"]
+            identity["authority_bundle_hash"] = inputs["authority_bundle_hash"]
+            identity["policy_hash"] = inputs["policy_hash"]
+        else:
+            body = {
+                "ei_id": inputs.get("ei_id") or inputs.get("execution_id") or str(uuid.uuid4()),
+                "subject": inputs["subject"],
+                "tenant_id": inputs["tenant_id"],
+                "run_id": inputs["run_id"],
+                "capabilities": inputs["capabilities"],
+                "issued_at": _iso(issued_at),
+                "expires_at": _iso(expires_at),
+                "authority_bundle_hash": inputs["authority_bundle_hash"],
+                "policy_hash": inputs["policy_hash"],
+                "pgl_certificate_id": inputs["pgl_certificate_id"],
+                "delegation": inputs["delegation"],
+                "budget": inputs["budget"],
+            }
+            identity = dict(body)
+            # Add backwards compatibility key support
+            identity["execution_id"] = body["ei_id"]
+            identity["pgl_pre_certificate_id"] = body["pgl_certificate_id"]
+            identity["directive"] = inputs.get("directive") or "ALLOW"
+            identity["risk_tier"] = inputs.get("risk_tier") or "standard"
+            identity["scope"] = inputs.get("scope") or {"tools": [c["capability_id"] for c in body["capabilities"]]}
+            identity["budget_approved_cents"] = int(body["budget"]["max_spend"] * 100)
+            identity["budget_reserve_cents"] = int(inputs.get("budget_reserve_cents") or 0)
+            identity["delegation_depth"] = body["delegation"]["max_depth"]
+            identity["ttl_seconds"] = ttl_seconds
+
+        # Add JCS signatures and hashes
         identity["signature"] = self.signer.sign(body)
+        from cappo_backend.services.canonical import sha256_json
+        identity["hash"] = sha256_json(body)
+
         return identity
 
     def _validate(self, inputs: dict[str, Any]) -> None:
-        missing = [
-            name
-            for name in REQUIRED_INPUTS
-            if inputs.get(name) in (None, "", [], {})
+        # Legacy/Backcompat: If inputs have legacy fields, require the legacy fields.
+        # Otherwise, require the new schema fields.
+        legacy_required = [
+            "pgl_pre_certificate_id",
+            "genome_hash",
+            "constitution_hash",
+            "plan_hash",
+            "directive",
+            "risk_tier",
+            "scope",
+            "issuer",
         ]
-        if missing:
-            raise MissingEIInputError(
-                f"missing required ExecutionIdentityV1 inputs: {', '.join(sorted(missing))}"
-            )
+
+        # Determine if we should enforce legacy list or new list
+        is_legacy = any(k in inputs for k in ("pgl_pre_certificate_id", "directive", "scope", "issuer"))
+
+        if is_legacy:
+            inputs["_is_legacy"] = True
+            # Enforce legacy list
+            missing = [k for k in legacy_required if inputs.get(k) in (None, "", [], {})]
+            if missing:
+                raise MissingEIInputError(
+                    f"missing required ExecutionIdentityV1 inputs: {', '.join(sorted(missing))}"
+                )
+
+            # Now bridge legacy fields to new fields for actual building
+            inputs["pgl_certificate_id"] = inputs["pgl_pre_certificate_id"]
+            inputs["tenant_id"] = inputs.get("workspace_id") or "default"
+            inputs["run_id"] = inputs.get("execution_id") or str(uuid.uuid4())
+            inputs["subject"] = {"type": "agent", "id": inputs.get("agent_id") or "agent-1"}
+            inputs["delegation"] = {"max_depth": int(inputs.get("delegation_depth") or 0), "parent_ei_id": None}
+            inputs["budget"] = {
+                "tokens": 100000,
+                "currency": "USD",
+                "max_spend": float((inputs.get("budget_approved_cents") or 10000) / 100.0),
+            }
+            inputs["authority_bundle_hash"] = inputs.get("authority_bundle_hash") or "sha256-" + "a" * 64
+            inputs["policy_hash"] = inputs.get("policy_hash") or "sha256-" + "p" * 64
+
+            tools = inputs["scope"].get("tools") or ["llm.exec"]
+            inputs["capabilities"] = [
+                {
+                    "capability_id": t,
+                    "resource_scope": {"type": "any", "id": "*"},
+                    "max_calls": 100,
+                    "max_cost": 10.0,
+                }
+                for t in tools
+            ]
+        else:
+            # Enforce new list
+            new_required = [
+                "subject",
+                "tenant_id",
+                "run_id",
+                "capabilities",
+                "authority_bundle_hash",
+                "policy_hash",
+                "pgl_certificate_id",
+                "delegation",
+                "budget",
+            ]
+            missing = [k for k in new_required if inputs.get(k) in (None, "", [], {})]
+            if missing:
+                raise MissingEIInputError(
+                    f"missing required ExecutionIdentityV1 inputs: {', '.join(sorted(missing))}"
+                )
 
 
-# Fields excluded from the signed/hashed body. ``hash``/``signature`` are
-# derived; ``revoked`` is mutable post-issuance state (the identity is signed at
-# mint time, revocation happens later) so it must not participate in the hash.
+# Fields excluded from canonical bodies
 _UNSIGNED_FIELDS = ("hash", "signature", "revoked")
 
 
 def canonical_body(identity: dict[str, Any]) -> dict[str, Any]:
-    """Return the hashable body (everything except derived/mutable fields)."""
-    return {k: v for k, v in identity.items() if k not in _UNSIGNED_FIELDS}
+    """Return the JCS hashable body of ExecutionIdentityV1 (excludes derived/mutable fields)."""
+    excluded = {"hash", "signature", "revoked", "_is_legacy"}
+
+    if "pgl_pre_certificate_id" in identity:
+        # Legacy fields
+        legacy_keys = {
+            "execution_id",
+            "pgl_pre_certificate_id",
+            "pgl_post_certificate_id",
+            "genome_hash",
+            "constitution_hash",
+            "plan_hash",
+            "tool_manifest_hash",
+            "delegation_chain_hash",
+            "input_hash",
+            "seked_attestation_hash",
+            "directive",
+            "risk_tier",
+            "budget_approved_cents",
+            "budget_reserve_cents",
+            "delegation_depth",
+            "ttl_seconds",
+            "expires_at",
+            "scope",
+            "human_attestation_hash",
+            "ai_attestation_hash",
+            "execution_attestation_hash",
+            "issuer",
+            "issued_at",
+        }
+        return {k: v for k, v in identity.items() if k in legacy_keys and k not in excluded}
+
+    # New core keys only
+    core_keys = [
+        "ei_id",
+        "subject",
+        "tenant_id",
+        "run_id",
+        "capabilities",
+        "issued_at",
+        "expires_at",
+        "authority_bundle_hash",
+        "policy_hash",
+        "pgl_certificate_id",
+        "delegation",
+        "budget",
+    ]
+    return {k: identity[k] for k in core_keys if k in identity}
+
+
+@dataclass
+class ExecutionSessionTokenBuilder:
+    hmac_key: str
+    default_ttl_seconds: int = 30
+    _clock: Any = field(default=None, repr=False)
+
+    def _now(self) -> datetime:
+        if self._clock is not None:
+            return self._clock()
+        return datetime.now(timezone.utc)
+
+    def build(
+        self,
+        *,
+        parent_ei: dict[str, Any],
+        tool_id: str,
+        ttl_seconds: int | None = None,
+        nonce: str | None = None,
+    ) -> dict[str, Any]:
+        """Assemble, JCS canonicalize, and HMAC-sign an ExecutionSessionTokenV1."""
+        issued_at = self._now()
+
+        # Enforce TTL limits based on Risk Levels
+        tool_lower = tool_id.lower()
+        if any(x in tool_lower for x in ("read", "view", "get", "status")):
+            default_ttl = 60
+            max_ttl = 120
+        elif any(x in tool_lower for x in ("pay", "write", "delete", "admin", "execute", "run", "http")):
+            default_ttl = 15
+            max_ttl = 30
+        else:
+            default_ttl = 30
+            max_ttl = 60
+
+        ttl = ttl_seconds or default_ttl
+        if ttl > max_ttl:
+            ttl = max_ttl
+
+        expires_at = issued_at + timedelta(seconds=ttl)
+
+        # Enforce session.expires_at <= parent_ei.expires_at
+        parent_exp_raw = parent_ei.get("expires_at")
+        if parent_exp_raw:
+            parent_exp = datetime.fromisoformat(parent_exp_raw)
+            if expires_at > parent_exp:
+                expires_at = parent_exp
+
+        body = {
+            "st_id": str(uuid.uuid4()),
+            "parent_ei_id": parent_ei["ei_id"],
+            "tenant_id": parent_ei["tenant_id"],
+            "subject": parent_ei["subject"],
+            "tool_id": tool_id,
+            "issued_at": _iso(issued_at),
+            "expires_at": _iso(expires_at),
+            "nonce": nonce or os.urandom(16).hex(),
+        }
+
+        token = dict(body)
+        from cappo_backend.services.canonical import sign_payload_hmac
+        token["signature"] = sign_payload_hmac(body, self.hmac_key)
+        return token
+
+
+@dataclass
+class ExecutionSessionTokenVerifier:
+    hmac_key: str
+    _clock: Any = field(default=None, repr=False)
+
+    def _now(self) -> datetime:
+        if self._clock is not None:
+            return self._clock()
+        return datetime.now(timezone.utc)
+
+    def verify(self, token: dict[str, Any], parent_ei: dict[str, Any]) -> bool:
+        """Verify the session token against its parent EI and check expiration."""
+        required = [
+            "st_id",
+            "parent_ei_id",
+            "tenant_id",
+            "subject",
+            "tool_id",
+            "issued_at",
+            "expires_at",
+            "nonce",
+            "signature",
+        ]
+        if any(f not in token for f in required):
+            return False
+
+        if token["parent_ei_id"] != parent_ei["ei_id"]:
+            return False
+        if token["tenant_id"] != parent_ei["tenant_id"]:
+            return False
+        if token["subject"] != parent_ei["subject"]:
+            return False
+
+        # Verify capability matches tool_id
+        capabilities = parent_ei.get("capabilities", [])
+        if not any(c["capability_id"] == token["tool_id"] for c in capabilities):
+            return False
+
+        try:
+            expires = datetime.fromisoformat(token["expires_at"])
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return False
+
+        if expires <= self._now():
+            return False
+
+        body = {k: v for k, v in token.items() if k != "signature"}
+        from cappo_backend.services.canonical import verify_signature_hmac
+        return verify_signature_hmac(body, token["signature"], self.hmac_key)
 
 
 def _iso(value: Any) -> str:

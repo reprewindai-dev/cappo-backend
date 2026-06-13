@@ -11,6 +11,8 @@ dependencies = [
     "alembic>=1.13",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
+    "x402>=0.2",  # Coinbase x402 payment protocol
+    "requests>=2.31",  # For veklom PGL client
 ]
 
 [project.optional-dependencies]

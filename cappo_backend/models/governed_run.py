@@ -56,6 +56,9 @@ class GovernedRun(Base):
     # The minted ExecutionIdentityV1 object carried through routing/execution.
     execution_identity: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # The minted Execution Authorization Token (EAT) — authorization to execute.
+    eat: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     result_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 

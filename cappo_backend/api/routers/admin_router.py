@@ -86,3 +86,66 @@ def revoke_identity(
         "revoked": ei.revoked,
         "revoked_at": ei.revoked_at.isoformat() if ei.revoked_at else None,
     }
+
+
+# ---------- Audit logs and Runs feed ----------
+
+from cappo_backend.models.audit_event import AuditEvent
+from cappo_backend.models.governed_run import GovernedRun
+from sqlalchemy import desc
+
+@router.get("/audit-logs")
+def get_audit_logs(
+    limit: int = 50,
+    workspace_id: str | None = None,
+    db: Session = Depends(get_session),
+):
+    query = db.query(AuditEvent)
+    if workspace_id:
+        query = query.filter(AuditEvent.workspace_id == workspace_id)
+    events = query.order_by(desc(AuditEvent.created_at)).limit(limit).all()
+    return [
+        {
+            "log_id": e.log_id,
+            "operation_type": e.operation_type,
+            "workspace_id": e.workspace_id,
+            "run_id": e.run_id,
+            "payload": e.payload,
+            "previous_log_hash": e.previous_log_hash,
+            "log_hash": e.log_hash,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in events
+    ]
+
+
+@router.get("/runs")
+def get_runs(
+    limit: int = 50,
+    workspace_id: str | None = None,
+    db: Session = Depends(get_session),
+):
+    query = db.query(GovernedRun)
+    if workspace_id:
+        query = query.filter(GovernedRun.workspace_id == workspace_id)
+    runs = query.order_by(desc(GovernedRun.created_at)).limit(limit).all()
+    return [
+        {
+            "run_id": r.run_id,
+            "workspace_id": r.workspace_id,
+            "tenant_id": r.tenant_id,
+            "state": r.state,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "approved_budget_cents": r.approved_budget_cents,
+            "reserve_cents": r.reserve_cents,
+            "delegation_depth": r.delegation_depth,
+            "scope": r.scope,
+            "governance_decision": r.governance_decision,
+            "risk_tier": r.risk_tier,
+            "pgl_identity": r.pgl_identity,
+            "execution_identity": r.execution_identity,
+            "eat": r.eat,
+            "result_payload": r.result_payload,
+        }
+        for r in runs
+    ]

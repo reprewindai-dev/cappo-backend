@@ -53,11 +53,16 @@ def settings() -> Settings:
 @pytest.fixture
 def prod_settings() -> Settings:
     return Settings(
-        database_url="sqlite:///:memory:",
+        database_url="postgresql+psycopg2://localhost/cappodb",
         ei_signing_key="test-signing-key",
+        ei_signing_provider="aws",
+        aws_kms_key_id="arn:aws:kms:us-east-1:123456789:key/test",
+        aws_region="us-east-1",
+        eat_signing_provider="aws",
         cappo_require_persistent_pgl=True,
         environment="production",
     )
+
 
 
 @pytest.fixture
@@ -69,5 +74,10 @@ def client(db: Session, settings: Settings) -> TestClient:
     app.dependency_overrides[get_session] = _override_session
     from cappo_backend.config import get_settings as _gs
     app.dependency_overrides[_gs] = lambda: settings
-    yield TestClient(app)
+    
+    # Provide default auth header to avoid breaking existing tests
+    test_client = TestClient(app)
+    test_client.headers.update({"X-API-Key": "test-key"})
+    yield test_client
     app.dependency_overrides.clear()
+

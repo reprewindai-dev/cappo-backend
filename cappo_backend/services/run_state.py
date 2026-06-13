@@ -1,12 +1,12 @@
 """Run state machine.
 
 Replaces the old post-hoc, status-derived lifecycle (migration note §3) with an
-explicit pre-execution state machine. The EI mint sits on the
-``COMMITTED -> EI_MINTED`` edge, strictly after governance/commit and before
-routing (EI Plan §Mint point):
+explicit pre-execution state machine. The EI mint and EAT mint sit on the
+``COMMITTED -> EI_MINTED -> EAT_MINTED`` edge, strictly after governance/commit
+and before routing (EI Plan §Mint point, Trust Contract §5):
 
     CREATED -> COMPILED -> CONTEXTUALIZED -> GOVERNED -> COMMITTED
-            -> EI_MINTED -> ROUTED -> EXECUTING -> EXECUTED -> ATTESTED
+            -> EI_MINTED -> EAT_MINTED -> ROUTED -> EXECUTING -> EXECUTED -> ATTESTED
 
 Any failure transitions to FAILED.
 """
@@ -23,6 +23,7 @@ class RunState(str, Enum):
     GOVERNED = "GOVERNED"
     COMMITTED = "COMMITTED"
     EI_MINTED = "EI_MINTED"
+    EAT_MINTED = "EAT_MINTED"
     ROUTED = "ROUTED"
     EXECUTING = "EXECUTING"
     EXECUTED = "EXECUTED"
@@ -37,7 +38,8 @@ _ALLOWED: dict[RunState, set[RunState]] = {
     RunState.CONTEXTUALIZED: {RunState.GOVERNED, RunState.FAILED},
     RunState.GOVERNED: {RunState.COMMITTED, RunState.FAILED},
     RunState.COMMITTED: {RunState.EI_MINTED, RunState.FAILED},
-    RunState.EI_MINTED: {RunState.ROUTED, RunState.FAILED},
+    RunState.EI_MINTED: {RunState.EAT_MINTED, RunState.FAILED},
+    RunState.EAT_MINTED: {RunState.ROUTED, RunState.FAILED},
     RunState.ROUTED: {RunState.EXECUTING, RunState.FAILED},
     RunState.EXECUTING: {RunState.EXECUTED, RunState.FAILED},
     RunState.EXECUTED: {RunState.ATTESTED, RunState.FAILED},

@@ -28,20 +28,20 @@ class RevocationService:
         self._db = db
         self._audit = audit
 
-    def is_revoked(self, execution_id: str) -> bool:
-        ei = self._db.get(ExecutionIdentity, execution_id)
+    def is_revoked(self, ei_id: str) -> bool:
+        ei = self._db.get(ExecutionIdentity, ei_id)
         return bool(ei and ei.revoked)
 
     def revoke(
         self,
-        execution_id: str,
+        ei_id: str,
         *,
         reason: str | None = None,
         workspace_id: str | None = None,
     ) -> ExecutionIdentity:
-        ei = self._db.get(ExecutionIdentity, execution_id)
+        ei = self._db.get(ExecutionIdentity, ei_id)
         if ei is None:
-            raise UnknownExecutionIdentityError(execution_id)
+            raise UnknownExecutionIdentityError(ei_id)
 
         if not ei.revoked:
             ei.revoked = True
@@ -49,7 +49,7 @@ class RevocationService:
             self._db.flush()
             self._audit.record(
                 EI_REVOKED,
-                {"execution_id": execution_id, "reason": reason},
+                {"execution_id": ei_id, "reason": reason},
                 workspace_id=workspace_id or ei.workspace_id,
                 run_id=ei.run_id,
             )

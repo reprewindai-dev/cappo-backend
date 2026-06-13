@@ -24,6 +24,7 @@ from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.security.mcp_gateway import MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
+from cappo_backend.services.eat_builder import EATBuilder
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.executor import Executor
 from cappo_backend.services.pgl_client import PGLClient
@@ -48,6 +49,9 @@ class RunOrchestrator:
     gateway : MCPGateway
         LAW 0 enforcement boundary. Validated *before* any side effect; a missing
         gateway means enforcement is skipped (tests/dev only).
+    eat_builder : EATBuilder | None
+        EAT builder for minting Execution Authorization Tokens. When present, the
+        orchestrator mints an EAT after the EI and stores it on the run.
     issuer : str
         Issuer identifier written into the minted EI.
     """
@@ -60,7 +64,9 @@ class RunOrchestrator:
         executor: Executor,
         audit: AuditService,
         gateway: MCPGateway | None = None,
+        eat_builder: EATBuilder | None = None,
         issuer: str = "cappo-orchestrator",
+        genome_service: Any | None = None,
     ) -> None:
         self._db = db
         self._pgl = pgl
@@ -68,7 +74,9 @@ class RunOrchestrator:
         self._executor = executor
         self._audit = audit
         self._gateway = gateway
+        self._eat_builder = eat_builder
         self._issuer = issuer
+        self._genome_service = genome_service
         self._last_run: GovernedRun | None = None
 
     @property
@@ -89,6 +97,7 @@ class RunOrchestrator:
             self.govern_run(run)
             self.commit_run(run)
             self.mint_execution_identity(run)
+            self.mint_eat(run)
             self.route_run(run)
             result = self.execute_run(run)
             self.attest_run(run)
@@ -102,6 +111,22 @@ class RunOrchestrator:
     # ------------------------------------------------------------------
 
     def create_run(self, request: dict[str, Any]) -> GovernedRun:
+        # If genome layers are present and a GenomeService is available,
+        # register a real genome and derive genome_hash from the Merkle root.
+        genome_hash = request.get("genome_hash")
+        if self._genome_service is not None and not genome_hash:
+            layer_keys = {"model_layer", "prompt_layer", "policy_layer", "watchtower_layer", "task_profile"}
+            if layer_keys.issubset(request.keys()):
+                result = self._genome_service.register_genome(
+                    model_layer=request["model_layer"],
+                    prompt_layer=request["prompt_layer"],
+                    policy_layer=request["policy_layer"],
+                    watchtower_layer=request["watchtower_layer"],
+                    task_profile=request["task_profile"],
+                    parent_genome_hash=request.get("parent_genome_hash"),
+                )
+                genome_hash = result["genome_hash"]
+
         run = GovernedRun(
             run_id=str(uuid.uuid4()),
             workspace_id=request.get("workspace_id", "default"),
@@ -110,7 +135,7 @@ class RunOrchestrator:
             state=RunState.CREATED.value,
             request_payload=request,
             hashes={
-                "genome_hash": request.get("genome_hash") or sha256_json(request),
+                "genome_hash": genome_hash or sha256_json(request),
                 "constitution_hash": request.get("constitution_hash") or sha256_json({"version": "1"}),
                 "plan_hash": request.get("plan_hash") or sha256_json(request.get("prompt", "")),
             },
@@ -130,10 +155,14 @@ class RunOrchestrator:
 
     def govern_run(self, run: GovernedRun) -> None:
         """Governance decision. No post-hoc/status-derived defaults."""
-        run.governance_decision = "ALLOW"
-        run.risk_tier = "standard"
-        run.v4_decision = {"directive": "ALLOW", "risk_tier": "standard"}
-        run.seked_state = {"directive": "ALLOW"}
+        payload = run.request_payload or {}
+        directive = payload.get("directive") or "ALLOW"
+        risk_tier = payload.get("risk_tier") or "standard"
+
+        run.governance_decision = directive
+        run.risk_tier = risk_tier
+        run.v4_decision = {"directive": directive, "risk_tier": risk_tier}
+        run.seked_state = {"directive": directive}
         self._transition(run, RunState.GOVERNED)
 
     def commit_run(self, run: GovernedRun) -> None:
@@ -181,18 +210,18 @@ class RunOrchestrator:
 
         # Persist to the dedicated table.
         ei_record = ExecutionIdentity(
-            execution_id=identity["execution_id"],
+            ei_id=identity["ei_id"],
             run_id=run.run_id,
-            workspace_id=run.workspace_id,
-            pgl_pre_certificate_id=identity["pgl_pre_certificate_id"],
-            directive=identity["directive"],
-            risk_tier=identity["risk_tier"],
-            budget_approved_cents=identity["budget_approved_cents"],
-            delegation_depth=identity["delegation_depth"],
-            scope_json=identity["scope"],
+            tenant_id=run.workspace_id,
+            pgl_certificate_id=identity["pgl_certificate_id"],
+            subject_json=identity["subject"],
+            capabilities_json=identity["capabilities"],
+            delegation_json=identity["delegation"],
+            budget_json=identity["budget"],
+            authority_bundle_hash=identity["authority_bundle_hash"],
+            policy_hash=identity["policy_hash"],
             expires_at=datetime.fromisoformat(identity["expires_at"]),
             signature=identity["signature"],
-            hash=identity["hash"],
             identity_json=identity,
         )
         self._db.add(ei_record)
@@ -202,6 +231,49 @@ class RunOrchestrator:
 
     def route_run(self, run: GovernedRun) -> None:
         self._transition(run, RunState.ROUTED)
+
+    def mint_eat(self, run: GovernedRun) -> None:
+        """Mint Execution Authorization Token — strictly after EI, before route.
+
+        The EAT is an authorization envelope around the already-minted EI. It grants
+        the Edge MCP permission to execute exactly one governed operation. When no
+        ``eat_builder`` is configured, this step is a no-op (dev/test shortcut).
+        """
+        if self._eat_builder is None:
+            self._transition(run, RunState.EAT_MINTED)
+            return
+
+        ei = run.execution_identity
+        if ei is None:
+            raise ValueError("Cannot mint EAT without a minted ExecutionIdentityV1")
+
+        request = run.request_payload or {}
+        agent_id = request.get("agent_id", run.run_id)
+        certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
+
+        eat = self._eat_builder.build(
+            execution_identity=ei,
+            agent_id=agent_id,
+            certificate_id=certificate_id,
+            trust_score=float(request.get("trust_score", 75.0)),
+            risk_tier=run.risk_tier or "standard",
+        )
+        run.eat = eat
+        self._db.flush()
+
+        self._audit.record(
+            "eat_minted",
+            {
+                "eat_id": eat["eat_id"],
+                "execution_id": ei["execution_id"],
+                "agent_id": agent_id,
+                "ttl_seconds": eat["temporal"]["ttl_seconds"],
+            },
+            workspace_id=run.workspace_id,
+            run_id=run.run_id,
+        )
+
+        self._transition(run, RunState.EAT_MINTED)
 
     def execute_run(self, run: GovernedRun) -> dict[str, Any]:
         """Enforce LAW 0, then run the executor.
