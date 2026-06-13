@@ -22,12 +22,11 @@ from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
-from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
-from cappo_backend.services.executor import EchoExecutor
+from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
-from cappo_backend.services.pgl_adapter import create_pgl_client
+from cappo_backend.services.pgl_client import PGLClient
+from cappo_backend.services.providers import build_executor
 from cappo_backend.services.revocation_service import RevocationService
 
 router = APIRouter(prefix="/v1")
@@ -59,6 +58,8 @@ class ExecResponse(BaseModel):
     provider: str | None = None
     tokens: int | None = None
     latency_ms: float | None = None
+    cached: bool | None = None
+    cache_tier: str | None = None
     log_id: str | None = None
     run_id: str | None = None
     execution_id: str | None = None
@@ -94,7 +95,7 @@ def governed_exec(
     pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
     signer = create_enterprise_signer_from_settings(settings)
     builder = ExecutionIdentityBuilder(signer=signer)
-    executor = EchoExecutor()  # will be swapped for real provider
+    executor = build_executor(settings)  # echo stub or real provider(s) per config
     revocation = RevocationService(db, audit)
     # The gateway enforces LAW 0 *inside* the pipeline, before the side effect.
     gateway = MCPGateway(
@@ -152,6 +153,8 @@ def governed_exec(
         provider=result.get("provider"),
         tokens=result.get("tokens"),
         latency_ms=round(elapsed_ms, 2),
+        cached=result.get("cached"),
+        cache_tier=result.get("cache_tier"),
         run_id=run.run_id if run else None,
         execution_id=(run.execution_identity or {}).get("execution_id") if run else None,
     )
