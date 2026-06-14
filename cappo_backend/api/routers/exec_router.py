@@ -37,6 +37,7 @@ router = APIRouter(prefix="/v1")
 class ExecRequest(BaseModel):
     prompt: str
     agent_id: str | None = None  # Veklom agent ID (e.g., "agent_alpha")
+    pgl_id: str | None = None    # User's PGL identity
     workspace_id: str = "default"
     tenant_id: str = "default"
     delegation_depth: int = 0

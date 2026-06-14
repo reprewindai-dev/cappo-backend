@@ -145,6 +145,8 @@ class ExecutionIdentityBuilder:
                 "delegation": inputs["delegation"],
                 "budget": inputs["budget"],
             }
+            if "agent" in inputs:
+                body["agent"] = inputs["agent"]
             identity = dict(body)
             # Add backwards compatibility key support
             identity["execution_id"] = body["ei_id"]
