@@ -34,10 +34,20 @@ class AuditService:
         self._alert_sink: AlertSink = alert_sink or default_alert_sink
 
     def _latest_hash(self) -> str | None:
-        row = self._db.execute(
-            select(AuditEvent.log_hash).order_by(AuditEvent.created_at.desc()).limit(1)
-        ).first()
-        return row[0] if row else None
+        all_hashes = list(
+            self._db.execute(select(AuditEvent.log_hash)).scalars()
+        )
+        if not all_hashes:
+            return None
+        referenced = set(
+            self._db.execute(
+                select(AuditEvent.previous_log_hash).where(
+                    AuditEvent.previous_log_hash.isnot(None)
+                )
+            ).scalars()
+        )
+        tails = [h for h in all_hashes if h not in referenced]
+        return tails[0] if tails else all_hashes[-1]
 
     def record(
         self,
