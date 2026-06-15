@@ -88,8 +88,9 @@ class TestGovernedExecPath:
 class TestNoBypass:
     """Verify that no ungoverned path exists."""
 
-    def test_no_ungoverned_exec_route(self, client: TestClient) -> None:
+    def test_no_ungoverned_exec_route(self) -> None:
+        from cappo_backend.main import app as _app
         # The only execution route is the governed /v1/exec.
-        routes = {r.path for r in client.app.routes if hasattr(r, "path")}
+        routes = {r.path for r in _app.routes if hasattr(r, "path")}
         exec_routes = {p for p in routes if p.endswith("/exec")}
         assert exec_routes == {"/v1/exec"}, f"unexpected exec routes: {exec_routes}"
