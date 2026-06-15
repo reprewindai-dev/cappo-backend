@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-import requests
+import httpx
 
 from cappo_backend.config import Settings, get_settings
 
@@ -84,20 +84,20 @@ class VeklomPGLClient:
             headers["Authorization"] = f"Bearer {self._api_key}"
         
         try:
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=headers,
-                timeout=30,
-                **kwargs
-            )
+            with httpx.Client(timeout=30) as client:
+                response = client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    **kwargs
+                )
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise AgentNotFoundError(f"Agent not found: {path}")
             raise VeklomPGLError(f"Veklom API error: {e}")
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             raise VeklomPGLError(f"Veklom API request failed: {e}")
     
     def get_agent_certificate(self, agent_id: str) -> VeklomAgentCertificate:
