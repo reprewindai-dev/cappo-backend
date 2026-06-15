@@ -54,7 +54,7 @@ def test_invalid_ei_blocks_side_effect(db: Session) -> None:
     orch, executor, _ = _orchestrator(db, mint_key="mint-key", gateway_key="other-key")
 
     with pytest.raises(EIValidationError):
-        orch.run_governed({"prompt": "hi"})
+        orch.run_governed({"prompt": "hi", "pgl_id": "test-user-id"})
 
     assert executor.called is False, "executor ran despite invalid EI (LAW 0 breach)"
     assert orch.last_run is not None
@@ -71,7 +71,7 @@ def test_invalid_ei_blocks_side_effect(db: Session) -> None:
 def test_valid_ei_allows_side_effect(db: Session) -> None:
     orch, executor, _ = _orchestrator(db, mint_key="same-key", gateway_key="same-key")
 
-    result = orch.run_governed({"prompt": "hi"})
+    result = orch.run_governed({"prompt": "hi", "pgl_id": "test-user-id"})
 
     assert executor.called is True
     assert result["response"] == "should-not-happen"  # spy executor's output

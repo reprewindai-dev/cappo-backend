@@ -17,7 +17,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from cappo_backend.services.canonical import canonical_json
 
@@ -320,7 +320,6 @@ class HashiCorpVaultSigner:
         message = canonical_json(payload)
         
         try:
-            import hvac
             
             # Re-add vault prefix if missing
             if not signature.startswith("vault:v"):

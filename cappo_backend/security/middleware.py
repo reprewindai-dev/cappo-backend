@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -106,7 +107,8 @@ class PaymentGateMiddleware(BaseHTTPMiddleware):
             if override:
                 gen = override()
                 db = next(gen)
-                close_db = lambda: next(gen, None)
+                def close_db():
+                    next(gen, None)
             else:
                 db = SessionLocal()
                 close_db = db.close
@@ -195,7 +197,6 @@ class EATEnforcementMiddleware(BaseHTTPMiddleware):
         action_cost_cents = body_json.get("action_cost_cents", 0)
 
         try:
-            from cappo_backend.security.edge_gateway import EATVerificationError
             edge_gateway.require_eat(
                 eat,
                 action=action,

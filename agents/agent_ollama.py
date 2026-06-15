@@ -38,14 +38,15 @@ Install Ollama on Hetzner:
     ollama serve  # already running after install
 """
 
-import os
-import json
 import asyncio
 import hashlib
+import json
+import os
 import secrets
 import time
 from datetime import datetime, timezone
 from typing import Any
+
 import httpx
 
 # ---------------------------------------------------------------------------

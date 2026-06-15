@@ -32,7 +32,7 @@ class PGLCertificate(Base):
     certificate_id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     run_id: Mapped[str] = mapped_column(String, index=True)
     workspace_id: Mapped[str] = mapped_column(String, index=True)
-    actor_id: Mapped[str] = mapped_column(String, index=True)
+    actor_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     agent_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
 
     # Pre/post linkage (migration note §1.4).

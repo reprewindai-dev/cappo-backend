@@ -22,11 +22,10 @@ Required env vars: See individual agent files.
 Install: pip install schedule openai praw requests
 """
 
-import os
-import sys
+import argparse
 import json
 import subprocess
-import argparse
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -131,8 +130,9 @@ def show_status():
 
 def run_scheduler():
     try:
-        import schedule
         import time
+
+        import schedule
     except ImportError:
         print("[ERROR] schedule not installed. Run: pip install schedule")
         sys.exit(1)

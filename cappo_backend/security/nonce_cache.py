@@ -20,7 +20,6 @@ import threading
 import time
 from typing import Protocol, runtime_checkable
 
-
 # ---------------------------------------------------------------------------
 # Backend protocol
 # ---------------------------------------------------------------------------

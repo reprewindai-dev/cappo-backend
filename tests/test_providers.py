@@ -173,7 +173,7 @@ def test_factory_executor_fails_over_across_real_clients():
     ex._providers[0].executor._client = _client(fail)
     ex._providers[1].executor._client = _client(ok)
 
-    out = ex.execute({"prompt": "hi"})
+    out = ex.execute({"prompt": "hi", "pgl_id": "test-user-id"})
     assert out["response"] == "from-fallback"
     assert out["provider"] == "fallback"
 

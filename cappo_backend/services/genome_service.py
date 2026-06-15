@@ -8,7 +8,6 @@ is delegated through hexagonal ports so the service is storage-agnostic.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
 from typing import Any
 
 from cappo_backend.ports.cache import CachePort
@@ -16,7 +15,6 @@ from cappo_backend.ports.graph import GraphPort
 from cappo_backend.ports.queue import QueuePort
 from cappo_backend.ports.store import StorePort
 from cappo_backend.services.canonical import canonical_json, sha256_json
-
 
 # Layer ordering is fixed so the Merkle tree is deterministic.
 _LAYER_NAMES: list[str] = [

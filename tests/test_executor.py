@@ -1,15 +1,16 @@
-"""Unit tests for the HTTPExecutor service (Task B3)."""
+"""Unit tests for the ResilientExecutor service (Task B3)."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 
-from cappo_backend.services.executor import HTTPExecutor, ProviderExecutionError
+from cappo_backend.services.executor import ExecutorUnavailableError, ResilientExecutor
 
 
 def test_http_executor_success() -> None:
-    executor = HTTPExecutor(
+    executor = ResilientExecutor(
         api_url="https://api.groq.com/openai/v1/chat/completions",
         api_key="mock-key",
         model="llama3-8b-8192",
@@ -32,7 +33,7 @@ def test_http_executor_success() -> None:
     }
 
     with patch("httpx.Client.post", return_value=mock_response) as mock_post:
-        result = executor.execute({"prompt": "hi"})
+        result = executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})
         
         # Verify result format
         assert result["response"] == "Hello! I am LLM."
@@ -49,14 +50,14 @@ def test_http_executor_success() -> None:
 
 
 def test_http_executor_failure() -> None:
-    executor = HTTPExecutor(
+    executor = ResilientExecutor(
         api_url="https://api.groq.com/openai/v1/chat/completions",
         api_key="mock-key",
     )
 
     with patch("httpx.Client.post", side_effect=Exception("Connection refused")):
-        with pytest.raises(ProviderExecutionError, match="External provider call failed"):
-            executor.execute({"prompt": "hi"})
+        with pytest.raises(ExecutorUnavailableError, match="External provider call failed"):
+            executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})
             
         # Or if it returns an HTTP error status code:
         mock_response = MagicMock()
@@ -64,5 +65,5 @@ def test_http_executor_failure() -> None:
         mock_response.raise_for_status.side_effect = Exception("Internal Server Error")
         
     with patch("httpx.Client.post", return_value=mock_response):
-        with pytest.raises(ProviderExecutionError, match="Internal Server Error"):
-            executor.execute({"prompt": "hi"})
+        with pytest.raises(ExecutorUnavailableError, match="Internal Server Error"):
+            executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})

@@ -58,10 +58,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.add_middleware(RequestLoggingMiddleware)
 
+    from cappo_backend.adapters.legacy.router import router as legacy_adapter_router
+
     app.include_router(exec_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
     app.include_router(license_router)
+    app.include_router(legacy_adapter_router)
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:

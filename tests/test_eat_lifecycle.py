@@ -10,13 +10,11 @@ import pytest
 from cappo_backend.security.edge_gateway import EATVerificationError, EdgeGateway
 from cappo_backend.security.nonce_cache import InMemoryNonceCache
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
 from cappo_backend.services.executor import EchoExecutor
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -124,7 +122,7 @@ class TestEATLifecycle:
     def test_eat_links_to_ei(self, db):
         """The EAT's execution_id must match the EI's execution_id."""
         orch = _make_orchestrator(db, with_eat=True)
-        result = orch.run_governed(_make_request())
+        orch.run_governed(_make_request())
 
         run = orch.last_run
         assert run.eat["execution_id"] == run.execution_identity["execution_id"]
@@ -132,7 +130,7 @@ class TestEATLifecycle:
     def test_eat_provenance_hashes_match_ei(self, db):
         """The EAT's provenance hashes must match the EI's hashes."""
         orch = _make_orchestrator(db, with_eat=True)
-        result = orch.run_governed(_make_request())
+        orch.run_governed(_make_request())
 
         run = orch.last_run
         eat = run.eat
@@ -171,7 +169,7 @@ class TestEATExpiry:
             eat_builder=eat_builder,
         )
 
-        result = orch.run_governed(_make_request())
+        orch.run_governed(_make_request())
         run = orch.last_run
         assert run.eat is not None
 
@@ -194,7 +192,7 @@ class TestEATRunState:
     def test_run_passes_through_eat_minted_state(self, db):
         """After the full pipeline, the run must have been in EAT_MINTED state."""
         orch = _make_orchestrator(db, with_eat=True)
-        result = orch.run_governed(_make_request())
+        orch.run_governed(_make_request())
         run = orch.last_run
         # The final state should be ATTESTED (past EAT_MINTED)
         assert run.state == "ATTESTED"

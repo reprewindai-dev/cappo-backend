@@ -25,7 +25,6 @@ from typing import Any, Protocol
 
 from cappo_backend.services.canonical import sha256_json
 
-
 # ---------------------------------------------------------------------------
 # Signer protocol (identical contract to ei_builder.Signer)
 # ---------------------------------------------------------------------------

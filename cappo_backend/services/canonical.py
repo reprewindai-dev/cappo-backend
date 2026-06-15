@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import json
 from typing import Any
+
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 

@@ -22,10 +22,11 @@ from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
+from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
+from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
-from cappo_backend.services.pgl_client import PGLClient
+from cappo_backend.services.pgl_adapter import create_pgl_client
 from cappo_backend.services.providers import build_executor
 from cappo_backend.services.revocation_service import RevocationService
 
@@ -105,9 +106,9 @@ def governed_exec(
         revocation_lookup=revocation.is_revoked,
         settings=settings,
     )
-    from cappo_backend.adapters.local import SQLiteStoreAdapter, SQLiteGraphAdapter
-    from cappo_backend.services.genome_service import GenomeService
+    from cappo_backend.adapters.local import SQLiteGraphAdapter, SQLiteStoreAdapter
     from cappo_backend.api.routers.genome_router import _global_cache, _global_queue
+    from cappo_backend.services.genome_service import GenomeService
     genome_service = GenomeService(
         store=SQLiteStoreAdapter(db),
         graph=SQLiteGraphAdapter(db),

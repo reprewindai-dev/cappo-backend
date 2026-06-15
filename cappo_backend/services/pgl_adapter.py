@@ -162,7 +162,6 @@ class VeklomPGLAdapter:
         The real certificate already exists in veklom - we just validate it.
         """
         run_id = kwargs.get("run_id", "")
-        workspace_id = kwargs.get("workspace_id", "")
         
         # Use run_id as agent_id to lookup
         try:

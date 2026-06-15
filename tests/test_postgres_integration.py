@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import OperationalError
@@ -21,7 +22,7 @@ def is_postgres_available() -> bool:
     """Check if the PostgreSQL test database is accessible."""
     try:
         engine = create_engine(POSTGRES_TEST_URL, connect_args={"connect_timeout": 2})
-        with engine.connect() as conn:
+        with engine.connect():
             return True
     except OperationalError:
         return False

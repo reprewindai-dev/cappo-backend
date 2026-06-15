@@ -148,7 +148,7 @@ def test_primary_serves_when_healthy():
     primary = _provider("primary", EchoExecutor())
     fallback = _provider("fallback", BoomExecutor())
     ex = ResilientExecutor([primary, fallback])
-    out = ex.execute({"prompt": "hi"})
+    out = ex.execute({"prompt": "hi", "pgl_id": "test-user-id"})
     assert out["response"] == "echo: hi"
 
 

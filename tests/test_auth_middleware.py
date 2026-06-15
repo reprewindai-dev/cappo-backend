@@ -46,19 +46,19 @@ def auth_client(db: Session, auth_settings: Settings) -> Iterator[TestClient]:
 
 class TestAuthEnabled:
     def test_exec_rejected_without_key(self, auth_client: TestClient) -> None:
-        resp = auth_client.post("/v1/exec", json={"prompt": "hi"})
+        resp = auth_client.post("/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id"})
         assert resp.status_code == 401
         assert resp.json()["error"] == "AUTHENTICATION_REQUIRED"
 
     def test_exec_rejected_with_invalid_key(self, auth_client: TestClient) -> None:
         resp = auth_client.post(
-            "/v1/exec", json={"prompt": "hi"}, headers={"X-API-Key": "wrong"}
+            "/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id"}, headers={"X-API-Key": "wrong"}
         )
         assert resp.status_code == 401
 
     def test_exec_allowed_with_valid_key(self, auth_client: TestClient) -> None:
         resp = auth_client.post(
-            "/v1/exec", json={"prompt": "hi"}, headers={"X-API-Key": _KEY}
+            "/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id"}, headers={"X-API-Key": _KEY}
         )
         assert resp.status_code == 200
         assert resp.json()["response"] == "echo: hi"
@@ -74,5 +74,5 @@ class TestAuthEnabled:
 class TestAuthDisabledByDefault:
     def test_exec_open_when_auth_disabled(self, client: TestClient) -> None:
         # Default client fixture uses auth_enabled=False.
-        resp = client.post("/v1/exec", json={"prompt": "hi"})
+        resp = client.post("/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id"})
         assert resp.status_code == 200

@@ -3,9 +3,9 @@ services:
     image: postgres:15-alpine
     container_name: cappo-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: cappodb
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+      POSTGRES_DB: ${POSTGRES_DB:-cappodb}
     ports:
       - "5432:5432"
     volumes:
@@ -25,10 +25,12 @@ services:
     container_name: cappo-web
     ports:
       - "8000:8000"
+      - "162:162/udp" # SNMP Traps
+      - "502:502/tcp" # Modbus TCP
     environment:
       - ENVIRONMENT=production
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgrespassword@db:5432/cappodb
-      - REDIS_URL=redis://:Veklom2026Redis!@redis:6379/0
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@db:5432/${POSTGRES_DB:-cappodb}
+      - REDIS_URL=redis://redis:6379/0
       - CACHE_ENABLED=true
       - CACHE_WARM_BACKEND=redis
       - EXECUTOR_MODE=openai
@@ -36,7 +38,7 @@ services:
       - LLM_MODEL=qwen2.5:0.5b
       - LLM_API_KEY=not-needed-for-ollama
       - CAPPO_REQUIRE_PERSISTENT_PGL=true
-      - EI_SIGNING_KEY=change-me-to-something-secure-in-production-1234
+      - EI_SIGNING_KEY=${EI_SIGNING_KEY:-change-me-to-something-secure-in-production-1234}
     depends_on:
       db:
         condition: service_healthy

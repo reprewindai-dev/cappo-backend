@@ -167,10 +167,11 @@ class RunOrchestrator:
 
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
+        print("DEBUG PAYLOAD:", run.request_payload)
         cert = self._pgl.mint_pre_certificate(
             run_id=run.run_id,
             workspace_id=run.workspace_id,
-            actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
+            actor_id=run.request_payload.get("pgl_id") if run.request_payload else print("REQUEST PAYLOAD:", run.request_payload) or None,
             agent_id=run.request_payload.get("agent", {}).get("id") if run.request_payload else None,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
@@ -323,6 +324,8 @@ class RunOrchestrator:
             pre_certificate_id=pre_cert_id,
             run_id=run.run_id,
             workspace_id=run.workspace_id,
+            actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
+            agent_id=run.request_payload.get("agent", {}).get("id") if run.request_payload else None,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),

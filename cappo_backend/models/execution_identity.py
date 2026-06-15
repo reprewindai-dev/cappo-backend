@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base

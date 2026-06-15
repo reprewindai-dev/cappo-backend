@@ -58,13 +58,13 @@ class CountingExecutor:
 
 
 def test_cache_key_is_deterministic_for_same_inputs():
-    a = cache_key({"prompt": "hi", "model": "m", "workspace_id": "w1"})
-    b = cache_key({"prompt": "hi", "model": "m", "workspace_id": "w1"})
+    a = cache_key({"prompt": "hi", "pgl_id": "test-user-id", "model": "m", "workspace_id": "w1"})
+    b = cache_key({"prompt": "hi", "pgl_id": "test-user-id", "model": "m", "workspace_id": "w1"})
     assert a == b
 
 
 def test_cache_key_isolates_tenants_and_workspaces():
-    base = {"prompt": "hi", "model": "m"}
+    base = {"prompt": "hi", "pgl_id": "test-user-id", "model": "m"}
     assert cache_key({**base, "workspace_id": "w1"}) != cache_key(
         {**base, "workspace_id": "w2"}
     )
@@ -201,7 +201,7 @@ def test_redis_fails_soft_to_miss_on_error():
 def test_miss_calls_inner_then_caches():
     inner = CountingExecutor()
     ex = CachingExecutor(inner, HotCache(), InMemoryWarmCache())
-    out1 = ex.execute({"prompt": "hi", "workspace_id": "w"})
+    out1 = ex.execute({"prompt": "hi", "pgl_id": "test-user-id", "workspace_id": "w"})
     assert out1["cached"] is False and out1["cache_tier"] is None
     assert inner.calls == 1
 
@@ -209,7 +209,7 @@ def test_miss_calls_inner_then_caches():
 def test_second_identical_request_hits_hot_without_calling_inner():
     inner = CountingExecutor()
     ex = CachingExecutor(inner, HotCache(), InMemoryWarmCache())
-    req = {"prompt": "hi", "workspace_id": "w"}
+    req = {"prompt": "hi", "pgl_id": "test-user-id", "workspace_id": "w"}
     first = ex.execute(req)
     second = ex.execute(req)
     assert inner.calls == 1  # inner not called again
@@ -222,7 +222,7 @@ def test_warm_hit_promotes_to_hot():
     hot = HotCache()
     warm = InMemoryWarmCache()
     ex = CachingExecutor(inner, hot, warm)
-    req = {"prompt": "hi", "workspace_id": "w"}
+    req = {"prompt": "hi", "pgl_id": "test-user-id", "workspace_id": "w"}
     ex.execute(req)  # populates warm + hot
     # Simulate a fresh worker: clear hot, keep warm.
     hot._store.clear()
@@ -236,8 +236,8 @@ def test_warm_hit_promotes_to_hot():
 def test_different_tenants_do_not_share_cache():
     inner = CountingExecutor()
     ex = CachingExecutor(inner, HotCache(), InMemoryWarmCache())
-    ex.execute({"prompt": "hi", "tenant_id": "t1"})
-    ex.execute({"prompt": "hi", "tenant_id": "t2"})
+    ex.execute({"prompt": "hi", "pgl_id": "test-user-id", "tenant_id": "t1"})
+    ex.execute({"prompt": "hi", "pgl_id": "test-user-id", "tenant_id": "t2"})
     assert inner.calls == 2  # distinct keys -> both miss
 
 
@@ -262,9 +262,9 @@ def test_build_executor_wraps_with_cache_when_enabled():
     settings = Settings(executor_mode="echo", cache_enabled=True)
     ex = build_executor(settings)
     assert isinstance(ex, CachingExecutor)
-    out = ex.execute({"prompt": "hello", "workspace_id": "w"})
+    out = ex.execute({"prompt": "hello", "pgl_id": "test-user-id", "workspace_id": "w"})
     assert out["cached"] is False
-    assert ex.execute({"prompt": "hello", "workspace_id": "w"})["cached"] is True
+    assert ex.execute({"prompt": "hello", "pgl_id": "test-user-id", "workspace_id": "w"})["cached"] is True
 
 
 def test_build_executor_no_cache_by_default():

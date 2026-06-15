@@ -15,7 +15,6 @@ from cappo_backend.services.eat_builder import (
 )
 from cappo_backend.services.ei_builder import HmacSigner
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

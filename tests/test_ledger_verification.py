@@ -62,7 +62,7 @@ class TestAuditChain:
 
 class TestPGLChain:
     def test_pgl_chain_from_exec_verifies(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         events = db.query(PGLLedgerEvent).all()
         assert events, "exec should have produced PGL ledger events"
         cert_id = events[0].certificate_id
@@ -72,7 +72,7 @@ class TestPGLChain:
         assert report.total >= 1
 
     def test_pgl_tamper_detected(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         ev = db.query(PGLLedgerEvent).first()
         assert ev is not None
         ev.payload = {**ev.payload, "event_type": "forged"}
@@ -82,7 +82,7 @@ class TestPGLChain:
         assert report.valid is False
 
     def test_verify_all_valid_after_exec(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         result = LedgerVerifier(db).verify_all()
         assert result["valid"] is True
         # Audit chain + at least one PGL chain present.
@@ -91,7 +91,7 @@ class TestPGLChain:
 
 class TestVerifyEndpoint:
     def test_verify_endpoint_ok(self, client: TestClient) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         resp = client.get("/v1/audit/verify")
         assert resp.status_code == 200
         assert resp.json()["valid"] is True
@@ -99,7 +99,7 @@ class TestVerifyEndpoint:
     def test_verify_endpoint_detects_tamper(
         self, client: TestClient, db: Session
     ) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         ev = db.query(AuditEvent).first()
         assert ev is not None
         ev.payload = {**ev.payload, "tampered": True}

@@ -17,7 +17,7 @@ from typing import Any
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json, verify_signature_ed25519
-from cappo_backend.services.ei_builder import canonical_body, ExecutionSessionTokenVerifier
+from cappo_backend.services.ei_builder import ExecutionSessionTokenVerifier, canonical_body
 
 
 class EIValidationError(Exception):

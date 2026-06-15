@@ -20,7 +20,6 @@ from cappo_backend.ports.graph import GraphPort
 from cappo_backend.ports.queue import QueuePort
 from cappo_backend.ports.store import StorePort
 
-
 # ---------------------------------------------------------------------------
 # InMemoryCacheAdapter
 # ---------------------------------------------------------------------------

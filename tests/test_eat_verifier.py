@@ -14,7 +14,6 @@ from cappo_backend.services.canonical import sha256_json, sign_payload
 from cappo_backend.services.eat_builder import EATBuilder, eat_canonical_body
 from cappo_backend.services.ei_builder import HmacSigner
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

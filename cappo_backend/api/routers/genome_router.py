@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from cappo_backend.db.session import get_session
 from cappo_backend.adapters.local import (
-    InMemoryCacheAdapter,
-    SQLiteStoreAdapter,
-    SQLiteGraphAdapter,
     DirectQueueAdapter,
+    InMemoryCacheAdapter,
+    SQLiteGraphAdapter,
+    SQLiteStoreAdapter,
 )
+from cappo_backend.db.session import get_session
 from cappo_backend.services.genome_service import GenomeService
 
 router = APIRouter(prefix="/v1/genomes", tags=["Genomes"])

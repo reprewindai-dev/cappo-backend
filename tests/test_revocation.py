@@ -23,7 +23,7 @@ from cappo_backend.services.revocation_service import (
 
 
 def _mint_ei(client: TestClient, db: Session) -> ExecutionIdentity:
-    client.post("/v1/exec", json={"prompt": "hello"})
+    client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
     ei = db.query(ExecutionIdentity).first()
     assert ei is not None
     return ei

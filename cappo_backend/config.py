@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The development default for the EI signing key. It is intentionally obvious so
@@ -39,6 +38,7 @@ class Settings(BaseSettings):
 
     # Signing key for ExecutionIdentityV1. Must be overridden in production.
     ei_signing_key: str = INSECURE_EI_SIGNING_KEY
+    ei_signing_provider: str = "hmac"
 
     # --- Authority limits ---
     max_delegation_depth: int = 4

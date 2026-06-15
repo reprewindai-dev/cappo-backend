@@ -21,11 +21,10 @@ Run:     python agent_042_community.py
 Cron:    0 */6 * * * python /path/to/agent_042_community.py >> /var/log/veklom_042.log 2>&1
 """
 
+import json
 import os
 import sys
-import json
 import time
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 

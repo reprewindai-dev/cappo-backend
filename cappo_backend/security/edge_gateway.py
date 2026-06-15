@@ -24,7 +24,6 @@ from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json, verify_signature
 from cappo_backend.services.eat_builder import eat_canonical_body
 
-
 # ---------------------------------------------------------------------------
 # Exception
 # ---------------------------------------------------------------------------

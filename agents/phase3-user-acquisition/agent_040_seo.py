@@ -17,9 +17,9 @@ Run:     python agent_040_seo.py
 Cron:    0 8 * * 1 python /path/to/agent_040_seo.py >> /var/log/veklom_040.log 2>&1
 """
 
+import json
 import os
 import sys
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 

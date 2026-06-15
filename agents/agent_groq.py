@@ -18,9 +18,10 @@ Env vars:
     VEKLOM_API_KEY  JWT from /auth/login
 """
 
-import os
-import json
 import asyncio
+import json
+import os
+
 import httpx
 
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY",  "")

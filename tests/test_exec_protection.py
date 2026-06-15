@@ -19,7 +19,7 @@ from cappo_backend.services.run_state import RunState
 
 class TestGovernedExecPath:
     def test_happy_path(self, client: TestClient, db: Session) -> None:
-        resp = client.post("/v1/exec", json={"prompt": "hello"})
+        resp = client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         assert resp.status_code == 200
         body = resp.json()
         assert body["response"] == "echo: hello"
@@ -27,7 +27,7 @@ class TestGovernedExecPath:
         assert body["execution_id"] is not None
 
     def test_run_reaches_attested_state(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         run = db.query(GovernedRun).first()
         assert run is not None
         assert run.state == RunState.ATTESTED.value
@@ -35,7 +35,7 @@ class TestGovernedExecPath:
     def test_pgl_certificates_created_pre_and_post(
         self, client: TestClient, db: Session
     ) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         certs = db.query(PGLCertificate).all()
         # A pre-execution cert (commit) and a post-execution cert (attest).
         assert len(certs) == 2
@@ -54,7 +54,7 @@ class TestGovernedExecPath:
     def test_ei_row_links_post_certificate(
         self, client: TestClient, db: Session
     ) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         ei = db.query(ExecutionIdentity).first()
         post = (
             db.query(PGLCertificate)
@@ -65,20 +65,20 @@ class TestGovernedExecPath:
         assert ei.pgl_post_certificate_id == post.certificate_id
 
     def test_execution_identity_persisted(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         eis = db.query(ExecutionIdentity).all()
         assert len(eis) == 1
         assert eis[0].directive == "ALLOW"
 
     def test_audit_attestation_logged(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello"})
+        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         events = db.query(AuditEvent).filter(
             AuditEvent.operation_type == "run_attested"
         ).all()
         assert len(events) == 1
 
     def test_ei_contains_run_id(self, client: TestClient, db: Session) -> None:
-        resp = client.post("/v1/exec", json={"prompt": "hello"})
+        resp = client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         body = resp.json()
         ei_record = db.query(ExecutionIdentity).first()
         assert ei_record is not None

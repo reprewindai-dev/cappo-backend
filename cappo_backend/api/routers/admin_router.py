@@ -10,9 +10,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import get_session
+from cappo_backend.models.audit_event import AuditEvent
+from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.payment_gate import PaymentGate
 from cappo_backend.services.revocation_service import (
@@ -90,9 +93,6 @@ def revoke_identity(
 
 # ---------- Audit logs and Runs feed ----------
 
-from cappo_backend.models.audit_event import AuditEvent
-from cappo_backend.models.governed_run import GovernedRun
-from sqlalchemy import desc
 
 @router.get("/audit-logs")
 def get_audit_logs(

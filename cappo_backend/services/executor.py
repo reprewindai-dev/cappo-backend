@@ -14,8 +14,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
-import httpx
-
 
 from cappo_backend.services.circuit_breaker import CircuitBreaker, CircuitOpenError
 

@@ -17,11 +17,12 @@ Required env vars (add to .env or Coolify secrets):
     MCP_SERVER_URL   — URL of your running irongrid/server.py (SSE mode)
 """
 
-import os
-import json
 import asyncio
-import httpx
+import json
+import os
 from typing import Any
+
+import httpx
 
 try:
     from openai import AsyncOpenAI

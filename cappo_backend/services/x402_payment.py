@@ -37,7 +37,6 @@ except ImportError:
 
 from cappo_backend.config import Settings, get_settings
 
-
 # Network identifiers for multi-chain support
 NETWORKS = {
     "base": "eip155:8453",           # Base Mainnet

@@ -22,9 +22,9 @@ Cron:    0 9 * * 1 python /path/to/agent_041_content.py >> /var/log/veklom_041.l
          (every Monday at 9am)
 """
 
+import json
 import os
 import sys
-import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path

@@ -16,9 +16,9 @@ Install: pip install openai
 Run:     python agent_043_paid_growth.py
 """
 
+import json
 import os
 import sys
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 

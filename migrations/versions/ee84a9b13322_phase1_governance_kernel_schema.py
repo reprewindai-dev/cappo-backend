@@ -92,6 +92,8 @@ def upgrade() -> None:
     sa.Column('certificate_id', sa.String(), nullable=False),
     sa.Column('run_id', sa.String(), nullable=False),
     sa.Column('workspace_id', sa.String(), nullable=False),
+    sa.Column('actor_id', sa.String(), nullable=True),
+    sa.Column('agent_id', sa.String(), nullable=True),
     sa.Column('pre_execution_certificate_id', sa.String(), nullable=True),
     sa.Column('post_execution_certificate_id', sa.String(), nullable=True),
     sa.Column('genome_hash', sa.String(), nullable=False),
