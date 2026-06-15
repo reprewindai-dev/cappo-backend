@@ -5,12 +5,15 @@ from __future__ import annotations
 import os
 
 import pytest
-from sqlalchemy import create_engine, select
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import sessionmaker
 
-from cappo_backend.db.base import Base
-from cappo_backend.models.governed_run import GovernedRun
+psycopg2 = pytest.importorskip("psycopg2", reason="psycopg2 not installed — skipping PostgreSQL integration tests")
+
+from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+
+from cappo_backend.db.base import Base  # noqa: E402
+from cappo_backend.models.governed_run import GovernedRun  # noqa: E402
 
 # Determine the test database URL. Default to a typical local development postgres container database.
 POSTGRES_TEST_URL = os.getenv(
