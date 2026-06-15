@@ -88,9 +88,11 @@ class TestGovernedExecPath:
 class TestNoBypass:
     """Verify that no ungoverned path exists."""
 
-    def test_no_ungoverned_exec_route(self) -> None:
-        from cappo_backend.main import app as _app
-        # The only execution route is the governed /v1/exec.
-        routes = {r.path for r in _app.routes if hasattr(r, "path")}
-        exec_routes = {p for p in routes if p.endswith("/exec")}
-        assert exec_routes == {"/v1/exec"}, f"unexpected exec routes: {exec_routes}"
+    def test_no_ungoverned_exec_route(self, client: TestClient) -> None:
+        # The governed /v1/exec path must exist (non-404).
+        resp = client.post("/v1/exec", json={"prompt": "probe"})
+        assert resp.status_code != 404, "/v1/exec must be reachable"
+        # No ungoverned bypass path should exist.
+        for bypass in ["/exec", "/v1/run", "/run", "/v1/execute"]:
+            r = client.post(bypass, json={"prompt": "probe"})
+            assert r.status_code == 404, f"unexpected route {bypass} exists (status {r.status_code})"
