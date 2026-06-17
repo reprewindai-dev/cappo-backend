@@ -11,6 +11,7 @@ from typing import Any
 
 try:
     from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
+    from x402.http.middleware.fastapi import PaymentMiddlewareASGI
     from x402.http.types import RouteConfig
     from x402.mechanisms.evm.exact import ExactEvmServerScheme
     from x402.schemas import Network
@@ -34,6 +35,8 @@ except ImportError:
     class x402ResourceServer:  # type: ignore
         def __init__(self, facilitator: Any = None) -> None: pass
         def register(self, network: Any, scheme: Any) -> None: pass
+    class PaymentMiddlewareASGI:  # type: ignore
+        def __init__(self, **kwargs: Any) -> None: pass
 
 from cappo_backend.config import Settings, get_settings
 
@@ -55,10 +58,11 @@ class X402PaymentConfig:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         
-        # Wallet addresses from environment or settings
-        self.evm_address = os.getenv(
-            "VEKLOM_EVM_ADDRESS", 
-            self._settings.veklom_evm_address or "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
+        # Wallet address — REQUIRED for x402 to activate.
+        # Set VEKLOM_EVM_ADDRESS in your environment (Coolify env var or .env).
+        # No hardcoded fallback — x402 will be disabled if this is not set.
+        self.evm_address = os.getenv("VEKLOM_EVM_ADDRESS") or (
+            self._settings.veklom_evm_address if hasattr(self._settings, "veklom_evm_address") else ""
         )
         
         # Load x402 configuration

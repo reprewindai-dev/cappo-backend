@@ -187,6 +187,10 @@ def _maybe_wrap_cache(executor: Executor, settings: Settings) -> Executor:
     )
 
 
+# Module-level registry so platform_router can read live breaker states.
+_breaker_registry: dict[str, CircuitBreaker] = {}
+
+
 def build_executor(settings: Settings) -> Executor:
     """Construct the execution-layer executor from configuration.
 
@@ -199,6 +203,9 @@ def build_executor(settings: Settings) -> Executor:
     if settings.executor_mode.lower() == "echo":
         return _maybe_wrap_cache(EchoExecutor(), settings)
 
+    primary_breaker = _breaker(settings, settings.llm_provider_name)
+    _breaker_registry[settings.llm_provider_name] = primary_breaker
+
     providers: list[Provider] = [
         Provider(
             name=settings.llm_provider_name,
@@ -209,11 +216,13 @@ def build_executor(settings: Settings) -> Executor:
                 api_key=settings.llm_api_key or None,
                 timeout=settings.llm_timeout_seconds,
             ),
-            breaker=_breaker(settings, settings.llm_provider_name),
+            breaker=primary_breaker,
         )
     ]
     if settings.llm_fallback_base_url:
         fallback_name = settings.llm_fallback_provider_name or "fallback"
+        fallback_breaker = _breaker(settings, fallback_name)
+        _breaker_registry[fallback_name] = fallback_breaker
         providers.append(
             Provider(
                 name=fallback_name,
@@ -224,7 +233,7 @@ def build_executor(settings: Settings) -> Executor:
                     api_key=settings.llm_fallback_api_key or None,
                     timeout=settings.llm_timeout_seconds,
                 ),
-                breaker=_breaker(settings, fallback_name),
+                breaker=fallback_breaker,
             )
         )
     return _maybe_wrap_cache(ResilientExecutor(providers), settings)

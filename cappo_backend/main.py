@@ -50,6 +50,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="CAPPO Runtime", version="0.1.0", lifespan=lifespan)
 
+    from cappo_backend.services.x402_payment import get_x402_manager, PaymentMiddlewareASGI
+    x402_manager = get_x402_manager()
+    if x402_manager.is_enabled:
+        app.add_middleware(
+            PaymentMiddlewareASGI,
+            server=x402_manager.server,
+            routes=x402_manager.routes,
+        )
+
     # add_middleware adds outermost-last, so register innermost first.
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(

@@ -102,6 +102,16 @@ class Settings(BaseSettings):
     upstash_redis_rest_url: str = ""
     upstash_redis_rest_token: str = ""
 
+    # --- x402 Payment Gateway ---
+    # Treasury wallet address for receiving USDC payments.
+    veklom_evm_address: str = ""
+    # x402 facilitator URL (default is Coinbase public facilitator).
+    x402_facilitator_url: str = "https://x402.org/facilitator"
+    # Pricing in USD (string format, e.g. "$0.001").
+    x402_exec_price: str = "$0.001"
+    # Comma-separated list of enabled EVM networks.
+    x402_networks: str = "base,base-sepolia"
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
