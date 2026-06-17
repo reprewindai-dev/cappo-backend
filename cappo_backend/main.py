@@ -26,6 +26,7 @@ from cappo_backend.api.routers.governance_v2_router import router as governance_
 from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.api.routers.platform_router import router as platform_router
 from cappo_backend.api.routers.benchmarks_router import router as benchmarks_router
+from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
@@ -71,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(legacy_adapter_router)
     app.include_router(platform_router)
     app.include_router(benchmarks_router)
+    app.include_router(gpc_router)
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:
