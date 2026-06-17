@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from cappo_backend.api.routers.admin_router import router as admin_router
 from cappo_backend.api.routers.audit_router import router as audit_router
 from cappo_backend.api.routers.exec_router import router as exec_router
+from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.observability.logging import configure_logging
@@ -63,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(exec_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
+    app.include_router(governance_v2_router)
     app.include_router(license_router)
     app.include_router(legacy_adapter_router)
 
