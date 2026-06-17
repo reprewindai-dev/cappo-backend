@@ -21,12 +21,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from cappo_backend.api.routers.admin_router import router as admin_router
 from cappo_backend.api.routers.audit_router import router as audit_router
+from cappo_backend.api.routers.benchmarks_router import router as benchmarks_router
 from cappo_backend.api.routers.exec_router import router as exec_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
+from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.api.routers.platform_router import router as platform_router
-from cappo_backend.api.routers.benchmarks_router import router as benchmarks_router
-from cappo_backend.api.routers.gpc_router import router as gpc_router
+from cappo_backend.api.routers.x402_router import router as x402_router
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
@@ -36,10 +37,7 @@ from cappo_backend.security.auth_middleware import AuthMiddleware
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    # Structured JSON logging for the whole process (GAP: observability).
     configure_logging(settings.log_level)
-    # Fail-closed: a production deployment refuses to start with insecure
-    # defaults (insecure EI key, non-persistent PGL, SQLite, auth off). No-op in dev/test.
     settings.validate_production()
     yield
 
@@ -57,8 +55,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.cors_origin_list,
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["X-Request-ID"],
+        allow_headers=["*", "X-Wallet-Address", "X-Payment"],
+        expose_headers=[
+            "X-Request-ID",
+            "X-402-Version",
+            "X-402-Chain",
+            "X-402-Recipient",
+            "X-402-Token",
+            "X-402-Amount",
+            "X-402-Resource",
+            "X-402-App-Id",
+        ],
     )
     app.add_middleware(RequestLoggingMiddleware)
 
@@ -73,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(platform_router)
     app.include_router(benchmarks_router)
     app.include_router(gpc_router)
+    app.include_router(x402_router)
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:
