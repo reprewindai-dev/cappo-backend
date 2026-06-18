@@ -63,26 +63,25 @@ class PaymentGate:
             )
             self._db.add(quota)
             self._db.flush()
-            return  # Free run granted
+        else:
+            # Reset quota if a new day has started
+            now = datetime.now(timezone.utc)
+            if now >= quota.reset_at:
+                quota.runs_used = 0
+                from cappo_backend.models.free_run_quota import _tomorrow
+                quota.reset_at = _tomorrow()
+                self._db.flush()
 
-        # Reset quota if a new day has started
-        now = datetime.now(timezone.utc)
-        if now >= quota.reset_at:
-            quota.runs_used = 0
-            from cappo_backend.models.free_run_quota import _tomorrow
-            quota.reset_at = _tomorrow()
+            if quota.runs_used >= quota.quota_limit:
+                raise PaymentRequiredError(
+                    f"free run quota exhausted for workspace {workspace_id}. "
+                    f"Pay via x402 (USDC on Base) to continue.",
+                    reason="quota_exhausted",
+                )
+
+            # Consume the free run
+            quota.runs_used += 1
             self._db.flush()
-
-        if quota.runs_used >= quota.quota_limit:
-            raise PaymentRequiredError(
-                f"free run quota exhausted for workspace {workspace_id}. "
-                f"Pay via x402 (USDC on Base) to continue.",
-                reason="quota_exhausted",
-            )
-
-        # Consume the free run
-        quota.runs_used += 1
-        self._db.flush()
 
         # --- 3. Workspace balance (optional metered billing) ------------------
         if cost_cents > 0:

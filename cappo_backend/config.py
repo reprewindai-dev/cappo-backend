@@ -109,6 +109,7 @@ class Settings(BaseSettings):
     x402_facilitator_url: str = "https://x402.org/facilitator"
     # Pricing in USD (string format, e.g. "$0.001").
     x402_exec_price: str = "$0.001"
+    x402_mint_price: str = "$0.005"
     # Comma-separated list of enabled EVM networks.
     x402_networks: str = "base,base-sepolia"
 

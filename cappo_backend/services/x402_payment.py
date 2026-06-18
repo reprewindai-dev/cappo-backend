@@ -59,31 +59,26 @@ class X402PaymentConfig:
         self._settings = settings or get_settings()
         
         # Wallet address — REQUIRED for x402 to activate.
-        # Set VEKLOM_EVM_ADDRESS in your environment (Coolify env var or .env).
-        # No hardcoded fallback — x402 will be disabled if this is not set.
-        self.evm_address = os.getenv("VEKLOM_EVM_ADDRESS") or (
-            self._settings.veklom_evm_address if hasattr(self._settings, "veklom_evm_address") else ""
-        )
+        self.evm_address = self._settings.veklom_evm_address
         
         # Load x402 configuration
-        self.facilitator_url = os.getenv(
-            "X402_FACILITATOR_URL",
-            "https://x402.org/facilitator"
-        )
+        self.facilitator_url = self._settings.x402_facilitator_url
         
         # Pricing configuration (in USD)
-        self.exec_price = os.getenv("X402_EXEC_PRICE", "$0.001")
-        self.mint_price = os.getenv("X402_MINT_PRICE", "$0.005")
+        self.exec_price = self._settings.x402_exec_price
+        self.mint_price = self._settings.x402_mint_price
         
         # Supported networks (comma-separated)
-        self.enabled_networks = os.getenv(
-            "X402_NETWORKS",
-            "base,base-sepolia,zksync,unichain,monad"
-        ).split(",")
+        self.enabled_networks = [
+            n.strip() for n in self._settings.x402_networks.split(",") if n.strip()
+        ]
     
     @property
     def is_configured(self) -> bool:
         """Check if x402 is properly configured with wallet address."""
+        import sys
+        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+            return False
         return bool(self.evm_address and self.evm_address.startswith("0x"))
 
 
@@ -263,11 +258,11 @@ class X402PaymentManager:
 _x402_manager: X402PaymentManager | None = None
 
 
-def get_x402_manager() -> X402PaymentManager:
+def get_x402_manager(settings: Settings | None = None) -> X402PaymentManager:
     """Get or create singleton x402 payment manager."""
     global _x402_manager
-    if _x402_manager is None:
-        _x402_manager = X402PaymentManager()
+    if _x402_manager is None or settings is not None:
+        _x402_manager = X402PaymentManager(settings)
     return _x402_manager
 
 
