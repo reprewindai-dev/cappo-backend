@@ -204,6 +204,52 @@ def create_protected_routes(config: X402PaymentConfig | None = None) -> dict[str
         ),
     }
     
+    billable_paths = [
+        "PUT /v1/kill-switch/:workspace_id",
+        "PUT /v1/budget/:workspace_id",
+        "POST /v1/identities/:execution_id/revoke",
+        "GET /v1/audit-logs",
+        "GET /v1/runs",
+        "GET /v1/audit/verify",
+        "GET /v1/audit/verify/audit",
+        "GET /v1/audit/verify/pgl/:certificate_id",
+        "GET /v1/audit/ledger/traces",
+        "POST /v1/governance/v2/assess",
+        "GET /v1/governance/v2/risk/:agent_id",
+        "GET /v1/governance/v2/quarantine",
+        "POST /v1/governance/v2/quarantine/:quarantine_id/approve",
+        "POST /v1/governance/v2/quarantine/:quarantine_id/deny",
+        "POST /v1/license/issue",
+        "POST /v1/license/validate",
+        "POST /v1/license/activate",
+        "POST /v1/license/deactivate",
+        "GET /v1/license/:key",
+        "GET /v1/license",
+        "GET /legacy/status",
+        "POST /legacy/snmp/toggle",
+        "POST /legacy/modbus/toggle",
+        "POST /legacy/simulate",
+        "GET /api/v1/platform/pulse",
+        "GET /api/v1/benchmarks/leaderboard",
+        "GET /api/v1/benchmarks/staking/markets",
+        "GET /api/v1/benchmarks/logs",
+        "POST /api/v1/benchmarks/compile",
+        "GET /api/v1/gpc/stats",
+        "POST /api/v1/gpc/compile",
+        "GET /api/v1/x402/config",
+        "POST /api/v1/x402/exec/run",
+        "GET /api/v1/x402/benchmarks/premium",
+        "POST /api/v1/x402/discovery/unlock",
+        "GET /api/v1/x402/ledger"
+    ]
+    
+    for path in billable_paths:
+        routes[path] = RouteConfig(
+            accepts=payment_options,
+            mime_type="application/json",
+            description=f"Governed x402 endpoint for {path}",
+        )
+    
     return routes
 
 
