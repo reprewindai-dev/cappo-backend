@@ -128,9 +128,10 @@ def create_x402_server(config: X402PaymentConfig | None = None) -> x402ResourceS
 def create_protected_routes(config: X402PaymentConfig | None = None) -> dict[str, RouteConfig]:
     """Create route configurations for protected endpoints.
     
-    Defines pricing for:
-    - POST /v1/exec - Agent execution ($0.001)
-    - POST /v1/agents/mint - Agent certificate minting ($0.005)
+    Implements a 3-tier pricing strategy for API monetization:
+    1. Micro-Transactions ($0.001): High-volume read operations
+    2. Standard Actions ($0.01): State changes and controls
+    3. Premium Compute ($0.10): AI Execution and compiling
     
     Args:
         config: X402 configuration
@@ -148,106 +149,106 @@ def create_protected_routes(config: X402PaymentConfig | None = None) -> dict[str
     
     evm_address = config.evm_address
     
-    # Build payment options for each enabled network
-    payment_options = []
+    # Tier 1: Micro-Transactions ($0.005)
+    micro_options = [
+        PaymentOption(
+            scheme="exact",
+            pay_to=evm_address,
+            price="$0.005",
+            network=NETWORKS[network_key],
+        )
+        for network_key in config.enabled_networks if network_key in NETWORKS
+    ]
     
-    for network_key in config.enabled_networks:
-        network_key = network_key.strip()
-        if network_key in NETWORKS:
-            payment_options.append(
-                PaymentOption(
-                    scheme="exact",
-                    pay_to=evm_address,
-                    price=config.exec_price,
-                    network=NETWORKS[network_key],
-                )
-            )
+    # Tier 2: Standard Actions ($0.05)
+    standard_options = [
+        PaymentOption(
+            scheme="exact",
+            pay_to=evm_address,
+            price="$0.05",
+            network=NETWORKS[network_key],
+        )
+        for network_key in config.enabled_networks if network_key in NETWORKS
+    ]
     
-    routes = {
-        # Agent execution endpoint
-        "POST /v1/exec": RouteConfig(
-            accepts=payment_options,
-            mime_type="application/json",
-            description="Execute governed agent with PGL validation",
-        ),
-        
-        # Agent minting endpoint (higher price for certificate creation)
-        "POST /v1/agents/mint": RouteConfig(
-            accepts=[
-                PaymentOption(
-                    scheme="exact",
-                    pay_to=evm_address,
-                    price=config.mint_price,
-                    network=NETWORKS[network_key],
-                )
-                for network_key in config.enabled_networks
-                if network_key in NETWORKS
-            ],
-            mime_type="application/json",
-            description="Mint new agent certificate on veklom registry",
-        ),
-        
-        # Ledger query (lower price for read operations)
-        "GET /v1/ledger/:agent_id": RouteConfig(
-            accepts=[
-                PaymentOption(
-                    scheme="exact",
-                    pay_to=evm_address,
-                    price="$0.0001",  # Cheaper for reads
-                    network=NETWORKS[network_key],
-                )
-                for network_key in config.enabled_networks
-                if network_key in NETWORKS
-            ],
-            mime_type="application/json",
-            description="Query agent ledger history",
-        ),
-    }
+    # Tier 3: Premium Compute ($0.50)
+    premium_options = [
+        PaymentOption(
+            scheme="exact",
+            pay_to=evm_address,
+            price="$0.50",
+            network=NETWORKS[network_key],
+        )
+        for network_key in config.enabled_networks if network_key in NETWORKS
+    ]
     
-    billable_paths = [
-        "PUT /v1/kill-switch/:workspace_id",
-        "PUT /v1/budget/:workspace_id",
-        "POST /v1/identities/:execution_id/revoke",
+    routes = {}
+    
+    # --- 1. Micro-Transactions ($0.005) ---
+    micro_paths = [
         "GET /v1/audit-logs",
         "GET /v1/runs",
+        "GET /v1/audit/ledger/traces",
         "GET /v1/audit/verify",
         "GET /v1/audit/verify/audit",
         "GET /v1/audit/verify/pgl/:certificate_id",
-        "GET /v1/audit/ledger/traces",
-        "POST /v1/governance/v2/assess",
         "GET /v1/governance/v2/risk/:agent_id",
         "GET /v1/governance/v2/quarantine",
-        "POST /v1/governance/v2/quarantine/:quarantine_id/approve",
-        "POST /v1/governance/v2/quarantine/:quarantine_id/deny",
-        "POST /v1/license/issue",
-        "POST /v1/license/validate",
-        "POST /v1/license/activate",
-        "POST /v1/license/deactivate",
-        "GET /v1/license/:key",
-        "GET /v1/license",
-        "GET /legacy/status",
-        "POST /legacy/snmp/toggle",
-        "POST /legacy/modbus/toggle",
-        "POST /legacy/simulate",
-        "GET /api/v1/platform/pulse",
         "GET /api/v1/benchmarks/leaderboard",
         "GET /api/v1/benchmarks/staking/markets",
         "GET /api/v1/benchmarks/logs",
-        "POST /api/v1/benchmarks/compile",
         "GET /api/v1/gpc/stats",
-        "POST /api/v1/gpc/compile",
+        "GET /v1/license/:key",
+        "GET /v1/license",
+        "GET /api/v1/x402/ledger",
         "GET /api/v1/x402/config",
-        "POST /api/v1/x402/exec/run",
         "GET /api/v1/x402/benchmarks/premium",
-        "POST /api/v1/x402/discovery/unlock",
-        "GET /api/v1/x402/ledger"
+        "GET /api/v1/platform/pulse"
     ]
-    
-    for path in billable_paths:
+    for path in micro_paths:
         routes[path] = RouteConfig(
-            accepts=payment_options,
+            accepts=micro_options,
             mime_type="application/json",
-            description=f"Governed x402 endpoint for {path}",
+            description=f"Micro-transaction for {path}",
+        )
+        
+    # --- 2. Standard Actions ($0.05) ---
+    standard_paths = [
+        "PUT /v1/kill-switch/:workspace_id",
+        "PUT /v1/budget/:workspace_id",
+        "POST /v1/identities/:execution_id/revoke",
+        "POST /v1/governance/v2/quarantine/:quarantine_id/approve",
+        "POST /v1/governance/v2/quarantine/:quarantine_id/deny",
+        "POST /v1/license/validate",
+        "POST /v1/license/deactivate",
+        "POST /legacy/snmp/toggle",
+        "POST /legacy/modbus/toggle",
+        "POST /legacy/simulate"
+    ]
+    for path in standard_paths:
+        routes[path] = RouteConfig(
+            accepts=standard_options,
+            mime_type="application/json",
+            description=f"Standard action for {path}",
+        )
+
+    # --- 3. Premium Compute ($0.50) ---
+    premium_paths = [
+        "POST /v1/exec",
+        "POST /api/v1/x402/exec/run",
+        "POST /v1/governance/v2/assess",
+        "POST /v1/agents/mint",
+        "POST /v1/license/issue",
+        "POST /v1/license/activate",
+        "POST /api/v1/benchmarks/compile",
+        "POST /api/v1/gpc/compile",
+        "POST /api/v1/x402/discovery/unlock"
+    ]
+    for path in premium_paths:
+        routes[path] = RouteConfig(
+            accepts=premium_options,
+            mime_type="application/json",
+            description=f"Premium compute action for {path}",
         )
     
     return routes
@@ -316,3 +317,47 @@ def reset_x402_manager() -> None:
     """Reset singleton (useful for testing)."""
     global _x402_manager
     _x402_manager = None
+
+
+class X402FreemiumASGI:
+    """Wraps PaymentMiddlewareASGI to provide 5 free trials per wallet via Redis."""
+    def __init__(self, app: Any, server: Any, routes: dict[str, Any], settings: Settings | None = None) -> None:
+        self.app = app
+        if not X402_AVAILABLE:
+            self.payment_app = app
+        else:
+            self.payment_app = PaymentMiddlewareASGI(app, server=server, routes=routes)
+        
+        # Connect to Redis
+        redis_url = "redis://default:NE7O3Zzl6WLNI9c61CYBgLzBfO2h7X7q@v8vf3lw73fx9lw9xmbq1tvo5:6379/0"
+        if settings and settings.redis_url:
+            redis_url = settings.redis_url
+            
+        try:
+            import redis
+            self.redis = redis.Redis.from_url(redis_url, decode_responses=True)
+        except Exception:
+            self.redis = None
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+            
+        # Extract X-Wallet-Address from headers
+        headers = dict(scope.get("headers", []))
+        wallet_address = headers.get(b"x-wallet-address", b"").decode("utf-8")
+        
+        if wallet_address and self.redis:
+            try:
+                # Check free tries
+                key = f"cappo:free_tries:{wallet_address}"
+                uses = self.redis.get(key)
+                if not uses or int(uses) < 5:
+                    self.redis.incr(key)
+                    # Bypass x402 payment, let the request through for free
+                    return await self.app(scope, receive, send)
+            except Exception:
+                pass # Fail safe to X402 paywall if Redis throws an error
+                
+        # Run X402 payment middleware if no free tries remain or no wallet provided
+        return await self.payment_app(scope, receive, send)
