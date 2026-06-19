@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+
+def test_leaderboard_endpoint(client: TestClient) -> None:
+    resp = client.get("/api/v1/benchmarks/leaderboard")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+    assert len(data) >= 5
+    first_item = data[0]
+    # Check that it's a flat BenchApi structure
+    assert "id" in first_item
+    assert "name" in first_item
+    assert "govScore" in first_item
+    assert "devScore" in first_item
+    assert "sovereignTier" in first_item
+    assert "complianceLabels" in first_item
+    assert "p50" in first_item
+    assert "p95" in first_item
+    assert "p99" in first_item
+
+
+def test_staking_markets_endpoint(client: TestClient) -> None:
+    resp = client.get("/api/v1/benchmarks/staking/markets")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+    assert len(data) == 3
+    first_item = data[0]
+    # Check StakingMarket fields
+    assert "id" in first_item
+    assert "title" in first_item
+    assert "category" in first_item
+    assert "yesPrice" in first_item
+    assert "noPrice" in first_item
+    assert "volume" in first_item
+    assert "poolYes" in first_item
+    assert "poolNo" in first_item
+    assert "resolutionDate" in first_item
+    assert "targetApi" in first_item
+    assert "resolved" in first_item
+
+
+def test_logs_endpoint(client: TestClient) -> None:
+    resp = client.get("/api/v1/benchmarks/logs")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+    assert len(data) >= 5
+    first_item = data[0]
+    # Check ProbeLog fields
+    assert "id" in first_item
+    assert "timestamp" in first_item
+    assert "source" in first_item
+    assert "type" in first_item
+    assert "message" in first_item
+
+
+def test_compile_endpoint(client: TestClient) -> None:
+    body = {
+        "codeText": "API Name: Test API\nGET /test - returns status ok",
+        "apiName": "Test API",
+        "category": "Testing"
+    }
+    resp = client.post("/api/v1/benchmarks/compile", json=body)
+    assert resp.status_code == 200
+    data = resp.json()
+    # Check CompileResult fields
+    assert data["apiName"] == "Test API"
+    assert data["category"] == "Testing"
+    assert data["version"] == "1.0.0"
+    assert "restEndpoint" in data
+    assert data["schemaType"] == "MCP+REST Schema"
+    assert "mcpToolDefinition" in data
+    assert "syntheticVerificationResult" in data
+    
+    verify_result = data["syntheticVerificationResult"]
+    assert "latencyMs" in verify_result
+    assert "driftScore" in verify_result
+    assert "uniquenessFactor" in verify_result
+    assert "comprehensionScore" in verify_result
+    assert "aiFeedback" in verify_result

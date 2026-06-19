@@ -50,7 +50,7 @@ async def get_stats(db: Session = Depends(get_session)):
     ) * max(1, total_runs // max(1, total_runs))  # best-effort: runs ≈ plans for now
 
     return {
-        "plans_total": total_runs,  # each run corresponds to a compiled plan
+        "plans_total": plans_total,  # each run corresponds to a compiled plan
         "runs_total": total_runs,
         "decisions": {
             "approved": approved,

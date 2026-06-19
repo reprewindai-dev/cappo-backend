@@ -48,7 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="CAPPO Runtime", version="0.1.0", lifespan=lifespan)
 
-    from cappo_backend.services.x402_payment import get_x402_manager, PaymentMiddlewareASGI
+    from cappo_backend.services.x402_payment import PaymentMiddlewareASGI, get_x402_manager
     x402_manager = get_x402_manager(settings)
     if x402_manager.is_enabled:
         app.add_middleware(

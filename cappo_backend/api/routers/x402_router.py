@@ -23,13 +23,21 @@ Pricing (USDC on Base Mainnet, eip155:8453):
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+from eth_account import Account
+from eth_account.messages import encode_typed_data
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from web3 import Web3
+
+from cappo_backend.db.session import get_session
+from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 
 # ---------------------------------------------------------------------------
 # IDENTITY CONSTANTS
@@ -67,8 +75,9 @@ PRICES: dict[str, dict[str, Any]] = {
     },
 }
 
-# In-memory replay protection + audit ledger
-# Production: swap for a DB table with UNIQUE(tx_hash)
+# Ephemeral state lock for nonce linearization (replay protection)
+_nonce_lock = asyncio.Lock()
+_pending_tx_hashes: set[str] = set()
 _verified_tx_hashes: set[str] = set()
 _payment_ledger: list[dict[str, Any]] = []
 
@@ -176,7 +185,7 @@ async def _verify_onchain(
 # PAYMENT DEPENDENCY
 # ---------------------------------------------------------------------------
 
-async def require_payment(request: Request, response: Response) -> dict[str, str]:
+async def require_payment(request: Request, response: Response, db: Session = Depends(get_session)) -> dict[str, str]:
     """FastAPI dependency — verifies x402 payment before granting route access."""
 
     # 1. Wallet identity (X-Wallet-Address header)
@@ -201,36 +210,129 @@ async def require_payment(request: Request, response: Response) -> dict[str, str
             "message": "X-Payment must be a valid Base tx hash (0x + 64 hex chars).",
         })
 
-    # 4. Replay protection
-    if tx.lower() in _verified_tx_hashes:
+    # 4. Stateful Nonce Linearization (Pessimistic Nonce Locking)
+    # Check DB first (persistent replay protection)
+    db_payment = db.get(X402ConsumedPayment, tx.lower())
+    if db_payment is not None:
         raise HTTPException(status_code=400, detail={
             "error": "Payment already consumed.",
             "message": "This tx hash was already used. Send a new payment.",
         })
 
-    # 5. On-chain verification
-    ok, err, block = await _verify_onchain(tx, request.url.path, caller)
-    if not ok:
-        raise HTTPException(status_code=402, detail={
-            "error": "Payment verification failed.",
-            "message": err,
-            "appId": BASE_APP_ID,
-            "payTo": MERCHANT_WALLET,
-            "chain": CHAIN_ID,
-        })
+    # Lock the nonce (tx hash) to prevent simultaneous free-rider concurrency races
+    async with _nonce_lock:
+        if tx.lower() in _pending_tx_hashes:
+            raise HTTPException(status_code=409, detail={
+                "error": "Conflict",
+                "message": "State lock collision: transaction verification is currently pending.",
+            })
+        _pending_tx_hashes.add(tx.lower())
 
-    # 6. Record
-    _verified_tx_hashes.add(tx.lower())
-    _payment_ledger.append({
-        "tx_hash": tx,
-        "wallet": caller,
-        "endpoint": request.url.path,
-        "amount_usdc": PRICES.get(request.url.path, {}).get("usdc", "?"),
-        "chain": CHAIN_ID,
-        "block_number": block,
-        "app_id": BASE_APP_ID,
-        "verified_at": datetime.now(timezone.utc).isoformat(),
-    })
+    try:
+        # 5. Optional EIP-712 Request-Bound Signature Verification (Context-Binding)
+        sig = request.headers.get("x-signature", "").strip()
+        if sig:
+            try:
+                # Reconstruct request body hash
+                body_bytes = await request.body()
+                body_hash = Web3.keccak(body_bytes) if body_bytes else b"\x00" * 32
+                
+                # Format EIP-712 nonce from tx hash
+                nonce_bytes = Web3.to_bytes(hexstr=tx) if tx.startswith("0x") else tx.encode('utf-8')
+                if len(nonce_bytes) < 32:
+                    nonce_bytes = nonce_bytes.ljust(32, b"\x00")
+                elif len(nonce_bytes) > 32:
+                    nonce_bytes = nonce_bytes[:32]
+                    
+                amount_units = PRICES.get(request.url.path, {"usdc_base_units": 10_000})["usdc_base_units"]
+                
+                structured_data = {
+                    "types": {
+                        "EIP712Domain": [
+                            {"name": "name", "type": "string"},
+                            {"name": "version", "type": "string"},
+                            {"name": "chainId", "type": "uint256"},
+                            {"name": "verifyingContract", "type": "address"},
+                        ],
+                        "PaymentRequirements": [
+                            {"name": "recipient", "type": "address"},
+                            {"name": "amount", "type": "uint256"},
+                            {"name": "nonce", "type": "bytes32"},
+                            {"name": "method", "type": "string"},
+                            {"name": "resource", "type": "string"},
+                            {"name": "bodyHash", "type": "bytes32"},
+                        ],
+                    },
+                    "primaryType": "PaymentRequirements",
+                    "domain": {
+                        "name": "VNP x402 Billing Gateway",
+                        "version": "1",
+                        "chainId": 8453,
+                        "verifyingContract": MERCHANT_WALLET,
+                    },
+                    "message": {
+                        "recipient": MERCHANT_WALLET,
+                        "amount": amount_units,
+                        "nonce": nonce_bytes,
+                        "method": request.method,
+                        "resource": request.url.path,
+                        "bodyHash": body_hash,
+                    }
+                }
+                
+                encoded_message = encode_typed_data(full_message=structured_data)
+                recovered_addr = Account.recover_message(encoded_message, signature=sig)
+                
+                if recovered_addr.lower() != caller.lower():
+                    raise HTTPException(status_code=403, detail={
+                        "error": "Forbidden",
+                        "message": f"Cryptographic Context-Binding mismatch. Signer {recovered_addr} does not match caller {caller}.",
+                    })
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=400, detail={
+                    "error": "Signature verification failed",
+                    "message": f"Failed to verify EIP-712 request-bound signature: {str(e)}",
+                })
+
+        # 6. On-chain verification
+        ok, err, block = await _verify_onchain(tx, request.url.path, caller)
+        if not ok:
+            raise HTTPException(status_code=402, detail={
+                "error": "Payment verification failed.",
+                "message": err,
+                "appId": BASE_APP_ID,
+                "payTo": MERCHANT_WALLET,
+                "chain": CHAIN_ID,
+            })
+
+        # 7. Record to DB for persistent replay protection
+        consumed = X402ConsumedPayment(
+            tx_hash=tx.lower(),
+            wallet_address=caller,
+            endpoint=request.url.path,
+            amount_usdc=PRICES.get(request.url.path, {}).get("usdc", "?"),
+            chain_id=CHAIN_ID,
+            block_number=block,
+        )
+        db.add(consumed)
+        db.commit()
+            
+        _payment_ledger.append({
+            "tx_hash": tx,
+            "wallet": caller,
+            "endpoint": request.url.path,
+            "amount_usdc": PRICES.get(request.url.path, {}).get("usdc", "?"),
+            "chain": CHAIN_ID,
+            "block_number": block,
+            "app_id": BASE_APP_ID,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        })
+    finally:
+        async with _nonce_lock:
+            if tx.lower() in _pending_tx_hashes:
+                _pending_tx_hashes.remove(tx.lower())
 
     request.state.x402_wallet = caller
     request.state.x402_tx     = tx

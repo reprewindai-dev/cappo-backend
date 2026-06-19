@@ -6,8 +6,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
       POSTGRES_DB: ${POSTGRES_DB:-cappodb}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,8 +21,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: cappo-web
+    env_file:
+      - .env
     ports:
-      - "8000:8000"
+      - "8005:8000"
       - "162:162/udp" # SNMP Traps
       - "502:502/tcp" # Modbus TCP
     environment:
@@ -59,8 +59,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: cappo-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -88,7 +86,7 @@ services:
              ollama pull qwen2.5:0.5b || true &&
              wait"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/version || exit 1"]
+      test: ["CMD-SHELL", "ollama --version || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -101,6 +99,15 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+    networks:
+      - cappo-network
+
+  facilitator:
+    image: node:20-alpine
+    container_name: cappo-facilitator
+    command: sh -c "npm install -g local-x402-facilitator && local-x402-facilitator -p 3005"
+    ports:
+      - "3005:3005"
     networks:
       - cappo-network
 

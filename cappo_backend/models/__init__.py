@@ -14,6 +14,7 @@ from cappo_backend.models.license_key import LicenseKey
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.models.workspace_budget import WorkspaceBudget
+from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 
 __all__ = [
     "AuditEvent",
@@ -25,6 +26,7 @@ __all__ = [
     "PGLCertificate",
     "PGLLedgerEvent",
     "WorkspaceBudget",
+    "X402ConsumedPayment",
     "Genome",
     "GenomeLineage",
 ]
