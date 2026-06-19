@@ -96,6 +96,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
 
+    from fastapi.openapi.utils import get_openapi
+    import re
+    
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+            
+        openapi_schema = get_openapi(
+            title="CAPPO Runtime",
+            version="0.1.0",
+            description="CAPPO Execution Engine with X402 Monetization",
+            routes=app.routes,
+        )
+        
+        if x402_manager.is_enabled:
+            for route_key, route_config in x402_manager.routes.items():
+                try:
+                    method, path = route_key.split(" ", 1)
+                    method = method.lower()
+                    openapi_path = re.sub(r':([a-zA-Z0-9_]+)', r'{\1}', path)
+                    
+                    if openapi_path in openapi_schema.get("paths", {}):
+                        if method in openapi_schema["paths"][openapi_path]:
+                            operation = openapi_schema["paths"][openapi_path][method]
+                            
+                            if "responses" not in operation:
+                                operation["responses"] = {}
+                            operation["responses"]["402"] = {
+                                "description": "Payment Required via X402 Protocol"
+                            }
+                            
+                            if "parameters" not in operation:
+                                operation["parameters"] = []
+                            operation["parameters"].append({
+                                "name": "X-Wallet-Address",
+                                "in": "header",
+                                "required": False,
+                                "schema": {"type": "string"},
+                                "description": "EVM Wallet Address for Freemium Rate Limiting"
+                            })
+                            
+                            if route_config.accepts:
+                                price = route_config.accepts[0].price
+                                pay_to = route_config.accepts[0].pay_to
+                                operation["x-402-payment"] = {
+                                    "price": price,
+                                    "pay_to": pay_to,
+                                    "description": route_config.description
+                                }
+                except Exception:
+                    continue
+                    
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
+
     return app
 
 
