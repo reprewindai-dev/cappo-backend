@@ -1,0 +1,36 @@
+#! facilitator-deployment.yaml
+# Generated code, do not edit
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: facilitator
+    namespace: cappo-backend
+    labels:
+        com.docker.compose.project: cappo-backend
+        com.docker.compose.service: facilitator
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            com.docker.compose.project: cappo-backend
+            com.docker.compose.service: facilitator
+    strategy:
+        type: Recreate
+    template:
+        metadata:
+            labels:
+                com.docker.compose.project: cappo-backend
+                com.docker.compose.service: facilitator
+                com.docker.compose.network.cappo-network: "true"
+        spec:
+            containers:
+                - name: cappo-facilitator
+                  image: node:20-alpine
+                  imagePullPolicy: IfNotPresent
+                  args:
+                    - sh
+                    - -c
+                    - npm install -g local-x402-facilitator && local-x402-facilitator -p 3005
+                  ports:
+                    - name: facilitato-3005
+                      containerPort: 3005
