@@ -96,8 +96,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
 
-    from fastapi.openapi.utils import get_openapi
     import re
+
+    from fastapi.openapi.utils import get_openapi
     
     def custom_openapi():
         if app.openapi_schema:
