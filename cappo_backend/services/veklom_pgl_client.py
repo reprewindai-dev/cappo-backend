@@ -74,6 +74,8 @@ class VeklomPGLClient:
         
         if not self._base_url:
             raise VeklomPGLError("VEKLOM_BYOS_BACKEND_URL not configured")
+
+        self._client = httpx.Client(timeout=30)
     
     def _request(self, method: str, path: str, **kwargs) -> Any:
         """Make authenticated request to veklom-byos-backend."""
@@ -84,13 +86,12 @@ class VeklomPGLClient:
             headers["Authorization"] = f"Bearer {self._api_key}"
         
         try:
-            with httpx.Client(timeout=30) as client:
-                response = client.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    **kwargs
-                )
+            response = self._client.request(
+                method=method,
+                url=url,
+                headers=headers,
+                **kwargs
+            )
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:

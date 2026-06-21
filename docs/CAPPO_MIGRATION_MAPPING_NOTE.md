@@ -1,6 +1,6 @@
 # CAPPO Migration Mapping Note
 
-**From:** `veklom-byos-backend` (cloned as `reprewindai-dev/byosbackened`)
+**From:** `veklom-byos-backend` (cloned as `reprewindai-dev/veklom-byos-backend`)
 **To:** new CAPPO backend (greenfield, not yet created)
 **Type:** Documentation-only migration planning note. No code changes. No canonical-doc edits.
 **Date:** 2026-06-08
@@ -23,7 +23,7 @@ Truth order followed: human instructions > canonical CAPPO docs > approved EI im
 
 ### Critical contradiction surfaced during verification (required reading before Phase 1)
 
-The Lineage & Gap Brief and the EI Implementation Plan list three "confirmed lineage anchors" at exact file:line locations. **None of these files or symbols exist in the old backend** (verified in `byosbackened`, cross-checked in `lockerphycer` + 6 other UACP repos):
+The Lineage & Gap Brief and the EI Implementation Plan list three "confirmed lineage anchors" at exact file:line locations. **None of these files or symbols exist in the old backend** (verified in `veklom-byos-backend`, cross-checked in `lockerphycer` + 6 other UACP repos):
 
 | Doc claim | Reality in old backend |
 |---|---|
