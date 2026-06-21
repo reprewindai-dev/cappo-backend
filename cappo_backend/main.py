@@ -96,6 +96,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/.well-known/x402.json")
+    def x402_discovery() -> dict:
+        return {
+            "x402_version": 2,
+            "provider": "CAPPO Runtime — PGL Execution Engine",
+            "network": "eip155:8453",
+            "payTo": "0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d",
+            "currency": "USDC",
+            "identity": {
+                "veklom_id_app": "6a20f24cc341f72c2f573eb5",
+                "veklom_id_wallet": "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970",
+                "verification_domain": "veklom-id.vercel.app",
+            },
+            "routes": [
+                {"route": "POST /execute", "price": "$0.020", "description": "Execute a governed agent run through LAW 0 policy gates.", "tags": ["cappo", "execute", "pgl", "governance", "veklom"]},
+                {"route": "GET /runs", "price": "$0.005", "description": "Query execution run history with evidence chain.", "tags": ["cappo", "runs", "audit", "veklom"]},
+                {"route": "POST /gpc/compile", "price": "$0.015", "description": "Compile intent into governed plan via GPC.", "tags": ["cappo", "gpc", "compile", "veklom"]},
+                {"route": "GET /benchmarks", "price": "$0.003", "description": "View API benchmark leaderboard and VABP scores.", "tags": ["cappo", "benchmarks", "vabp", "veklom"]},
+            ],
+            "discovery": {
+                "bazaar": "https://bazaar.cdp.coinbase.com",
+                "veklom_id": "https://veklom-id.vercel.app",
+            },
+        }
+
     import re
 
     from fastapi.openapi.utils import get_openapi
