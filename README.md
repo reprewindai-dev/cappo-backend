@@ -60,7 +60,7 @@ All planning docs live in [`docs/`](docs/):
 
 ## Lineage
 
-Seeded from analysis of [`reprewindai-dev/byosbackened`](https://github.com/reprewindai-dev/byosbackened) (the old `veklom-byos-backend`). See the migration mapping note for what carries forward and what does not.
+Seeded from analysis of [`reprewindai-dev/veklom-byos-backend`](https://github.com/reprewindai-dev/veklom-byos-backend) (the old `veklom-byos-backend`). See the migration mapping note for what carries forward and what does not.
 
 ## License
 
