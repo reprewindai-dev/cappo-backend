@@ -35,8 +35,13 @@ See docs/x402-pricing.md for GTM rationale and 100K-call capture plan.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
+
+from cappo_backend.config import Settings, get_settings
+
+logger = logging.getLogger("cappo.x402")
 
 try:
     from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
@@ -62,8 +67,6 @@ except ImportError:
         def register(self, network: Any, scheme: Any) -> None: pass
     class PaymentMiddlewareASGI:  # type: ignore
         def __init__(self, **kwargs: Any) -> None: pass
-
-from cappo_backend.config import Settings, get_settings
 
 # ---------------------------------------------------------------------------
 # Network identifiers for multi-chain support
@@ -408,7 +411,7 @@ class X402FreemiumASGI:
                     # Free trial — bypass paywall, let request through
                     await self.app(scope, receive, send)
                     return
-            except Exception:
-                pass  # Fail closed to paywall if Redis is unavailable
+            except Exception as exc:
+                logger.warning("Redis unavailable during freemium check", extra={"error": str(exc)})
 
         await self.payment_app(scope, receive, send)
