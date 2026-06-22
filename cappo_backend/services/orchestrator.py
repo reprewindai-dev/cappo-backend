@@ -27,7 +27,7 @@ from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.executor import Executor
-from cappo_backend.services.pgl_client import PGLClient
+from cappo_backend.services.pgl_client import PGLClient, PreCertificateParams, PostCertificateParams
 from cappo_backend.services.run_state import RunState, assert_transition
 
 
@@ -167,7 +167,7 @@ class RunOrchestrator:
 
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
-        cert = self._pgl.mint_pre_certificate(
+        params = PreCertificateParams(
             run_id=run.run_id,
             workspace_id=run.workspace_id,
             actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
@@ -182,6 +182,7 @@ class RunOrchestrator:
             input_hash=run.hashes.get("input_hash"),
             decision_frame_hash=run.hashes.get("decision_frame_hash"),
         )
+        cert = self._pgl.mint_pre_certificate(params)
         run.pgl_identity = {
             "pre_execution_certificate_id": cert.certificate_id,
             "persisted": cert.persisted,
@@ -319,7 +320,7 @@ class RunOrchestrator:
         outcome_hash = sha256_json({"state": RunState.EXECUTED.value, "result": result})
         pre_cert_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
 
-        post_cert = self._pgl.mint_post_certificate(
+        params = PostCertificateParams(
             pre_certificate_id=pre_cert_id,
             run_id=run.run_id,
             workspace_id=run.workspace_id,
@@ -334,6 +335,7 @@ class RunOrchestrator:
             outcome_hash=outcome_hash,
             input_hash=run.hashes.get("input_hash"),
         )
+        post_cert = self._pgl.mint_post_certificate(params)
 
         run.pgl_identity = {
             **(run.pgl_identity or {}),
