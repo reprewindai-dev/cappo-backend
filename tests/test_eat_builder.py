@@ -143,10 +143,12 @@ class TestEATBuilderHappyPath:
             trust_score=75.0,
             risk_tier="standard",
         )
-        expected = sha256_json({
-            "directive": ei["directive"],
-            "risk_tier": ei["risk_tier"],
-        })
+        expected = sha256_json(
+            {
+                "directive": ei["directive"],
+                "risk_tier": ei["risk_tier"],
+            }
+        )
         assert eat["provenance"]["governance_decision_hash"] == expected
 
 

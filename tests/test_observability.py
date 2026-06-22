@@ -13,8 +13,13 @@ from cappo_backend.observability.logging import JsonLogFormatter
 class TestJsonLogFormatter:
     def test_basic_record_is_json(self) -> None:
         record = logging.makeLogRecord(
-            {"name": "cappo.test", "levelno": logging.INFO, "levelname": "INFO",
-             "msg": "hello %s", "args": ("world",)}
+            {
+                "name": "cappo.test",
+                "levelno": logging.INFO,
+                "levelname": "INFO",
+                "msg": "hello %s",
+                "args": ("world",),
+            }
         )
         out = JsonLogFormatter().format(record)
         parsed = json.loads(out)
@@ -25,8 +30,14 @@ class TestJsonLogFormatter:
 
     def test_extra_fields_promoted(self) -> None:
         record = logging.makeLogRecord(
-            {"name": "cappo.law0", "levelno": logging.WARNING, "levelname": "WARNING",
-             "msg": "alert", "operation_type": "law0_violation", "workspace_id": "ws1"}
+            {
+                "name": "cappo.law0",
+                "levelno": logging.WARNING,
+                "levelname": "WARNING",
+                "msg": "alert",
+                "operation_type": "law0_violation",
+                "workspace_id": "ws1",
+            }
         )
         parsed = json.loads(JsonLogFormatter().format(record))
         assert parsed["operation_type"] == "law0_violation"

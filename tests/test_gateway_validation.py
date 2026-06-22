@@ -63,6 +63,7 @@ def audit(db: Session) -> AuditService:
 def gateway(db: Session, audit: AuditService, settings: Settings) -> MCPGateway:
     def lookup(cert_id: str) -> PGLCertificate | None:
         return db.get(PGLCertificate, cert_id)
+
     return MCPGateway(audit, pgl_lookup=lookup, settings=settings)
 
 
@@ -112,13 +113,20 @@ class TestRule4TTL:
         signer = HmacSigner(SIGNING_KEY)
         builder = ExecutionIdentityBuilder(signer=signer)
         past = datetime(2020, 1, 1, tzinfo=timezone.utc)
-        ei = builder.build({
-            "pgl_pre_certificate_id": "cert-1",
-            "genome_hash": "g", "constitution_hash": "c", "plan_hash": "p",
-            "directive": "ALLOW", "risk_tier": "standard",
-            "scope": {"tools": ["llm.exec"]}, "issuer": "t",
-            "issued_at": past, "expires_at": past + timedelta(seconds=1),
-        })
+        ei = builder.build(
+            {
+                "pgl_pre_certificate_id": "cert-1",
+                "genome_hash": "g",
+                "constitution_hash": "c",
+                "plan_hash": "p",
+                "directive": "ALLOW",
+                "risk_tier": "standard",
+                "scope": {"tools": ["llm.exec"]},
+                "issuer": "t",
+                "issued_at": past,
+                "expires_at": past + timedelta(seconds=1),
+            }
+        )
         with pytest.raises(EIValidationError, match="expired"):
             gateway.require_execution_identity(ei)
 
@@ -188,6 +196,7 @@ class TestValidIdentityPasses:
 class TestAuditOnFailure:
     def test_law0_event_logged(self, db: Session, gateway: MCPGateway) -> None:
         from cappo_backend.models.audit_event import AuditEvent
+
         _make_cert(db)
         ei = _valid_ei(directive="DENY")
         with pytest.raises(EIValidationError):

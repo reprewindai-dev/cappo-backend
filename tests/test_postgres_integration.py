@@ -6,7 +6,9 @@ import os
 
 import pytest
 
-psycopg2 = pytest.importorskip("psycopg2", reason="psycopg2 not installed — skipping PostgreSQL integration tests")
+psycopg2 = pytest.importorskip(
+    "psycopg2", reason="psycopg2 not installed — skipping PostgreSQL integration tests"
+)
 
 from sqlalchemy import create_engine, select  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402

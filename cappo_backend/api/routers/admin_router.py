@@ -28,6 +28,7 @@ router = APIRouter(prefix="/v1")
 
 # ---------- request shapes ----------
 
+
 class KillSwitchRequest(BaseModel):
     active: bool
     reason: str | None = None
@@ -43,6 +44,7 @@ class RevokeRequest(BaseModel):
 
 # ---------- kill switch ----------
 
+
 @router.put("/kill-switch/{workspace_id}")
 def set_kill_switch(
     workspace_id: str,
@@ -57,6 +59,7 @@ def set_kill_switch(
 
 # ---------- budget ----------
 
+
 @router.put("/budget/{workspace_id}")
 def set_budget(
     workspace_id: str,
@@ -70,6 +73,7 @@ def set_budget(
 
 
 # ---------- EI revocation ----------
+
 
 @router.post("/identities/{execution_id}/revoke")
 def revoke_identity(

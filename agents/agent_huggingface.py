@@ -28,11 +28,11 @@ import os
 
 import httpx
 
-HF_API_TOKEN   = os.getenv("HF_API_TOKEN",  "")
-HF_MODEL       = os.getenv("HF_MODEL",      "mistralai/Mistral-7B-Instruct-v0.3")
-HF_ENDPOINT    = os.getenv("HF_ENDPOINT_URL", "")
-VEKLOM_API_URL = os.getenv("VEKLOM_API_URL",  "https://veklom.com/api/v1")
-VEKLOM_API_KEY = os.getenv("VEKLOM_API_KEY",  "")
+HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
+HF_MODEL = os.getenv("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.3")
+HF_ENDPOINT = os.getenv("HF_ENDPOINT_URL", "")
+VEKLOM_API_URL = os.getenv("VEKLOM_API_URL", "https://veklom.com/api/v1")
+VEKLOM_API_KEY = os.getenv("VEKLOM_API_KEY", "")
 MAX_ITERATIONS = int(os.getenv("AGENT_MAX_ITERATIONS", "10"))
 
 # Resolve inference URL: private endpoint takes priority
@@ -40,6 +40,7 @@ if HF_ENDPOINT:
     HF_INFER_URL = HF_ENDPOINT
 else:
     HF_INFER_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}/v1/chat/completions"
+
 
 # ---------------------------------------------------------------------------
 # Tools
@@ -49,24 +50,38 @@ async def tool_check_backend_health() -> dict:
         r = await http.get(f"{VEKLOM_API_URL}/health")
         return {"status": r.status_code, "body": r.text}
 
-async def tool_run_governed_workflow(transaction_id: str, tenant_id: str, payload_intent: str, origin_x: int = 0, origin_y: int = 0) -> dict:
+
+async def tool_run_governed_workflow(
+    transaction_id: str, tenant_id: str, payload_intent: str, origin_x: int = 0, origin_y: int = 0
+) -> dict:
     async with httpx.AsyncClient(timeout=30) as http:
         r = await http.post(
             f"{VEKLOM_API_URL}/workflows/execute",
             headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"},
-            json={"transaction_id": transaction_id, "tenant_id": tenant_id, "payload_intent": payload_intent, "origin_x": origin_x, "origin_y": origin_y},
+            json={
+                "transaction_id": transaction_id,
+                "tenant_id": tenant_id,
+                "payload_intent": payload_intent,
+                "origin_x": origin_x,
+                "origin_y": origin_y,
+            },
         )
         return {"status": r.status_code, "body": r.text}
 
+
 async def tool_list_vendors() -> dict:
     async with httpx.AsyncClient(timeout=10) as http:
-        r = await http.get(f"{VEKLOM_API_URL}/marketplace/vendors", headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"})
+        r = await http.get(
+            f"{VEKLOM_API_URL}/marketplace/vendors",
+            headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"},
+        )
         return {"status": r.status_code, "vendors": r.text}
 
+
 TOOL_MAP = {
-    "check_backend_health":  tool_check_backend_health,
+    "check_backend_health": tool_check_backend_health,
     "run_governed_workflow": tool_run_governed_workflow,
-    "list_vendors":          tool_list_vendors,
+    "list_vendors": tool_list_vendors,
 }
 
 TOOL_DESCRIPTIONS = """

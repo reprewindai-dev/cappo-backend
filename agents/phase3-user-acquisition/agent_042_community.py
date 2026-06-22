@@ -121,7 +121,9 @@ def log_activity(event_type: str, data: dict):
     }
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
-    print(f"[{entry['timestamp']}] [{event_type}] {data.get('title', data.get('message', '')[:80])}")
+    print(
+        f"[{entry['timestamp']}] [{event_type}] {data.get('title', data.get('message', '')[:80])}"
+    )
 
 
 def already_replied(post_id: str) -> bool:
@@ -218,12 +220,15 @@ def scan_and_reply(dry_run: bool = False) -> int:
                         print(f"  Reply preview: {reply_text[:120]}...")
                     else:
                         post.reply(reply_text)
-                        log_activity("REPLIED", {
-                            "subreddit": sub_name,
-                            "post_id": post.id,
-                            "title": post.title[:100],
-                            "reply_preview": reply_text[:100],
-                        })
+                        log_activity(
+                            "REPLIED",
+                            {
+                                "subreddit": sub_name,
+                                "post_id": post.id,
+                                "title": post.title[:100],
+                                "reply_preview": reply_text[:100],
+                            },
+                        )
                         replied_count += 1
                         time.sleep(10)  # Rate limit: Reddit allows ~1 reply per 10s
 
@@ -248,12 +253,15 @@ def post_weekly_update(subreddit_name: str = "SideProject", dry_run: bool = Fals
         title=post_data["title"],
         selftext=post_data["body"],
     )
-    log_activity("WEEKLY_POST", {
-        "subreddit": subreddit_name,
-        "post_id": submission.id,
-        "title": post_data["title"],
-        "url": f"https://reddit.com{submission.permalink}",
-    })
+    log_activity(
+        "WEEKLY_POST",
+        {
+            "subreddit": subreddit_name,
+            "post_id": submission.id,
+            "title": post_data["title"],
+            "url": f"https://reddit.com{submission.permalink}",
+        },
+    )
     print(f"Posted to r/{subreddit_name}: https://reddit.com{submission.permalink}")
 
 
@@ -263,8 +271,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Veklom Community Outreach Agent 042")
     parser.add_argument("--dry-run", action="store_true", help="Preview actions without posting")
-    parser.add_argument("--weekly-post", action="store_true", help="Also post the weekly SideProject update")
-    parser.add_argument("--post-only", action="store_true", help="Only post weekly update, skip replies")
+    parser.add_argument(
+        "--weekly-post", action="store_true", help="Also post the weekly SideProject update"
+    )
+    parser.add_argument(
+        "--post-only", action="store_true", help="Only post weekly update, skip replies"
+    )
     args = parser.parse_args()
 
     print(f"=== Veklom Agent 042 — Community Outreach === {datetime.now().isoformat()}")

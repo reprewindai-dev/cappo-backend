@@ -43,12 +43,12 @@ from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 # IDENTITY CONSTANTS
 # ---------------------------------------------------------------------------
 
-BASE_APP_ID       = "6a20f24cc341f72c2f573eb5"
-MERCHANT_WALLET   = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
-USDC_CONTRACT     = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
-CHAIN_ID          = "eip155:8453"                                  # Base Mainnet
-BASE_RPC          = "https://mainnet.base.org"
-FRONTEND_ORIGIN   = "https://veklom-id.vercel.app"
+BASE_APP_ID = "6a20f24cc341f72c2f573eb5"
+MERCHANT_WALLET = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
+USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  # USDC on Base
+CHAIN_ID = "eip155:8453"  # Base Mainnet
+BASE_RPC = "https://mainnet.base.org"
+FRONTEND_ORIGIN = "https://veklom-id.vercel.app"
 
 # ERC-20 Transfer(address,address,uint256) topic
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -86,7 +86,7 @@ _payment_ledger: list[dict[str, Any]] = []
 # ---------------------------------------------------------------------------
 
 _EVM_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
-_TX_HASH_RE  = re.compile(r"^0x[0-9a-fA-F]{64}$")
+_TX_HASH_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 
 def _valid_address(v: str) -> bool:
@@ -101,39 +101,44 @@ def _valid_tx(v: str) -> bool:
 # 402 CHALLENGE BUILDER
 # ---------------------------------------------------------------------------
 
+
 def _challenge(response: Response, path: str) -> dict[str, Any]:
     """Build x402-spec compliant challenge body and set response headers."""
-    price = PRICES.get(path, {"usdc": "0.01", "usdc_base_units": 10_000,
-                               "description": "Veklom x402 payment"})
-    response.headers["X-402-Version"]   = "1"
-    response.headers["X-402-Chain"]     = CHAIN_ID
+    price = PRICES.get(
+        path, {"usdc": "0.01", "usdc_base_units": 10_000, "description": "Veklom x402 payment"}
+    )
+    response.headers["X-402-Version"] = "1"
+    response.headers["X-402-Chain"] = CHAIN_ID
     response.headers["X-402-Recipient"] = MERCHANT_WALLET
-    response.headers["X-402-Token"]     = USDC_CONTRACT
-    response.headers["X-402-Amount"]    = str(price["usdc_base_units"])
-    response.headers["X-402-Resource"]  = path
-    response.headers["X-402-App-Id"]    = BASE_APP_ID
+    response.headers["X-402-Token"] = USDC_CONTRACT
+    response.headers["X-402-Amount"] = str(price["usdc_base_units"])
+    response.headers["X-402-Resource"] = path
+    response.headers["X-402-App-Id"] = BASE_APP_ID
     return {
         "x402Version": 1,
         "appId": BASE_APP_ID,
         "error": "Payment Required",
-        "accepts": [{
-            "scheme": "exact",
-            "network": CHAIN_ID,
-            "maxAmountRequired": str(price["usdc_base_units"]),
-            "resource": path,
-            "description": price["description"],
-            "mimeType": "application/json",
-            "payTo": MERCHANT_WALLET,
-            "maxTimeoutSeconds": 300,
-            "asset": USDC_CONTRACT,
-            "extra": {"name": "USD Coin", "version": "2"},
-        }],
+        "accepts": [
+            {
+                "scheme": "exact",
+                "network": CHAIN_ID,
+                "maxAmountRequired": str(price["usdc_base_units"]),
+                "resource": path,
+                "description": price["description"],
+                "mimeType": "application/json",
+                "payTo": MERCHANT_WALLET,
+                "maxTimeoutSeconds": 300,
+                "asset": USDC_CONTRACT,
+                "extra": {"name": "USD Coin", "version": "2"},
+            }
+        ],
     }
 
 
 # ---------------------------------------------------------------------------
 # ON-CHAIN VERIFICATION
 # ---------------------------------------------------------------------------
+
 
 async def _verify_onchain(
     tx_hash: str, path: str, caller: str
@@ -142,11 +147,15 @@ async def _verify_onchain(
     required = PRICES.get(path, {"usdc_base_units": 10_000})["usdc_base_units"]
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(BASE_RPC, json={
-                "jsonrpc": "2.0", "id": 1,
-                "method": "eth_getTransactionReceipt",
-                "params": [tx_hash],
-            })
+            r = await client.post(
+                BASE_RPC,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "eth_getTransactionReceipt",
+                    "params": [tx_hash],
+                },
+            )
         data = r.json()
     except Exception as exc:
         return False, f"Base RPC error: {exc}", None
@@ -165,8 +174,8 @@ async def _verify_onchain(
             and topics[0].lower() == TRANSFER_TOPIC
         ):
             from_addr = "0x" + topics[1][-40:]
-            to_addr   = "0x" + topics[2][-40:]
-            value     = int(log["data"], 16) if log.get("data", "0x") != "0x" else 0
+            to_addr = "0x" + topics[2][-40:]
+            value = int(log["data"], 16) if log.get("data", "0x") != "0x" else 0
             if (
                 from_addr.lower() == caller.lower()
                 and to_addr.lower() == MERCHANT_WALLET.lower()
@@ -175,57 +184,75 @@ async def _verify_onchain(
                 return True, None, result.get("blockNumber", "?")
 
     usdc = PRICES.get(path, {"usdc": "?"}).get("usdc", "?")
-    return False, (
-        f"No USDC transfer of >= ${usdc} from {caller} to Veklom wallet "
-        f"found in transaction logs."
-    ), None
+    return (
+        False,
+        (
+            f"No USDC transfer of >= ${usdc} from {caller} to Veklom wallet "
+            f"found in transaction logs."
+        ),
+        None,
+    )
 
 
 # ---------------------------------------------------------------------------
 # PAYMENT DEPENDENCY
 # ---------------------------------------------------------------------------
 
-async def require_payment(request: Request, response: Response, db: Session = Depends(get_session)) -> dict[str, str]:
+
+async def require_payment(
+    request: Request, response: Response, db: Session = Depends(get_session)
+) -> dict[str, str]:
     """FastAPI dependency — verifies x402 payment before granting route access."""
 
     # 1. Wallet identity (X-Wallet-Address header)
     raw_wallet = request.headers.get("x-wallet-address", "").strip()
     if not raw_wallet or not _valid_address(raw_wallet):
-        raise HTTPException(status_code=400, detail={
-            "error": "Missing or invalid X-Wallet-Address.",
-            "message": "Send your Base wallet address in the X-Wallet-Address header.",
-        })
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Missing or invalid X-Wallet-Address.",
+                "message": "Send your Base wallet address in the X-Wallet-Address header.",
+            },
+        )
     caller = raw_wallet.lower()
 
     # 2. Payment proof (X-Payment header)
     tx = request.headers.get("x-payment", "").strip()
     if not tx:
-        raise HTTPException(status_code=402,
-                            detail=_challenge(response, request.url.path))
+        raise HTTPException(status_code=402, detail=_challenge(response, request.url.path))
 
     # 3. Format
     if not _valid_tx(tx):
-        raise HTTPException(status_code=400, detail={
-            "error": "Invalid X-Payment format.",
-            "message": "X-Payment must be a valid Base tx hash (0x + 64 hex chars).",
-        })
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Invalid X-Payment format.",
+                "message": "X-Payment must be a valid Base tx hash (0x + 64 hex chars).",
+            },
+        )
 
     # 4. Stateful Nonce Linearization (Pessimistic Nonce Locking)
     # Check DB first (persistent replay protection)
     db_payment = db.get(X402ConsumedPayment, tx.lower())
     if db_payment is not None:
-        raise HTTPException(status_code=400, detail={
-            "error": "Payment already consumed.",
-            "message": "This tx hash was already used. Send a new payment.",
-        })
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Payment already consumed.",
+                "message": "This tx hash was already used. Send a new payment.",
+            },
+        )
 
     # Lock the nonce (tx hash) to prevent simultaneous free-rider concurrency races
     async with _nonce_lock:
         if tx.lower() in _pending_tx_hashes:
-            raise HTTPException(status_code=409, detail={
-                "error": "Conflict",
-                "message": "State lock collision: transaction verification is currently pending.",
-            })
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "Conflict",
+                    "message": "State lock collision: transaction verification is currently pending.",
+                },
+            )
         _pending_tx_hashes.add(tx.lower())
 
     try:
@@ -236,16 +263,20 @@ async def require_payment(request: Request, response: Response, db: Session = De
                 # Reconstruct request body hash
                 body_bytes = await request.body()
                 body_hash = Web3.keccak(body_bytes) if body_bytes else b"\x00" * 32
-                
+
                 # Format EIP-712 nonce from tx hash
-                nonce_bytes = Web3.to_bytes(hexstr=tx) if tx.startswith("0x") else tx.encode('utf-8')
+                nonce_bytes = (
+                    Web3.to_bytes(hexstr=tx) if tx.startswith("0x") else tx.encode("utf-8")
+                )
                 if len(nonce_bytes) < 32:
                     nonce_bytes = nonce_bytes.ljust(32, b"\x00")
                 elif len(nonce_bytes) > 32:
                     nonce_bytes = nonce_bytes[:32]
-                    
-                amount_units = PRICES.get(request.url.path, {"usdc_base_units": 10_000})["usdc_base_units"]
-                
+
+                amount_units = PRICES.get(request.url.path, {"usdc_base_units": 10_000})[
+                    "usdc_base_units"
+                ]
+
                 structured_data = {
                     "types": {
                         "EIP712Domain": [
@@ -277,35 +308,44 @@ async def require_payment(request: Request, response: Response, db: Session = De
                         "method": request.method,
                         "resource": request.url.path,
                         "bodyHash": body_hash,
-                    }
+                    },
                 }
-                
+
                 encoded_message = encode_typed_data(full_message=structured_data)
                 recovered_addr = Account.recover_message(encoded_message, signature=sig)
-                
+
                 if recovered_addr.lower() != caller.lower():
-                    raise HTTPException(status_code=403, detail={
-                        "error": "Forbidden",
-                        "message": f"Cryptographic Context-Binding mismatch. Signer {recovered_addr} does not match caller {caller}.",
-                    })
+                    raise HTTPException(
+                        status_code=403,
+                        detail={
+                            "error": "Forbidden",
+                            "message": f"Cryptographic Context-Binding mismatch. Signer {recovered_addr} does not match caller {caller}.",
+                        },
+                    )
             except HTTPException:
                 raise
             except Exception as e:
-                raise HTTPException(status_code=400, detail={
-                    "error": "Signature verification failed",
-                    "message": f"Failed to verify EIP-712 request-bound signature: {str(e)}",
-                })
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "Signature verification failed",
+                        "message": f"Failed to verify EIP-712 request-bound signature: {str(e)}",
+                    },
+                )
 
         # 6. On-chain verification
         ok, err, block = await _verify_onchain(tx, request.url.path, caller)
         if not ok:
-            raise HTTPException(status_code=402, detail={
-                "error": "Payment verification failed.",
-                "message": err,
-                "appId": BASE_APP_ID,
-                "payTo": MERCHANT_WALLET,
-                "chain": CHAIN_ID,
-            })
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "Payment verification failed.",
+                    "message": err,
+                    "appId": BASE_APP_ID,
+                    "payTo": MERCHANT_WALLET,
+                    "chain": CHAIN_ID,
+                },
+            )
 
         # 7. Record to DB for persistent replay protection
         consumed = X402ConsumedPayment(
@@ -318,24 +358,26 @@ async def require_payment(request: Request, response: Response, db: Session = De
         )
         db.add(consumed)
         db.commit()
-            
-        _payment_ledger.append({
-            "tx_hash": tx,
-            "wallet": caller,
-            "endpoint": request.url.path,
-            "amount_usdc": PRICES.get(request.url.path, {}).get("usdc", "?"),
-            "chain": CHAIN_ID,
-            "block_number": block,
-            "app_id": BASE_APP_ID,
-            "verified_at": datetime.now(timezone.utc).isoformat(),
-        })
+
+        _payment_ledger.append(
+            {
+                "tx_hash": tx,
+                "wallet": caller,
+                "endpoint": request.url.path,
+                "amount_usdc": PRICES.get(request.url.path, {}).get("usdc", "?"),
+                "chain": CHAIN_ID,
+                "block_number": block,
+                "app_id": BASE_APP_ID,
+                "verified_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
     finally:
         async with _nonce_lock:
             if tx.lower() in _pending_tx_hashes:
                 _pending_tx_hashes.remove(tx.lower())
 
     request.state.x402_wallet = caller
-    request.state.x402_tx     = tx
+    request.state.x402_tx = tx
     return {"wallet": caller, "tx": tx}
 
 
@@ -411,15 +453,36 @@ async def x402_benchmarks_premium(
         "wallet": request.state.x402_wallet,
         "amount_paid_usdc": "0.02",
         "benchmarks": [
-            {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "provider": "Google",
-             "trust_score": 985, "tier": "Apex", "latency_ms": 110,
-             "uptime_percent": 99.99, "staked_amount_usdc": 50000},
-            {"id": "gpt-4o", "name": "GPT-4o", "provider": "OpenAI",
-             "trust_score": 960, "tier": "Apex", "latency_ms": 140,
-             "uptime_percent": 99.95, "staked_amount_usdc": 45000},
-            {"id": "claude-3.5-sonnet", "name": "Claude 3.5 Sonnet",
-             "provider": "Anthropic", "trust_score": 975, "tier": "Apex",
-             "latency_ms": 125, "uptime_percent": 99.98, "staked_amount_usdc": 48000},
+            {
+                "id": "gemini-1.5-pro",
+                "name": "Gemini 1.5 Pro",
+                "provider": "Google",
+                "trust_score": 985,
+                "tier": "Apex",
+                "latency_ms": 110,
+                "uptime_percent": 99.99,
+                "staked_amount_usdc": 50000,
+            },
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4o",
+                "provider": "OpenAI",
+                "trust_score": 960,
+                "tier": "Apex",
+                "latency_ms": 140,
+                "uptime_percent": 99.95,
+                "staked_amount_usdc": 45000,
+            },
+            {
+                "id": "claude-3.5-sonnet",
+                "name": "Claude 3.5 Sonnet",
+                "provider": "Anthropic",
+                "trust_score": 975,
+                "tier": "Apex",
+                "latency_ms": 125,
+                "uptime_percent": 99.98,
+                "staked_amount_usdc": 48000,
+            },
         ],
     }
 

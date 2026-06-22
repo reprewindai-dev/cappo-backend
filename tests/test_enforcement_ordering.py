@@ -60,11 +60,7 @@ def test_invalid_ei_blocks_side_effect(db: Session) -> None:
     assert orch.last_run is not None
     assert orch.last_run.state == RunState.FAILED.value
 
-    violations = (
-        db.query(AuditEvent)
-        .filter(AuditEvent.operation_type == "law0_violation")
-        .all()
-    )
+    violations = db.query(AuditEvent).filter(AuditEvent.operation_type == "law0_violation").all()
     assert len(violations) == 1
 
 

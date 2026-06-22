@@ -33,9 +33,7 @@ def verify_audit_chain(db: Session = Depends(get_session)) -> dict[str, object]:
 
 
 @router.get("/verify/pgl/{certificate_id}")
-def verify_pgl_chain(
-    certificate_id: str, db: Session = Depends(get_session)
-) -> dict[str, object]:
+def verify_pgl_chain(certificate_id: str, db: Session = Depends(get_session)) -> dict[str, object]:
     """Verify the PGL ledger chain for a single certificate."""
     return LedgerVerifier(db).verify_pgl_chain(certificate_id).as_dict()
 
@@ -46,21 +44,31 @@ def get_ledger_traces(
 ) -> dict[str, object]:
     """Fetch the latest governed execution traces for the audit explorer."""
     from cappo_backend.models.execution import GovernedRun
-    
-    runs = db.query(GovernedRun).order_by(GovernedRun.created_at.desc()).limit(limit).offset(offset).all()
-    
+
+    runs = (
+        db.query(GovernedRun)
+        .order_by(GovernedRun.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
     traces = []
     for r in runs:
-        traces.append({
-            "run_id": r.run_id,
-            "execution_id": r.execution_identity.get("execution_id") if r.execution_identity else None,
-            "agent_id": r.agent_id,
-            "prompt": r.request_payload.get("prompt", "") if r.request_payload else "",
-            "response": r.response_payload.get("response", "") if r.response_payload else "",
-            "latency_ms": r.latency_ms,
-            "cost_cents": r.cost_cents,
-            "status": r.status,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        })
-        
+        traces.append(
+            {
+                "run_id": r.run_id,
+                "execution_id": r.execution_identity.get("execution_id")
+                if r.execution_identity
+                else None,
+                "agent_id": r.agent_id,
+                "prompt": r.request_payload.get("prompt", "") if r.request_payload else "",
+                "response": r.response_payload.get("response", "") if r.response_payload else "",
+                "latency_ms": r.latency_ms,
+                "cost_cents": r.cost_cents,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+
     return {"traces": traces}

@@ -178,7 +178,9 @@ def save_launch_kit(copy: dict, outreach: list, checklist: list):
             checkbox = "- [x]" if item["done"] else "- [ ]"
             f.write(f"{checkbox} {item['item']}\n")
 
-    log_activity("LAUNCH_KIT_SAVED", {"message": f"Launch kit saved: {main_file}", "file": str(main_file)})
+    log_activity(
+        "LAUNCH_KIT_SAVED", {"message": f"Launch kit saved: {main_file}", "file": str(main_file)}
+    )
     print(f"Launch kit saved: {main_file}")
     return main_file
 

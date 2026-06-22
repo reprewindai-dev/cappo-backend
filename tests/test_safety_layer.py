@@ -21,7 +21,9 @@ from cappo_backend.services.safety import (
 )
 
 
-def _obs(rph: int, fail: float, *, hour: int = 12, caps: tuple[str, ...] = ("search",)) -> Observation:
+def _obs(
+    rph: int, fail: float, *, hour: int = 12, caps: tuple[str, ...] = ("search",)
+) -> Observation:
     return Observation(
         timestamp=datetime(2026, 6, 1, hour, 0, tzinfo=timezone.utc),
         requests_in_window=rph,
@@ -68,7 +70,9 @@ def test_request_spike_anomaly_detected() -> None:
     baselines.build_baseline("a1")
     detector = AnomalyDetectionService(baselines)
 
-    anomalies = detector.detect("a1", CurrentMetric(requests_per_hour=200, failure_rate=0.05, time_of_day=12))
+    anomalies = detector.detect(
+        "a1", CurrentMetric(requests_per_hour=200, failure_rate=0.05, time_of_day=12)
+    )
     types = {a.anomaly_type for a in anomalies}
     assert "request_spike" in types
     spike = next(a for a in anomalies if a.anomaly_type == "request_spike")
@@ -107,7 +111,9 @@ def test_quarantine_quorum_reached() -> None:
     _seed_varied(baselines, "a1")
     baselines.build_baseline("a1")
     detector = AnomalyDetectionService(baselines)
-    anomalies = detector.detect("a1", CurrentMetric(requests_per_hour=500, failure_rate=0.05, time_of_day=12))
+    anomalies = detector.detect(
+        "a1", CurrentMetric(requests_per_hour=500, failure_rate=0.05, time_of_day=12)
+    )
 
     q = RequestQuarantineService(approvers_required=2)
     qr = q.quarantine({"agent_id": "a1"}, anomalies)

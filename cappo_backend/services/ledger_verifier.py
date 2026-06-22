@@ -69,9 +69,7 @@ class LedgerVerifier:
     def verify_audit_chain(self) -> ChainReport:
         report = ChainReport(name="audit_events")
         events = list(
-            self._db.execute(
-                select(AuditEvent).order_by(AuditEvent.created_at.asc())
-            ).scalars()
+            self._db.execute(select(AuditEvent).order_by(AuditEvent.created_at.asc())).scalars()
         )
         report.total = len(events)
         if not events:
@@ -122,9 +120,7 @@ class LedgerVerifier:
 
         by_hash: dict[str, PGLLedgerEvent] = {}
         for ev in events:
-            expected = sha256_json(
-                {**ev.payload, "previous_event_hash": ev.previous_event_hash}
-            )
+            expected = sha256_json({**ev.payload, "previous_event_hash": ev.previous_event_hash})
             if expected != ev.event_hash:
                 report.fail(ev.event_id, "event_hash does not match recomputed hash")
             else:
@@ -142,9 +138,7 @@ class LedgerVerifier:
 
     def verify_all_pgl_chains(self) -> list[ChainReport]:
         cert_ids = list(
-            self._db.execute(
-                select(PGLLedgerEvent.certificate_id).distinct()
-            ).scalars()
+            self._db.execute(select(PGLLedgerEvent.certificate_id).distinct()).scalars()
         )
         return [self.verify_pgl_chain(cid) for cid in sorted(cert_ids)]
 
@@ -214,6 +208,5 @@ class LedgerVerifier:
         if visited != len(events):
             report.fail(
                 "<chain>",
-                f"chain reachable={visited} but total={len(events)} "
-                "(broken link or orphaned node)",
+                f"chain reachable={visited} but total={len(events)} (broken link or orphaned node)",
             )

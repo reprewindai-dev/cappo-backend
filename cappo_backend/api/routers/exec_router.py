@@ -35,10 +35,11 @@ router = APIRouter(prefix="/v1")
 
 # ---------- request/response shapes ----------
 
+
 class ExecRequest(BaseModel):
     prompt: str
     agent_id: str | None = None  # Veklom agent ID (e.g., "agent_alpha")
-    pgl_id: str | None = None    # User's PGL identity
+    pgl_id: str | None = None  # User's PGL identity
     workspace_id: str = "default"
     tenant_id: str = "default"
     delegation_depth: int = 0
@@ -51,7 +52,6 @@ class ExecRequest(BaseModel):
     action: str | None = None
     directive: str | None = None
     risk_tier: str | None = None
-
 
 
 class ExecResponse(BaseModel):
@@ -68,6 +68,7 @@ class ExecResponse(BaseModel):
 
 
 # ---------- route ----------
+
 
 @router.post("/exec", response_model=ExecResponse)
 def governed_exec(
@@ -109,6 +110,7 @@ def governed_exec(
     from cappo_backend.adapters.local import SQLiteGraphAdapter, SQLiteStoreAdapter
     from cappo_backend.api.routers.genome_router import _global_cache, _global_queue
     from cappo_backend.services.genome_service import GenomeService
+
     genome_service = GenomeService(
         store=SQLiteStoreAdapter(db),
         graph=SQLiteGraphAdapter(db),

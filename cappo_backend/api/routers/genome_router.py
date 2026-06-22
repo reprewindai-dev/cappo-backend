@@ -37,6 +37,7 @@ def get_genome_service(db: Session = Depends(get_session)) -> GenomeService:
 
 # ---------- schemas ----------
 
+
 class GenomeLayerData(BaseModel):
     model_layer: dict[str, Any] = Field(default_factory=dict)
     prompt_layer: dict[str, Any] = Field(default_factory=dict)
@@ -66,6 +67,7 @@ class GenomeDiffRequest(BaseModel):
 
 
 # ---------- routes ----------
+
 
 @router.post("", response_model=GenomeRegisterResponse)
 def register_genome(

@@ -78,7 +78,9 @@ class MCPv2Stack:
         # --- Safety phase ------------------------------------------------
         anomalies = self.anomaly.detect(agent_id, metric)
         for a in anomalies:
-            self.correlation.record(AnomalySignal(agent_id, a.anomaly_type, a.severity, a.detected_at))
+            self.correlation.record(
+                AnomalySignal(agent_id, a.anomaly_type, a.severity, a.detected_at)
+            )
         correlation = self.correlation.correlate(agent_id)
 
         worst_action = "log"
@@ -119,7 +121,9 @@ class MCPv2Stack:
             trust_current=self.delegation.effective_trust(capability_id, trust_score),
         )
 
-        policy_allows = perms.can_execute if (system_policy or owner_policy or runtime_policy) else True
+        policy_allows = (
+            perms.can_execute if (system_policy or owner_policy or runtime_policy) else True
+        )
 
         allow = worst_action != "block" and quarantine_id is None and policy_allows
 

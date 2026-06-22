@@ -52,7 +52,9 @@ class TestAuthEnabled:
 
     def test_exec_rejected_with_invalid_key(self, auth_client: TestClient) -> None:
         resp = auth_client.post(
-            "/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id"}, headers={"X-API-Key": "wrong"}
+            "/v1/exec",
+            json={"prompt": "hi", "pgl_id": "test-user-id"},
+            headers={"X-API-Key": "wrong"},
         )
         assert resp.status_code == 401
 

@@ -36,11 +36,12 @@ def _fmt_breaker(name: str) -> dict:
 
 
 @router.get("/pulse")
-async def get_pulse(db: Session = Depends(get_session)):
+def get_pulse(db: Session = Depends(get_session)):
     """Live pulse telemetry — real system metrics + real DB statistics."""
     # --- Real system metrics ---
     try:
         import psutil
+
         cpu_pct = round(psutil.cpu_percent(interval=0.1), 1)
         mem_pct = round(psutil.virtual_memory().percent, 1)
         disk_pct = round(psutil.disk_usage("/").percent, 1)
@@ -79,18 +80,14 @@ async def get_pulse(db: Session = Depends(get_session)):
     # Error rate: failed runs / total recent runs
     recent_count = len(recent_runs)
     failed_count = sum(
-        1 for r in recent_runs
+        1
+        for r in recent_runs
         if r.state in ("failed", "law0_violation", "error", "payment_required")
     )
     error_rate = round((failed_count / recent_count * 100), 3) if recent_count > 0 else 0.0
 
     # Recent audit events
-    recent_events_raw = (
-        db.query(AuditEvent)
-        .order_by(desc(AuditEvent.created_at))
-        .limit(10)
-        .all()
-    )
+    recent_events_raw = db.query(AuditEvent).order_by(desc(AuditEvent.created_at)).limit(10).all()
     recent_events = [
         {
             "id": e.log_id,

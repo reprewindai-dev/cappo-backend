@@ -45,26 +45,44 @@ try:
     from x402.mechanisms.evm.exact import ExactEvmServerScheme
     from x402.schemas import Network
     from x402.server import x402ResourceServer
+
     X402_AVAILABLE = True
 except ImportError:
     X402_AVAILABLE = False
+
     class FacilitatorConfig:  # type: ignore
-        def __init__(self, url: str = "") -> None: pass
+        def __init__(self, url: str = "") -> None:
+            pass
+
     class HTTPFacilitatorClient:  # type: ignore
-        def __init__(self, config: Any = None) -> None: pass
+        def __init__(self, config: Any = None) -> None:
+            pass
+
     class PaymentOption:  # type: ignore
-        def __init__(self, **kwargs: Any) -> None: pass
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
     class RouteConfig:  # type: ignore
-        def __init__(self, **kwargs: Any) -> None: pass
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
     class ExactEvmServerScheme:  # type: ignore
         pass
+
     class Network:  # type: ignore
         pass
+
     class x402ResourceServer:  # type: ignore
-        def __init__(self, facilitator: Any = None) -> None: pass
-        def register(self, network: Any, scheme: Any) -> None: pass
+        def __init__(self, facilitator: Any = None) -> None:
+            pass
+
+        def register(self, network: Any, scheme: Any) -> None:
+            pass
+
     class PaymentMiddlewareASGI:  # type: ignore
-        def __init__(self, **kwargs: Any) -> None: pass
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
 
 from cappo_backend.config import Settings, get_settings
 
@@ -72,24 +90,26 @@ from cappo_backend.config import Settings, get_settings
 # Network identifiers for multi-chain support
 # ---------------------------------------------------------------------------
 NETWORKS = {
-    "base":             "eip155:8453",    # Base Mainnet
-    "base-sepolia":     "eip155:84532",   # Base Sepolia Testnet
-    "zksync":           "eip155:324",     # zkSync Mainnet
-    "zksync-sepolia":   "eip155:300",     # zkSync Sepolia Testnet
-    "unichain":         "eip155:130",     # Unichain Mainnet
-    "unichain-sepolia": "eip155:1301",    # Unichain Sepolia Testnet
-    "monad":            "eip155:10143",   # Monad Testnet
+    "base": "eip155:8453",  # Base Mainnet
+    "base-sepolia": "eip155:84532",  # Base Sepolia Testnet
+    "zksync": "eip155:324",  # zkSync Mainnet
+    "zksync-sepolia": "eip155:300",  # zkSync Sepolia Testnet
+    "unichain": "eip155:130",  # Unichain Mainnet
+    "unichain-sepolia": "eip155:1301",  # Unichain Sepolia Testnet
+    "monad": "eip155:10143",  # Monad Testnet
 }
 
 # ---------------------------------------------------------------------------
 # Routes that are unconditionally FREE — paywalling these would break clients
 # ---------------------------------------------------------------------------
-FREE_PATHS: frozenset[str] = frozenset({
-    "/health",
-    "/docs",
-    "/openapi.json",
-    "/redoc",
-})
+FREE_PATHS: frozenset[str] = frozenset(
+    {
+        "/health",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Omnipresent route manifest — every billable path and its tier
@@ -104,65 +124,62 @@ FREE_PATHS: frozenset[str] = frozenset({
 # ---------------------------------------------------------------------------
 BILLABLE_ROUTES: list[tuple[str, str]] = [
     # ---- Tier 1: MICRO $0.001 — Discovery & status reads ----
-    ("GET /legacy/status",                          "micro"),
-    ("GET /api/v1/platform/pulse",                   "micro"),
-    ("GET /api/v1/x402/config",                      "micro"),
-
+    ("GET /legacy/status", "micro"),
+    ("GET /api/v1/platform/pulse", "micro"),
+    ("GET /api/v1/x402/config", "micro"),
     # ---- Tier 2: READ $0.005 — Governed data reads ----
-    ("GET /v1/audit-logs",                           "read"),
-    ("GET /v1/runs",                                 "read"),
-    ("GET /v1/audit/verify",                         "read"),
-    ("GET /v1/audit/verify/audit",                   "read"),
-    ("GET /v1/audit/verify/pgl/:certificate_id",     "read"),
-    ("GET /v1/audit/ledger/traces",                  "read"),
-    ("GET /v1/governance/v2/risk/:agent_id",         "read"),
-    ("GET /v1/governance/v2/quarantine",             "read"),
-    ("GET /v1/license/:key",                         "read"),
-    ("GET /v1/license",                              "read"),
-    ("GET /api/v1/benchmarks/leaderboard",           "read"),
-    ("GET /api/v1/benchmarks/staking/markets",       "read"),
-    ("GET /api/v1/benchmarks/logs",                  "read"),
-    ("GET /api/v1/gpc/stats",                        "read"),
-    ("GET /api/v1/x402/ledger",                      "read"),
-    ("GET /api/v1/x402/benchmarks/premium",          "read"),
-
+    ("GET /v1/audit-logs", "read"),
+    ("GET /v1/runs", "read"),
+    ("GET /v1/audit/verify", "read"),
+    ("GET /v1/audit/verify/audit", "read"),
+    ("GET /v1/audit/verify/pgl/:certificate_id", "read"),
+    ("GET /v1/audit/ledger/traces", "read"),
+    ("GET /v1/governance/v2/risk/:agent_id", "read"),
+    ("GET /v1/governance/v2/quarantine", "read"),
+    ("GET /v1/license/:key", "read"),
+    ("GET /v1/license", "read"),
+    ("GET /api/v1/benchmarks/leaderboard", "read"),
+    ("GET /api/v1/benchmarks/staking/markets", "read"),
+    ("GET /api/v1/benchmarks/logs", "read"),
+    ("GET /api/v1/gpc/stats", "read"),
+    ("GET /api/v1/x402/ledger", "read"),
+    ("GET /api/v1/x402/benchmarks/premium", "read"),
     # ---- Tier 3: ACTION $0.05 — State mutations ----
-    ("PUT /v1/kill-switch/:workspace_id",                        "action"),
-    ("PUT /v1/budget/:workspace_id",                             "action"),
-    ("POST /v1/identities/:execution_id/revoke",                 "action"),
+    ("PUT /v1/kill-switch/:workspace_id", "action"),
+    ("PUT /v1/budget/:workspace_id", "action"),
+    ("POST /v1/identities/:execution_id/revoke", "action"),
     ("POST /v1/governance/v2/quarantine/:quarantine_id/approve", "action"),
-    ("POST /v1/governance/v2/quarantine/:quarantine_id/deny",    "action"),
-    ("POST /v1/license/validate",                                "action"),
-    ("POST /v1/license/deactivate",                              "action"),
-    ("POST /legacy/snmp/toggle",                                 "action"),
-    ("POST /legacy/modbus/toggle",                               "action"),
-    ("POST /legacy/simulate",                                    "action"),
-
+    ("POST /v1/governance/v2/quarantine/:quarantine_id/deny", "action"),
+    ("POST /v1/license/validate", "action"),
+    ("POST /v1/license/deactivate", "action"),
+    ("POST /legacy/snmp/toggle", "action"),
+    ("POST /legacy/modbus/toggle", "action"),
+    ("POST /legacy/simulate", "action"),
     # ---- Tier 4: COMPUTE $0.50 — Agent execution & premium ops ----
-    ("POST /v1/exec",                       "compute"),
-    ("POST /api/v1/x402/exec/run",           "compute"),
-    ("POST /v1/governance/v2/assess",        "compute"),
-    ("POST /v1/agents/mint",                 "compute"),
-    ("POST /v1/license/issue",               "compute"),
-    ("POST /v1/license/activate",            "compute"),
-    ("POST /api/v1/benchmarks/compile",      "compute"),
-    ("POST /api/v1/gpc/compile",             "compute"),
-    ("POST /api/v1/x402/discovery/unlock",   "compute"),
+    ("POST /v1/exec", "compute"),
+    ("POST /api/v1/x402/exec/run", "compute"),
+    ("POST /v1/governance/v2/assess", "compute"),
+    ("POST /v1/agents/mint", "compute"),
+    ("POST /v1/license/issue", "compute"),
+    ("POST /v1/license/activate", "compute"),
+    ("POST /api/v1/benchmarks/compile", "compute"),
+    ("POST /api/v1/gpc/compile", "compute"),
+    ("POST /api/v1/x402/discovery/unlock", "compute"),
 ]
 
 # Prices per tier (USD string format consumed by PaymentOption)
 TIER_PRICES: dict[str, str] = {
-    "micro":   "$0.001",
-    "read":    "$0.005",
-    "action":  "$0.05",
+    "micro": "$0.001",
+    "read": "$0.005",
+    "action": "$0.05",
     "compute": "$0.50",
 }
 
 # Human-readable descriptions for each tier (used in RouteConfig.description)
 TIER_DESCRIPTIONS: dict[str, str] = {
-    "micro":   "Discovery / status read — M2M polling tier",
-    "read":    "Governed data read — integrity-proven response",
-    "action":  "State mutation — audited write operation",
+    "micro": "Discovery / status read — M2M polling tier",
+    "read": "Governed data read — integrity-proven response",
+    "action": "State mutation — audited write operation",
     "compute": "Agent execution / premium compute — full PGL proof",
 }
 
@@ -172,10 +189,10 @@ class X402PaymentConfig:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self.evm_address    = self._settings.veklom_evm_address
+        self.evm_address = self._settings.veklom_evm_address
         self.facilitator_url = self._settings.x402_facilitator_url
-        self.exec_price     = self._settings.x402_exec_price
-        self.mint_price     = self._settings.x402_mint_price
+        self.exec_price = self._settings.x402_exec_price
+        self.mint_price = self._settings.x402_mint_price
         self.enabled_networks = [
             n.strip() for n in self._settings.x402_networks.split(",") if n.strip()
         ]
@@ -184,6 +201,7 @@ class X402PaymentConfig:
     def is_configured(self) -> bool:
         """Check if x402 is properly configured with a real treasury wallet."""
         import sys
+
         if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
             return False
         return bool(self.evm_address and self.evm_address.startswith("0x"))
@@ -258,9 +276,7 @@ def create_protected_routes(config: X402PaymentConfig | None = None) -> dict[str
 
     # Pre-build payment option lists for each tier (one list reused across routes)
     tier_options: dict[str, list[PaymentOption]] = {
-        tier: _build_payment_options(
-            TIER_PRICES[tier], config.evm_address, config.enabled_networks
-        )
+        tier: _build_payment_options(TIER_PRICES[tier], config.evm_address, config.enabled_networks)
         for tier in TIER_PRICES
     }
 
@@ -359,6 +375,7 @@ def reset_x402_manager() -> None:
 # Freemium ASGI wrapper — 5 free trials per wallet via Redis
 # ---------------------------------------------------------------------------
 
+
 class X402FreemiumASGI:
     """Wraps PaymentMiddlewareASGI to provide 5 free trials per wallet via Redis.
 
@@ -390,6 +407,7 @@ class X402FreemiumASGI:
         if redis_url:
             try:
                 import redis as _redis
+
                 self.redis = _redis.Redis.from_url(redis_url, decode_responses=True)
             except Exception:
                 pass

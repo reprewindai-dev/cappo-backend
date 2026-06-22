@@ -53,12 +53,12 @@ import httpx
 # Config
 # ---------------------------------------------------------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL",    "llama3")
-OLLAMA_TIMEOUT  = int(os.getenv("OLLAMA_TIMEOUT", "120"))
-VEKLOM_API_URL  = os.getenv("VEKLOM_API_URL",  "https://veklom.com/api/v1")
-VEKLOM_API_KEY  = os.getenv("VEKLOM_API_KEY",  "")
-MAX_ITER        = int(os.getenv("AGENT_MAX_ITER", "10"))
-DEBUG           = os.getenv("AGENT_DEBUG", "0") == "1"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
+VEKLOM_API_URL = os.getenv("VEKLOM_API_URL", "https://veklom.com/api/v1")
+VEKLOM_API_KEY = os.getenv("VEKLOM_API_KEY", "")
+MAX_ITER = int(os.getenv("AGENT_MAX_ITER", "10"))
+DEBUG = os.getenv("AGENT_DEBUG", "0") == "1"
 
 
 def log(tag: str, msg: str):
@@ -70,6 +70,7 @@ def log(tag: str, msg: str):
 # BYOS Backend Tool Suite
 # All tools call real veklom-byos-backend endpoints
 # ---------------------------------------------------------------------------
+
 
 async def _get(path: str) -> dict:
     """Authenticated GET against BYOS backend."""
@@ -138,14 +139,17 @@ async def tool_run_workflow(
     Bills the tenant's Operating Reserve automatically.
     """
     txn_id = f"ollama-{secrets.token_hex(8)}"
-    return await _post("/workflows/execute", {
-        "transaction_id": txn_id,
-        "tenant_id": tenant_id,
-        "payload_intent": payload_intent,
-        "model": model,
-        "origin_x": origin_x,
-        "origin_y": origin_y,
-    })
+    return await _post(
+        "/workflows/execute",
+        {
+            "transaction_id": txn_id,
+            "tenant_id": tenant_id,
+            "payload_intent": payload_intent,
+            "model": model,
+            "origin_x": origin_x,
+            "origin_y": origin_y,
+        },
+    )
 
 
 async def tool_get_workflow_status(transaction_id: str) -> dict:
@@ -188,11 +192,14 @@ async def tool_get_node_status() -> dict:
 
 async def tool_route_to_node(origin_x: int, origin_y: int, payload: str) -> dict:
     """Route a payload to the optimal IronGrid node using coordinate physics."""
-    return await _post("/irongrid/route", {
-        "origin_x": origin_x,
-        "origin_y": origin_y,
-        "payload": payload,
-    })
+    return await _post(
+        "/irongrid/route",
+        {
+            "origin_x": origin_x,
+            "origin_y": origin_y,
+            "payload": payload,
+        },
+    )
 
 
 # --- Ollama local model management ---
@@ -217,21 +224,21 @@ async def tool_ollama_pull_model(model_name: str) -> dict:
 # Tool registry
 # ---------------------------------------------------------------------------
 TOOL_MAP: dict[str, Any] = {
-    "health":                tool_health,
-    "list_vendors":          tool_list_vendors,
-    "list_models":           tool_list_models,
-    "get_vendor":            tool_get_vendor,
-    "run_workflow":          tool_run_workflow,
-    "get_workflow_status":   tool_get_workflow_status,
-    "list_tenants":          tool_list_tenants,
-    "get_tenant":            tool_get_tenant,
-    "get_tenant_balance":    tool_get_tenant_balance,
-    "get_revenue_summary":   tool_get_revenue_summary,
-    "get_audit_log":         tool_get_audit_log,
-    "get_node_status":       tool_get_node_status,
-    "route_to_node":         tool_route_to_node,
-    "ollama_list_models":    tool_ollama_list_models,
-    "ollama_pull_model":     tool_ollama_pull_model,
+    "health": tool_health,
+    "list_vendors": tool_list_vendors,
+    "list_models": tool_list_models,
+    "get_vendor": tool_get_vendor,
+    "run_workflow": tool_run_workflow,
+    "get_workflow_status": tool_get_workflow_status,
+    "list_tenants": tool_list_tenants,
+    "get_tenant": tool_get_tenant,
+    "get_tenant_balance": tool_get_tenant_balance,
+    "get_revenue_summary": tool_get_revenue_summary,
+    "get_audit_log": tool_get_audit_log,
+    "get_node_status": tool_get_node_status,
+    "route_to_node": tool_route_to_node,
+    "ollama_list_models": tool_ollama_list_models,
+    "ollama_pull_model": tool_ollama_pull_model,
 }
 
 TOOL_SCHEMA_TEXT = """
@@ -326,7 +333,7 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": goal},
+        {"role": "user", "content": goal},
     ]
 
     final_answer = ""
@@ -374,7 +381,9 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
         log("ACT", f"{tool_name}({json.dumps(tool_args)[:120]})")
 
         if tool_name not in TOOL_MAP:
-            observation = {"error": f"Unknown tool '{tool_name}'. Valid tools: {list(TOOL_MAP.keys())}"}
+            observation = {
+                "error": f"Unknown tool '{tool_name}'. Valid tools: {list(TOOL_MAP.keys())}"
+            }
         else:
             try:
                 observation = await TOOL_MAP[tool_name](**tool_args)
@@ -395,14 +404,14 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
     log("AUDIT", f"SHA-256: {h}")
 
     return {
-        "session_id":  sid,
-        "goal":        goal,
-        "answer":      final_answer,
-        "iterations":  iterations_used,
-        "model":       OLLAMA_MODEL,
-        "audit_hash":  h,
-        "sovereign":   True,
-        "provider":    "ollama",
+        "session_id": sid,
+        "goal": goal,
+        "answer": final_answer,
+        "iterations": iterations_used,
+        "model": OLLAMA_MODEL,
+        "audit_hash": h,
+        "sovereign": True,
+        "provider": "ollama",
     }
 
 
@@ -412,9 +421,13 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
 if __name__ == "__main__":
     import sys
 
-    goal = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else (
-        "Check backend health, list all marketplace vendors and models, "
-        "get the platform revenue summary, and report the IronGrid node status."
+    goal = (
+        " ".join(sys.argv[1:])
+        if len(sys.argv) > 1
+        else (
+            "Check backend health, list all marketplace vendors and models, "
+            "get the platform revenue summary, and report the IronGrid node status."
+        )
     )
 
     result = asyncio.run(run_agent(goal))

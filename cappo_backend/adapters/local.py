@@ -138,9 +138,7 @@ class SQLiteGraphAdapter(GraphPort):
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def add_edge(
-        self, from_genome_hash: str, to_genome_hash: str, relationship_type: str
-    ) -> None:
+    def add_edge(self, from_genome_hash: str, to_genome_hash: str, relationship_type: str) -> None:
         record = GenomeLineage(
             from_genome_hash=from_genome_hash,
             to_genome_hash=to_genome_hash,

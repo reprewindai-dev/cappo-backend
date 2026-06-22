@@ -163,18 +163,14 @@ class Settings(BaseSettings):
                 "requires authentication)."
             )
         elif not self.api_key_set:
-            problems.append(
-                "API_KEYS must contain at least one key when AUTH_ENABLED is true."
-            )
+            problems.append("API_KEYS must contain at least one key when AUTH_ENABLED is true.")
 
         if problems:
             raise InsecureProductionConfigError(
-                "Refusing to start with insecure production configuration: "
-                + " ".join(problems)
+                "Refusing to start with insecure production configuration: " + " ".join(problems)
             )
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

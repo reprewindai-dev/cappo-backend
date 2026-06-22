@@ -65,12 +65,8 @@ def test_cache_key_is_deterministic_for_same_inputs():
 
 def test_cache_key_isolates_tenants_and_workspaces():
     base = {"prompt": "hi", "pgl_id": "test-user-id", "model": "m"}
-    assert cache_key({**base, "workspace_id": "w1"}) != cache_key(
-        {**base, "workspace_id": "w2"}
-    )
-    assert cache_key({**base, "tenant_id": "t1"}) != cache_key(
-        {**base, "tenant_id": "t2"}
-    )
+    assert cache_key({**base, "workspace_id": "w1"}) != cache_key({**base, "workspace_id": "w2"})
+    assert cache_key({**base, "tenant_id": "t1"}) != cache_key({**base, "tenant_id": "t2"})
 
 
 def test_cache_key_changes_with_prompt_and_params():
@@ -264,7 +260,10 @@ def test_build_executor_wraps_with_cache_when_enabled():
     assert isinstance(ex, CachingExecutor)
     out = ex.execute({"prompt": "hello", "pgl_id": "test-user-id", "workspace_id": "w"})
     assert out["cached"] is False
-    assert ex.execute({"prompt": "hello", "pgl_id": "test-user-id", "workspace_id": "w"})["cached"] is True
+    assert (
+        ex.execute({"prompt": "hello", "pgl_id": "test-user-id", "workspace_id": "w"})["cached"]
+        is True
+    )
 
 
 def test_build_executor_no_cache_by_default():
@@ -273,16 +272,12 @@ def test_build_executor_no_cache_by_default():
 
 
 def test_upstash_backend_requires_credentials():
-    settings = Settings(
-        executor_mode="echo", cache_enabled=True, cache_warm_backend="upstash"
-    )
+    settings = Settings(executor_mode="echo", cache_enabled=True, cache_warm_backend="upstash")
     with pytest.raises(ValueError):
         build_executor(settings)
 
 
 def test_redis_backend_requires_url():
-    settings = Settings(
-        executor_mode="echo", cache_enabled=True, cache_warm_backend="redis"
-    )
+    settings = Settings(executor_mode="echo", cache_enabled=True, cache_warm_backend="redis")
     with pytest.raises(ValueError):
         build_executor(settings)

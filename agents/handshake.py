@@ -39,27 +39,38 @@ import httpx
 # Config — override via env or CLI args
 # ---------------------------------------------------------------------------
 BASE_URL = os.getenv("VEKLOM_API_URL", "https://veklom.com").rstrip("/")
-API_V1   = f"{BASE_URL}/api/v1"
-TIMEOUT  = 15
+API_V1 = f"{BASE_URL}/api/v1"
+TIMEOUT = 15
 
 # Colors for terminal output
-GREEN  = "\033[92m"
-RED    = "\033[91m"
+GREEN = "\033[92m"
+RED = "\033[91m"
 YELLOW = "\033[93m"
-CYAN   = "\033[96m"
-BOLD   = "\033[1m"
-RESET  = "\033[0m"
+CYAN = "\033[96m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
 
 
-def ok(msg):   print(f"  {GREEN}✓{RESET}  {msg}")
-def fail(msg): print(f"  {RED}✗{RESET}  {msg}")
-def info(msg): print(f"  {CYAN}→{RESET}  {msg}")
-def warn(msg): print(f"  {YELLOW}!{RESET}  {msg}")
+def ok(msg):
+    print(f"  {GREEN}✓{RESET}  {msg}")
+
+
+def fail(msg):
+    print(f"  {RED}✗{RESET}  {msg}")
+
+
+def info(msg):
+    print(f"  {CYAN}→{RESET}  {msg}")
+
+
+def warn(msg):
+    print(f"  {YELLOW}!{RESET}  {msg}")
 
 
 # ---------------------------------------------------------------------------
 # Handshake steps
 # ---------------------------------------------------------------------------
+
 
 async def check_health(client: httpx.AsyncClient) -> bool:
     """Step 1 — Raw health ping."""
@@ -187,19 +198,19 @@ def load_env_agent():
 # Main handshake
 # ---------------------------------------------------------------------------
 
+
 async def run_handshake(email: str, password: str):
     print()
-    print(f"{BOLD}{CYAN}{'='*60}{RESET}")
+    print(f"{BOLD}{CYAN}{'=' * 60}{RESET}")
     print(f"{BOLD}{CYAN}  VEKLOM BACKEND HANDSHAKE{RESET}")
     print(f"{BOLD}{CYAN}  Source of Truth: {BASE_URL}{RESET}")
-    print(f"{BOLD}{CYAN}{'='*60}{RESET}")
+    print(f"{BOLD}{CYAN}{'=' * 60}{RESET}")
     print()
 
     passed = 0
     failed = 0
 
     async with httpx.AsyncClient() as client:
-
         # Step 1 — Health
         print(f"{BOLD}[1/6] Health Check{RESET}")
         if await check_health(client):
@@ -207,7 +218,9 @@ async def run_handshake(email: str, password: str):
         else:
             failed += 1
             print()
-            print(f"{RED}{BOLD}FATAL: Backend unreachable. Fix Coolify port forwarding first.{RESET}")
+            print(
+                f"{RED}{BOLD}FATAL: Backend unreachable. Fix Coolify port forwarding first.{RESET}"
+            )
             print(f"{YELLOW}  → Go to Coolify → your app → Network → set port 8088{RESET}")
             print()
             sys.exit(1)
@@ -258,9 +271,11 @@ async def run_handshake(email: str, password: str):
 
     # Summary
     print()
-    print(f"{BOLD}{CYAN}{'='*60}{RESET}")
-    print(f"{BOLD}  HANDSHAKE RESULT: {GREEN}{passed} passed{RESET}{BOLD} / {RED}{failed} failed{RESET}")
-    print(f"{BOLD}{CYAN}{'='*60}{RESET}")
+    print(f"{BOLD}{CYAN}{'=' * 60}{RESET}")
+    print(
+        f"{BOLD}  HANDSHAKE RESULT: {GREEN}{passed} passed{RESET}{BOLD} / {RED}{failed} failed{RESET}"
+    )
+    print(f"{BOLD}{CYAN}{'=' * 60}{RESET}")
     print()
 
     if failed == 0:
@@ -283,14 +298,18 @@ if __name__ == "__main__":
     load_env_agent()
 
     parser = argparse.ArgumentParser(description="Veklom Backend Handshake")
-    parser.add_argument("--email",    default=os.getenv("VEKLOM_AGENT_EMAIL", ""),    help="Login email")
-    parser.add_argument("--password", default=os.getenv("VEKLOM_AGENT_PASSWORD", ""), help="Login password")
-    parser.add_argument("--url",      default=os.getenv("VEKLOM_API_URL", ""),        help="Override backend URL")
+    parser.add_argument("--email", default=os.getenv("VEKLOM_AGENT_EMAIL", ""), help="Login email")
+    parser.add_argument(
+        "--password", default=os.getenv("VEKLOM_AGENT_PASSWORD", ""), help="Login password"
+    )
+    parser.add_argument(
+        "--url", default=os.getenv("VEKLOM_API_URL", ""), help="Override backend URL"
+    )
     args = parser.parse_args()
 
     if args.url:
         BASE_URL = args.url.rstrip("/")
-        API_V1   = f"{BASE_URL}/api/v1"
+        API_V1 = f"{BASE_URL}/api/v1"
 
     if not args.email or not args.password:
         print(f"{YELLOW}No credentials provided. Running unauthenticated health check only.{RESET}")

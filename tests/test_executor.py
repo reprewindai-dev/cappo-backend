@@ -34,7 +34,7 @@ def test_http_executor_success() -> None:
 
     with patch("httpx.Client.post", return_value=mock_response) as mock_post:
         result = executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})
-        
+
         # Verify result format
         assert result["response"] == "Hello! I am LLM."
         assert result["model"] == "llama3-8b-8192"
@@ -58,12 +58,12 @@ def test_http_executor_failure() -> None:
     with patch("httpx.Client.post", side_effect=Exception("Connection refused")):
         with pytest.raises(ExecutorUnavailableError, match="External provider call failed"):
             executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})
-            
+
         # Or if it returns an HTTP error status code:
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.raise_for_status.side_effect = Exception("Internal Server Error")
-        
+
     with patch("httpx.Client.post", return_value=mock_response):
         with pytest.raises(ExecutorUnavailableError, match="Internal Server Error"):
             executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})

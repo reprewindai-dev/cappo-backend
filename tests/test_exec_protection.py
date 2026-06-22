@@ -32,9 +32,7 @@ class TestGovernedExecPath:
         assert run is not None
         assert run.state == RunState.ATTESTED.value
 
-    def test_pgl_certificates_created_pre_and_post(
-        self, client: TestClient, db: Session
-    ) -> None:
+    def test_pgl_certificates_created_pre_and_post(self, client: TestClient, db: Session) -> None:
         client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         certs = db.query(PGLCertificate).all()
         # A pre-execution cert (commit) and a post-execution cert (attest).
@@ -51,9 +49,7 @@ class TestGovernedExecPath:
         assert post[0].output_hash is not None
         assert post[0].outcome_hash is not None
 
-    def test_ei_row_links_post_certificate(
-        self, client: TestClient, db: Session
-    ) -> None:
+    def test_ei_row_links_post_certificate(self, client: TestClient, db: Session) -> None:
         client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         ei = db.query(ExecutionIdentity).first()
         post = (
@@ -72,9 +68,7 @@ class TestGovernedExecPath:
 
     def test_audit_attestation_logged(self, client: TestClient, db: Session) -> None:
         client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
-        events = db.query(AuditEvent).filter(
-            AuditEvent.operation_type == "run_attested"
-        ).all()
+        events = db.query(AuditEvent).filter(AuditEvent.operation_type == "run_attested").all()
         assert len(events) == 1
 
     def test_ei_contains_run_id(self, client: TestClient, db: Session) -> None:
@@ -95,4 +89,6 @@ class TestNoBypass:
         # No ungoverned bypass path should exist.
         for bypass in ["/exec", "/v1/run", "/run", "/v1/execute"]:
             r = client.post(bypass, json={"prompt": "probe"})
-            assert r.status_code == 404, f"unexpected route {bypass} exists (status {r.status_code})"
+            assert r.status_code == 404, (
+                f"unexpected route {bypass} exists (status {r.status_code})"
+            )

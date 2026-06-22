@@ -99,7 +99,9 @@ def log_activity(event_type: str, data: dict):
     }
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
-    print(f"[{entry['timestamp']}] [{event_type}] {data.get('title', data.get('message', ''))[:80]}")
+    print(
+        f"[{entry['timestamp']}] [{event_type}] {data.get('title', data.get('message', ''))[:80]}"
+    )
 
 
 def already_published(topic_title: str) -> bool:
@@ -109,7 +111,10 @@ def already_published(topic_title: str) -> bool:
         for line in f:
             try:
                 entry = json.loads(line)
-                if entry.get("title") == topic_title and entry.get("event") in ["PUBLISHED_DEVTO", "SAVED_LOCAL"]:
+                if entry.get("title") == topic_title and entry.get("event") in [
+                    "PUBLISHED_DEVTO",
+                    "SAVED_LOCAL",
+                ]:
                     return True
             except json.JSONDecodeError:
                 continue
@@ -180,10 +185,18 @@ def publish_to_devto(topic: dict, content: str, dry_run: bool = False) -> str | 
     if response.status_code in (200, 201):
         data = response.json()
         url = data.get("url", "unknown")
-        log_activity("PUBLISHED_DEVTO", {"title": topic["title"], "url": url, "tags": topic["tags"]})
+        log_activity(
+            "PUBLISHED_DEVTO", {"title": topic["title"], "url": url, "tags": topic["tags"]}
+        )
         return url
     else:
-        log_activity("ERROR", {"title": topic["title"], "message": f"dev.to API error: {response.status_code} {response.text[:200]}"})
+        log_activity(
+            "ERROR",
+            {
+                "title": topic["title"],
+                "message": f"dev.to API error: {response.status_code} {response.text[:200]}",
+            },
+        )
         return None
 
 
@@ -205,7 +218,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Veklom Content Publishing Agent 041")
     parser.add_argument("--dry-run", action="store_true", help="Generate but don't publish")
-    parser.add_argument("--all", action="store_true", help="Generate all topics (ignores already-published check)")
+    parser.add_argument(
+        "--all", action="store_true", help="Generate all topics (ignores already-published check)"
+    )
     args = parser.parse_args()
 
     print(f"=== Veklom Agent 041 — Content Publisher === {datetime.now().isoformat()}")

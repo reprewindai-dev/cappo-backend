@@ -35,9 +35,7 @@ class FreeRunQuota(Base):
     workspace_id: Mapped[str] = mapped_column(String, primary_key=True)
     runs_used: Mapped[int] = mapped_column(Integer, default=0)
     quota_limit: Mapped[int] = mapped_column(Integer, default=FREE_RUN_LIMIT)
-    reset_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_tomorrow
-    )
+    reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_tomorrow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )

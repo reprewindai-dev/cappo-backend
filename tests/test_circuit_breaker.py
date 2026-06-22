@@ -194,9 +194,7 @@ def test_recovers_after_cooldown():
                 raise RuntimeError("down")
             return {"response": "ok", "provider": "flaky", "model": "f", "tokens": 1}
 
-    breaker = CircuitBreaker(
-        name="flaky", failure_threshold=1, recovery_timeout=5.0, time_fn=clock
-    )
+    breaker = CircuitBreaker(name="flaky", failure_threshold=1, recovery_timeout=5.0, time_fn=clock)
     ex = ResilientExecutor([Provider("flaky", Flaky(), breaker)])
 
     with pytest.raises(ExecutorUnavailableError):

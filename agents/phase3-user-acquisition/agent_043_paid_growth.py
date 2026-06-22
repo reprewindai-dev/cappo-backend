@@ -191,10 +191,13 @@ def save_all_assets(keywords: dict, ad_copy: dict, strategy: str):
         f.write(f"- Negatives: {len(keywords.get('negative_keywords', []))} keywords\n")
     print(f"Strategy saved: {strategy_file}")
 
-    log_activity("ASSETS_SAVED", {
-        "message": f"Saved {len(keywords.get('exact_match', []))} keywords, ad copy, strategy brief",
-        "files": [str(kw_file), str(copy_file), str(strategy_file)],
-    })
+    log_activity(
+        "ASSETS_SAVED",
+        {
+            "message": f"Saved {len(keywords.get('exact_match', []))} keywords, ad copy, strategy brief",
+            "files": [str(kw_file), str(copy_file), str(strategy_file)],
+        },
+    )
 
 
 if __name__ == "__main__":

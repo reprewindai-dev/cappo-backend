@@ -105,9 +105,7 @@ class OpenAICompatExecutor:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         try:
-            response = self._http().post(
-                "/chat/completions", json=payload, headers=headers
-            )
+            response = self._http().post("/chat/completions", json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPStatusError as exc:
@@ -174,9 +172,7 @@ def _maybe_wrap_cache(executor: Executor, settings: Settings) -> Executor:
     """Front the executor with the tiered completion cache when enabled."""
     if not settings.cache_enabled:
         return executor
-    hot = HotCache(
-        max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds
-    )
+    hot = HotCache(max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds)
     warm = _build_warm_cache(settings)
     return CachingExecutor(
         inner=executor,

@@ -44,9 +44,7 @@ async def get_stats(db: Session = Depends(get_session)):
 
     # Plans = unique request_payload hashes (approximated as unique prompts)
     plans_total: int = (
-        db.query(func.count(func.distinct(GovernedRun.workspace_id)))
-        .scalar()
-        or 0
+        db.query(func.count(func.distinct(GovernedRun.workspace_id))).scalar() or 0
     ) * max(1, total_runs // max(1, total_runs))  # best-effort: runs ≈ plans for now
 
     return {
@@ -91,7 +89,8 @@ async def compile_plan(request: Request, db: Session = Depends(get_session)):
             "type": "quantum",
             "description": (
                 f"Apply {', '.join(compliance)} compliance constraints"
-                if compliance else "Apply default governance constraints"
+                if compliance
+                else "Apply default governance constraints"
             ),
             "policy_tag": "compliance",
             "entropy": round(len(compliance) / 10, 4),
@@ -115,9 +114,9 @@ async def compile_plan(request: Request, db: Session = Depends(get_session)):
         "nodes": nodes,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    proof_hash = "0x" + hashlib.sha256(
-        json.dumps(plan_content, sort_keys=True).encode()
-    ).hexdigest()
+    proof_hash = (
+        "0x" + hashlib.sha256(json.dumps(plan_content, sort_keys=True).encode()).hexdigest()
+    )
 
     elapsed_ms = (time.monotonic() - start) * 1000
 

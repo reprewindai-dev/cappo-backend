@@ -40,7 +40,9 @@ class TestKillSwitch:
 class TestBudget:
     def test_budget_exhaustion_blocks_with_402(self, client: TestClient, db: Session) -> None:
         client.put("/v1/budget/default", json={"balance_cents": 10})
-        resp = client.post("/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id", "action_cost_cents": 50})
+        resp = client.post(
+            "/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id", "action_cost_cents": 50}
+        )
         assert resp.status_code == 402
         assert resp.json()["detail"]["reason"] == "budget_exhausted"
 
@@ -49,7 +51,12 @@ class TestBudget:
         # The EI must also be granted authority for the cost (gateway rule 6).
         resp = client.post(
             "/v1/exec",
-            json={"prompt": "hi", "pgl_id": "test-user-id", "action_cost_cents": 50, "budget_approved_cents": 50},
+            json={
+                "prompt": "hi",
+                "pgl_id": "test-user-id",
+                "action_cost_cents": 50,
+                "budget_approved_cents": 50,
+            },
         )
         assert resp.status_code == 200
 
@@ -58,6 +65,11 @@ class TestBudget:
         # carries matching authority so gateway rule 6 also passes.
         resp = client.post(
             "/v1/exec",
-            json={"prompt": "hi", "pgl_id": "test-user-id", "action_cost_cents": 9999, "budget_approved_cents": 9999},
+            json={
+                "prompt": "hi",
+                "pgl_id": "test-user-id",
+                "action_cost_cents": 9999,
+                "budget_approved_cents": 9999,
+            },
         )
         assert resp.status_code == 200

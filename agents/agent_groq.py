@@ -24,13 +24,14 @@ import os
 
 import httpx
 
-GROQ_API_KEY   = os.getenv("GROQ_API_KEY",  "")
-GROQ_MODEL     = os.getenv("GROQ_MODEL",    "llama-3.3-70b-versatile")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 VEKLOM_API_URL = os.getenv("VEKLOM_API_URL", "https://veklom.com/api/v1")
 VEKLOM_API_KEY = os.getenv("VEKLOM_API_KEY", "")
 MAX_ITERATIONS = int(os.getenv("AGENT_MAX_ITERATIONS", "10"))
 
-GROQ_BASE_URL  = "https://api.groq.com/openai/v1"  # OpenAI-compatible
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"  # OpenAI-compatible
+
 
 # ---------------------------------------------------------------------------
 # Tools — identical interface across all provider agents
@@ -40,24 +41,38 @@ async def tool_check_backend_health() -> dict:
         r = await http.get(f"{VEKLOM_API_URL}/health")
         return {"status": r.status_code, "body": r.text}
 
-async def tool_run_governed_workflow(transaction_id: str, tenant_id: str, payload_intent: str, origin_x: int = 0, origin_y: int = 0) -> dict:
+
+async def tool_run_governed_workflow(
+    transaction_id: str, tenant_id: str, payload_intent: str, origin_x: int = 0, origin_y: int = 0
+) -> dict:
     async with httpx.AsyncClient(timeout=30) as http:
         r = await http.post(
             f"{VEKLOM_API_URL}/workflows/execute",
             headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"},
-            json={"transaction_id": transaction_id, "tenant_id": tenant_id, "payload_intent": payload_intent, "origin_x": origin_x, "origin_y": origin_y},
+            json={
+                "transaction_id": transaction_id,
+                "tenant_id": tenant_id,
+                "payload_intent": payload_intent,
+                "origin_x": origin_x,
+                "origin_y": origin_y,
+            },
         )
         return {"status": r.status_code, "body": r.text}
 
+
 async def tool_list_vendors() -> dict:
     async with httpx.AsyncClient(timeout=10) as http:
-        r = await http.get(f"{VEKLOM_API_URL}/marketplace/vendors", headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"})
+        r = await http.get(
+            f"{VEKLOM_API_URL}/marketplace/vendors",
+            headers={"Authorization": f"Bearer {VEKLOM_API_KEY}"},
+        )
         return {"status": r.status_code, "vendors": r.text}
 
+
 TOOL_MAP = {
-    "check_backend_health":  tool_check_backend_health,
+    "check_backend_health": tool_check_backend_health,
     "run_governed_workflow": tool_run_governed_workflow,
-    "list_vendors":          tool_list_vendors,
+    "list_vendors": tool_list_vendors,
 }
 
 TOOL_SCHEMAS = [
@@ -143,18 +158,29 @@ async def run_agent(goal: str) -> str:
             fn_args = json.loads(tc["function"].get("arguments", "{}"))
             print(f"[GROQ AGENT] ACT → {fn_name}({fn_args})")
 
-            observation = await TOOL_MAP.get(fn_name, lambda **_: {"error": f"Unknown tool: {fn_name}"})(**fn_args) \
-                if fn_name in TOOL_MAP else {"error": f"Unknown tool: {fn_name}"}
+            observation = (
+                await TOOL_MAP.get(fn_name, lambda **_: {"error": f"Unknown tool: {fn_name}"})(
+                    **fn_args
+                )
+                if fn_name in TOOL_MAP
+                else {"error": f"Unknown tool: {fn_name}"}
+            )
 
             print(f"[GROQ AGENT] OBSERVE ← {json.dumps(observation)[:200]}")
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc["id"],
-                "content": json.dumps(observation),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": json.dumps(observation),
+                }
+            )
 
     return "[GROQ AGENT] Max iterations reached."
 
 
 if __name__ == "__main__":
-    asyncio.run(run_agent("Check the Veklom backend health, list all vendors, then execute a governed workflow for tenant 'enterprise-1' with intent 'Quarterly compliance audit automation'."))
+    asyncio.run(
+        run_agent(
+            "Check the Veklom backend health, list all vendors, then execute a governed workflow for tenant 'enterprise-1' with intent 'Quarterly compliance audit automation'."
+        )
+    )

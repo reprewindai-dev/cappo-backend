@@ -13,7 +13,7 @@ class TestDebug(unittest.TestCase):
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
         db = Session()
-        
+
         run = GovernedRun(
             workspace_id="default",
             tenant_id="default",
@@ -21,14 +21,15 @@ class TestDebug(unittest.TestCase):
         )
         db.add(run)
         db.flush()
-        
+
         run.v4_decision = {"directive": "ALLOW", "risk_tier": "standard"}
         db.flush()
-        
+
         print("--- type(run.v4_decision) ---", type(run.v4_decision))
         print("--- run.v4_decision ---", run.v4_decision)
-        
+
         db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

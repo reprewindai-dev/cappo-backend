@@ -69,17 +69,22 @@ class TestHashAndSignature:
 
 
 class TestMissingInputs:
-    @pytest.mark.parametrize("field", [
-        "pgl_pre_certificate_id",
-        "genome_hash",
-        "constitution_hash",
-        "plan_hash",
-        "directive",
-        "risk_tier",
-        "scope",
-        "issuer",
-    ])
-    def test_missing_required_field_raises(self, builder: ExecutionIdentityBuilder, field: str) -> None:
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "pgl_pre_certificate_id",
+            "genome_hash",
+            "constitution_hash",
+            "plan_hash",
+            "directive",
+            "risk_tier",
+            "scope",
+            "issuer",
+        ],
+    )
+    def test_missing_required_field_raises(
+        self, builder: ExecutionIdentityBuilder, field: str
+    ) -> None:
         inputs = _min_inputs()
         del inputs[field]
         with pytest.raises(MissingEIInputError, match=field):
@@ -89,10 +94,22 @@ class TestMissingInputs:
 class TestFieldPopulation:
     def test_all_ei_fields_present(self, builder: ExecutionIdentityBuilder) -> None:
         ei = builder.build(_min_inputs())
-        for field in ("execution_id", "pgl_pre_certificate_id", "genome_hash",
-                       "constitution_hash", "plan_hash", "directive", "risk_tier",
-                       "scope", "issuer", "issued_at", "expires_at", "ttl_seconds",
-                       "hash", "signature"):
+        for field in (
+            "execution_id",
+            "pgl_pre_certificate_id",
+            "genome_hash",
+            "constitution_hash",
+            "plan_hash",
+            "directive",
+            "risk_tier",
+            "scope",
+            "issuer",
+            "issued_at",
+            "expires_at",
+            "ttl_seconds",
+            "hash",
+            "signature",
+        ):
             assert field in ei, f"missing field: {field}"
 
     def test_custom_ttl(self, builder: ExecutionIdentityBuilder) -> None:

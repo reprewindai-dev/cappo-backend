@@ -49,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="CAPPO Runtime", version="0.1.0", lifespan=lifespan)
 
     from cappo_backend.services.x402_payment import X402FreemiumASGI, get_x402_manager
+
     x402_manager = get_x402_manager(settings)
     if x402_manager.is_enabled:
         app.add_middleware(
@@ -110,10 +111,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "verification_domain": "veklom-id.vercel.app",
             },
             "routes": [
-                {"route": "POST /execute", "price": "$0.020", "description": "Execute a governed agent run through LAW 0 policy gates.", "tags": ["cappo", "execute", "pgl", "governance", "veklom"]},
-                {"route": "GET /runs", "price": "$0.005", "description": "Query execution run history with evidence chain.", "tags": ["cappo", "runs", "audit", "veklom"]},
-                {"route": "POST /gpc/compile", "price": "$0.015", "description": "Compile intent into governed plan via GPC.", "tags": ["cappo", "gpc", "compile", "veklom"]},
-                {"route": "GET /benchmarks", "price": "$0.003", "description": "View API benchmark leaderboard and VABP scores.", "tags": ["cappo", "benchmarks", "vabp", "veklom"]},
+                {
+                    "route": "POST /execute",
+                    "price": "$0.020",
+                    "description": "Execute a governed agent run through LAW 0 policy gates.",
+                    "tags": ["cappo", "execute", "pgl", "governance", "veklom"],
+                },
+                {
+                    "route": "GET /runs",
+                    "price": "$0.005",
+                    "description": "Query execution run history with evidence chain.",
+                    "tags": ["cappo", "runs", "audit", "veklom"],
+                },
+                {
+                    "route": "POST /gpc/compile",
+                    "price": "$0.015",
+                    "description": "Compile intent into governed plan via GPC.",
+                    "tags": ["cappo", "gpc", "compile", "veklom"],
+                },
+                {
+                    "route": "GET /benchmarks",
+                    "price": "$0.003",
+                    "description": "View API benchmark leaderboard and VABP scores.",
+                    "tags": ["cappo", "benchmarks", "vabp", "veklom"],
+                },
             ],
             "discovery": {
                 "bazaar": "https://bazaar.cdp.coinbase.com",
@@ -124,56 +145,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     import re
 
     from fastapi.openapi.utils import get_openapi
-    
+
     def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
-            
+
         openapi_schema = get_openapi(
             title="CAPPO Runtime",
             version="0.1.0",
             description="CAPPO Execution Engine with X402 Monetization",
             routes=app.routes,
         )
-        
+
         if x402_manager.is_enabled:
             for route_key, route_config in x402_manager.routes.items():
                 try:
                     method, path = route_key.split(" ", 1)
                     method = method.lower()
-                    openapi_path = re.sub(r':([a-zA-Z0-9_]+)', r'{\1}', path)
-                    
+                    openapi_path = re.sub(r":([a-zA-Z0-9_]+)", r"{\1}", path)
+
                     if openapi_path in openapi_schema.get("paths", {}):
                         if method in openapi_schema["paths"][openapi_path]:
                             operation = openapi_schema["paths"][openapi_path][method]
-                            
+
                             if "responses" not in operation:
                                 operation["responses"] = {}
                             operation["responses"]["402"] = {
                                 "description": "Payment Required via X402 Protocol"
                             }
-                            
+
                             if "parameters" not in operation:
                                 operation["parameters"] = []
-                            operation["parameters"].append({
-                                "name": "X-Wallet-Address",
-                                "in": "header",
-                                "required": False,
-                                "schema": {"type": "string"},
-                                "description": "EVM Wallet Address for Freemium Rate Limiting"
-                            })
-                            
+                            operation["parameters"].append(
+                                {
+                                    "name": "X-Wallet-Address",
+                                    "in": "header",
+                                    "required": False,
+                                    "schema": {"type": "string"},
+                                    "description": "EVM Wallet Address for Freemium Rate Limiting",
+                                }
+                            )
+
                             if route_config.accepts:
                                 price = route_config.accepts[0].price
                                 pay_to = route_config.accepts[0].pay_to
                                 operation["x-402-payment"] = {
                                     "price": price,
                                     "pay_to": pay_to,
-                                    "description": route_config.description
+                                    "description": route_config.description,
                                 }
                 except Exception:
                     continue
-                    
+
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 

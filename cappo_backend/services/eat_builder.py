@@ -29,6 +29,7 @@ from cappo_backend.services.canonical import sha256_json
 # Signer protocol (identical contract to ei_builder.Signer)
 # ---------------------------------------------------------------------------
 
+
 class Signer(Protocol):
     def sign(self, payload: Any) -> str: ...
     def verify(self, payload: Any, signature: str) -> bool: ...
@@ -37,6 +38,7 @@ class Signer(Protocol):
 # ---------------------------------------------------------------------------
 # Validation error
 # ---------------------------------------------------------------------------
+
 
 class MissingEATInputError(ValueError):
     """Raised when an EAT input is missing, empty, or out of policy."""
@@ -52,6 +54,7 @@ MAX_TTL_SECONDS: int = 600
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class EATBuilder:
@@ -119,10 +122,12 @@ class EATBuilder:
                 "genome_hash": execution_identity["genome_hash"],
                 "constitution_hash": execution_identity["constitution_hash"],
                 "plan_hash": execution_identity["plan_hash"],
-                "governance_decision_hash": sha256_json({
-                    "directive": execution_identity["directive"],
-                    "risk_tier": execution_identity["risk_tier"],
-                }),
+                "governance_decision_hash": sha256_json(
+                    {
+                        "directive": execution_identity["directive"],
+                        "risk_tier": execution_identity["risk_tier"],
+                    }
+                ),
             },
             "temporal": {
                 "issued_at": _iso(issued_at),
@@ -153,24 +158,17 @@ class EATBuilder:
         if execution_identity is None:
             raise MissingEATInputError("execution_identity must not be None")
         if not execution_identity.get("execution_id"):
-            raise MissingEATInputError(
-                "execution_identity must contain a non-empty 'execution_id'"
-            )
+            raise MissingEATInputError("execution_identity must contain a non-empty 'execution_id'")
         if not agent_id:
             raise MissingEATInputError("agent_id must not be empty")
         if trust_score <= 40:
-            raise MissingEATInputError(
-                f"trust_score must be > 40, got {trust_score}"
-            )
+            raise MissingEATInputError(f"trust_score must be > 40, got {trust_score}")
         if risk_tier == "terminated":
-            raise MissingEATInputError(
-                "risk_tier must not be 'terminated'"
-            )
+            raise MissingEATInputError("risk_tier must not be 'terminated'")
         effective_ttl = ttl_seconds or self.default_ttl_seconds
         if not (1 <= effective_ttl <= self.max_ttl_seconds):
             raise MissingEATInputError(
-                f"ttl_seconds must be between 1 and {self.max_ttl_seconds}, "
-                f"got {effective_ttl}"
+                f"ttl_seconds must be between 1 and {self.max_ttl_seconds}, got {effective_ttl}"
             )
 
 
@@ -189,6 +187,7 @@ def eat_canonical_body(eat: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _iso(value: Any) -> str:
     if isinstance(value, datetime):

@@ -28,6 +28,7 @@ from cappo_backend.services.eat_builder import eat_canonical_body
 # Exception
 # ---------------------------------------------------------------------------
 
+
 class EATVerificationError(Exception):
     """One or more of the ten EAT verification rules failed.
 
@@ -45,6 +46,7 @@ class EATVerificationError(Exception):
 # ---------------------------------------------------------------------------
 # Gateway
 # ---------------------------------------------------------------------------
+
 
 class EdgeGateway:
     """Enforcement boundary for Execution Authorization Tokens."""
@@ -158,9 +160,7 @@ class EdgeGateway:
         auth = eat.get("authorization") or {}
         directive = auth.get("directive")
         if directive not in ("ALLOW", "ALLOW_WITH_AUDIT"):
-            self._reject(
-                f"directive {directive!r} does not permit execution", "V5"
-            )
+            self._reject(f"directive {directive!r} does not permit execution", "V5")
 
     def _v6_scope(self, eat: dict[str, Any], action: str) -> None:
         """V6 — action must be covered by authorization.scope.tools."""

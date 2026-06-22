@@ -66,10 +66,7 @@ class GenomeService:
     @staticmethod
     def compute_leaf_hashes(layers: dict[str, Any]) -> dict[str, str]:
         """Compute SHA-256 leaf hashes for each of the five config layers."""
-        return {
-            f"{name}_hash": sha256_json(layers[name])
-            for name in _LAYER_NAMES
-        }
+        return {f"{name}_hash": sha256_json(layers[name]) for name in _LAYER_NAMES}
 
     @classmethod
     def compute_merkle_root(cls, leaf_hashes: list[str]) -> str:
@@ -168,10 +165,13 @@ class GenomeService:
             self._cache.set(f"genome:{merkle_root}", genome_record, ttl_seconds=300)
 
         # Lifecycle event
-        self._queue.publish("genome.registered", {
-            "genome_hash": merkle_root,
-            "parent_genome_hash": parent_genome_hash,
-        })
+        self._queue.publish(
+            "genome.registered",
+            {
+                "genome_hash": merkle_root,
+                "parent_genome_hash": parent_genome_hash,
+            },
+        )
 
         birth_cert = self.mint_birth_certificate(merkle_root)
 
@@ -208,12 +208,14 @@ class GenomeService:
             val_a = genome_a.get(layer)
             val_b = genome_b.get(layer)
             if canonical_json(val_a) != canonical_json(val_b):
-                patches.append({
-                    "op": "replace",
-                    "path": f"/{layer}",
-                    "old_value": val_a,
-                    "value": val_b,
-                })
+                patches.append(
+                    {
+                        "op": "replace",
+                        "path": f"/{layer}",
+                        "old_value": val_a,
+                        "value": val_b,
+                    }
+                )
         return patches
 
     def get_lineage(self, genome_hash: str) -> dict[str, Any]:
@@ -242,9 +244,7 @@ class GenomeService:
         return {
             "genome_hash": record["genome_hash"],
             "layers": {name: record[name] for name in _LAYER_NAMES},
-            "leaf_hashes": {
-                f"{name}_hash": record[f"{name}_hash"] for name in _LAYER_NAMES
-            },
+            "leaf_hashes": {f"{name}_hash": record[f"{name}_hash"] for name in _LAYER_NAMES},
             "merkle_proof": record["merkle_proof"],
             "created_at": record.get("created_at"),
         }

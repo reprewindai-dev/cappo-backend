@@ -39,6 +39,7 @@ MAX_ITERATIONS = int(os.getenv("AGENT_MAX_ITERATIONS", "10"))
 
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
+
 # ---------------------------------------------------------------------------
 # Tool registry  — add new tools here; each is a plain async function
 # ---------------------------------------------------------------------------

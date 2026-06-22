@@ -46,8 +46,7 @@ async def main():
         from agents.agent_huggingface import run_agent
     else:
         raise ValueError(
-            f"Unknown provider '{PROVIDER}'. "
-            "Choose: ollama (default) | groq | openai | huggingface"
+            f"Unknown provider '{PROVIDER}'. Choose: ollama (default) | groq | openai | huggingface"
         )
 
     result = await run_agent(GOAL)

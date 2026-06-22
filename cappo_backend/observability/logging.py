@@ -15,9 +15,7 @@ import json
 import logging
 
 # Standard ``LogRecord`` attributes we do not want to duplicate inside "extra".
-_RESERVED = frozenset(
-    vars(logging.makeLogRecord({})).keys()
-) | {"message", "asctime", "taskName"}
+_RESERVED = frozenset(vars(logging.makeLogRecord({})).keys()) | {"message", "asctime", "taskName"}
 
 
 class JsonLogFormatter(logging.Formatter):

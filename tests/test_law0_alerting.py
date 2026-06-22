@@ -41,9 +41,7 @@ class TestAlertingHook:
     def test_law0_violation_fires_alert(self, db: Session) -> None:
         sink = RecordingSink()
         audit = AuditService(db, alert_sink=sink)
-        audit.record_law0_violation(
-            "bad identity", workspace_id="ws1", run_id="run1"
-        )
+        audit.record_law0_violation("bad identity", workspace_id="ws1", run_id="run1")
 
         assert len(sink.calls) == 1
         call = sink.calls[0]
@@ -51,9 +49,9 @@ class TestAlertingHook:
         assert call["payload"]["detail"] == "bad identity"
         assert call["workspace_id"] == "ws1"
         # The audit row is still persisted (fail-loud), not replaced by the alert.
-        assert db.query(AuditEvent).filter(
-            AuditEvent.operation_type == "law0_violation"
-        ).count() == 1
+        assert (
+            db.query(AuditEvent).filter(AuditEvent.operation_type == "law0_violation").count() == 1
+        )
 
     def test_non_law0_event_does_not_alert(self, db: Session) -> None:
         sink = RecordingSink()

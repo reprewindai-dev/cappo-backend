@@ -190,7 +190,10 @@ class AnomalyDetectionService:
         if unseen:
             detected.append(self._make(agent_id, "new_capability_access", 3.0))
 
-        if baseline.typical_time_windows and metric.time_of_day not in baseline.typical_time_windows:
+        if (
+            baseline.typical_time_windows
+            and metric.time_of_day not in baseline.typical_time_windows
+        ):
             detected.append(self._make(agent_id, "off_hours_activity", 2.5))
 
         self._anomalies.extend(detected)
@@ -273,8 +276,7 @@ class RequestQuarantineService:
             quarantine_id=str(uuid.uuid4()),
             original_request=request,
             original_timestamp=_now(),
-            quarantine_reason="Anomalies detected: "
-            + ", ".join(a.anomaly_type for a in anomalies),
+            quarantine_reason="Anomalies detected: " + ", ".join(a.anomaly_type for a in anomalies),
             anomalies_detected=list(anomalies),
             approval_required=any(a.severity in ("high", "critical") for a in anomalies),
             approvers_required=self._approvers_required,

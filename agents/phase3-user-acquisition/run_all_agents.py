@@ -7,7 +7,7 @@ Designed to be run as a single always-on process via Coolify or cron.
 
 Schedule:
   - Agent 040 (SEO):          Every Monday 8am UTC
-  - Agent 041 (Content):      Every Monday 9am UTC  
+  - Agent 041 (Content):      Every Monday 9am UTC
   - Agent 042 (Community):    Every 6 hours (4x daily)
   - Agent 043 (Paid Growth):  Every 2 weeks Monday 10am UTC
   - Agent 044 (Product Hunt): Once (run manually when ready to launch)
@@ -93,9 +93,9 @@ def run_agent(agent_id: str, dry_run: bool = False) -> bool:
     if dry_run:
         cmd.append("--dry-run")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Running Agent {agent_id} — {agent['name']}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     result = subprocess.run(cmd, cwd=str(AGENT_DIR))
     success = result.returncode == 0
@@ -113,9 +113,9 @@ def run_agent(agent_id: str, dry_run: bool = False) -> bool:
 
 def show_status():
     status = load_status()
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Veklom Phase 3 Agent Status")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for agent_id, agent in AGENTS.items():
         agent_status = status.get(agent_id, {})
         last_run = agent_status.get("last_run", "Never")
@@ -156,12 +156,15 @@ def run_scheduler():
     while True:
         schedule.run_pending()
         import time
+
         time.sleep(60)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Veklom Phase 3 Agent Scheduler")
-    parser.add_argument("--now", metavar="AGENT_ID", help="Run specific agent immediately (e.g. 042)")
+    parser.add_argument(
+        "--now", metavar="AGENT_ID", help="Run specific agent immediately (e.g. 042)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Dry run mode for all agents")
     parser.add_argument("--status", action="store_true", help="Show agent status and exit")
     parser.add_argument("--all-now", action="store_true", help="Run all agents immediately")

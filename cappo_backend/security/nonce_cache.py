@@ -24,6 +24,7 @@ from typing import Protocol, runtime_checkable
 # Backend protocol
 # ---------------------------------------------------------------------------
 
+
 @runtime_checkable
 class NonceBackend(Protocol):
     """Abstract nonce store for replay detection.
@@ -38,6 +39,7 @@ class NonceBackend(Protocol):
 # ---------------------------------------------------------------------------
 # In-memory implementation
 # ---------------------------------------------------------------------------
+
 
 class InMemoryNonceCache:
     """Thread-safe, TTL-aware in-memory nonce cache.

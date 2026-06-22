@@ -96,9 +96,7 @@ class TestVerifyEndpoint:
         assert resp.status_code == 200
         assert resp.json()["valid"] is True
 
-    def test_verify_endpoint_detects_tamper(
-        self, client: TestClient, db: Session
-    ) -> None:
+    def test_verify_endpoint_detects_tamper(self, client: TestClient, db: Session) -> None:
         client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         ev = db.query(AuditEvent).first()
         assert ev is not None

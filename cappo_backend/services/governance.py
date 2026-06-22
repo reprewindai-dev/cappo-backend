@@ -23,9 +23,7 @@ from cappo_backend.services.canonical import sha256_json
 
 Effect = Literal["allow", "deny"]
 ConflictSeverity = Literal["low", "medium", "high", "critical"]
-ResolutionMethod = Literal[
-    "system-wins", "owner-wins", "most-restrictive", "union", "intersection"
-]
+ResolutionMethod = Literal["system-wins", "owner-wins", "most-restrictive", "union", "intersection"]
 
 
 def _now() -> datetime:
@@ -248,7 +246,9 @@ class TemporalPolicyResolver:
     ) -> list[TimeWindow]:
         """Convenience: stricter trust required outside business hours."""
         return [
-            TimeWindow("off-hours", end, start, trust_required=off_hours_trust, requires_approval=True),
+            TimeWindow(
+                "off-hours", end, start, trust_required=off_hours_trust, requires_approval=True
+            ),
         ]
 
 
@@ -294,9 +294,7 @@ class DelegationChainTracker:
 
         depth = len(chain) + 1
         if depth > self._max_depth:
-            raise DelegationError(
-                f"delegation depth {depth} exceeds max {self._max_depth}"
-            )
+            raise DelegationError(f"delegation depth {depth} exceeds max {self._max_depth}")
 
         prev_multiplier = chain[-1].trust_multiplier if chain else 1.0
         prev_evidence = chain[-1].evidence_chain if chain else ()

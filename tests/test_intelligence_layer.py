@@ -102,7 +102,9 @@ def test_anomaly_correlation_outside_window_excluded() -> None:
     svc = AnomalyCorrelationService(window_seconds=60, correlation_threshold=2)
     base = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
     svc.record(AnomalySignal("a1", "request_spike", "low", detected_at=base))
-    svc.record(AnomalySignal("a1", "failure_spike", "low", detected_at=base - timedelta(seconds=600)))
+    svc.record(
+        AnomalySignal("a1", "failure_spike", "low", detected_at=base - timedelta(seconds=600))
+    )
     analysis = svc.correlate("a1", at=base)
     assert analysis.signal_count == 1
     assert analysis.correlated is False

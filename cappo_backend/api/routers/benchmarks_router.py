@@ -46,13 +46,10 @@ _PROVIDER_SEED = {
             "description": "Call OpenAI GPT-4o model",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "prompt": {"type": "string"},
-                    "temperature": {"type": "number"}
-                },
-                "required": ["prompt"]
-            }
-        }
+                "properties": {"prompt": {"type": "string"}, "temperature": {"type": "number"}},
+                "required": ["prompt"],
+            },
+        },
     },
     "gemini": {
         "name": "Gemini 2.5 Flash",
@@ -78,12 +75,10 @@ _PROVIDER_SEED = {
             "description": "Call Google Gemini 2.5 Flash model",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "contents": {"type": "string"}
-                },
-                "required": ["contents"]
-            }
-        }
+                "properties": {"contents": {"type": "string"}},
+                "required": ["contents"],
+            },
+        },
     },
     "anthropic": {
         "name": "Claude 3.5 Sonnet",
@@ -109,12 +104,10 @@ _PROVIDER_SEED = {
             "description": "Call Anthropic Claude 3.5 Sonnet model",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "messages": {"type": "array", "items": {"type": "object"}}
-                },
-                "required": ["messages"]
-            }
-        }
+                "properties": {"messages": {"type": "array", "items": {"type": "object"}}},
+                "required": ["messages"],
+            },
+        },
     },
     "groq": {
         "name": "Llama 3 70B (Groq)",
@@ -140,12 +133,10 @@ _PROVIDER_SEED = {
             "description": "Call Groq Llama 3 70B model",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "prompt": {"type": "string"}
-                },
-                "required": ["prompt"]
-            }
-        }
+                "properties": {"prompt": {"type": "string"}},
+                "required": ["prompt"],
+            },
+        },
     },
     "ollama": {
         "name": "Local Ollama",
@@ -171,14 +162,11 @@ _PROVIDER_SEED = {
             "description": "Call local Ollama instance",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "model": {"type": "string"},
-                    "prompt": {"type": "string"}
-                },
-                "required": ["model", "prompt"]
-            }
-        }
-    }
+                "properties": {"model": {"type": "string"}, "prompt": {"type": "string"}},
+                "required": ["model", "prompt"],
+            },
+        },
+    },
 }
 
 
@@ -193,16 +181,11 @@ async def get_leaderboard(db: Session = Depends(get_session)):
             GovernedRun.result_payload,
             func.count(GovernedRun.run_id).label("run_count"),
             func.avg(
-                cast(
-                    func.json_extract(GovernedRun.result_payload, "$.latency_ms"),
-                    Float
-                )
+                cast(func.json_extract(GovernedRun.result_payload, "$.latency_ms"), Float)
             ).label("avg_latency"),
         )
         .filter(GovernedRun.result_payload.isnot(None))
-        .group_by(
-            func.json_extract(GovernedRun.result_payload, "$.provider")
-        )
+        .group_by(func.json_extract(GovernedRun.result_payload, "$.provider"))
         .all()
     )
 
@@ -213,46 +196,51 @@ async def get_leaderboard(db: Session = Depends(get_session)):
         provider_key = row.result_payload.get("provider", "unknown")
         run_count = row.run_count or 0
         avg_lat = float(row.avg_latency or 0)
-        seed = _PROVIDER_SEED.get(provider_key, {
-            "name": provider_key.title(),
-            "provider": provider_key.title(),
-            "category": "Reasoning Model",
-            "p50": 100.0,
-            "p95": 125.0,
-            "p99": 140.0,
-            "sla": 0.999,
-            "drift": 0.01,
-            "sovereignTier": 2,
-            "complianceLabels": ["TLS 1.3"],
-            "govScore": 85,
-            "devScore": 85,
-            "endpointUrl": None,
-            "description": None,
-            "throughput": 20.0,
-            "uptime24h": 99.9,
-            "totalStaked": 10000,
-            "status": "Healthy",
-            "mcpSchema": None,
-        })
+        seed = _PROVIDER_SEED.get(
+            provider_key,
+            {
+                "name": provider_key.title(),
+                "provider": provider_key.title(),
+                "category": "Reasoning Model",
+                "p50": 100.0,
+                "p95": 125.0,
+                "p99": 140.0,
+                "sla": 0.999,
+                "drift": 0.01,
+                "sovereignTier": 2,
+                "complianceLabels": ["TLS 1.3"],
+                "govScore": 85,
+                "devScore": 85,
+                "endpointUrl": None,
+                "description": None,
+                "throughput": 20.0,
+                "uptime24h": 99.9,
+                "totalStaked": 10000,
+                "status": "Healthy",
+                "mcpSchema": None,
+            },
+        )
 
         error_run_count = (
             db.query(func.count(GovernedRun.run_id))
             .filter(
                 GovernedRun.state.in_(["failed", "error", "law0_violation"]),
-                func.json_extract(GovernedRun.result_payload, "$.provider") == provider_key
+                func.json_extract(GovernedRun.result_payload, "$.provider") == provider_key,
             )
             .scalar()
             or 0
         )
         error_rate = (error_run_count / run_count) if run_count > 0 else 0
         latency_penalty = min(50, int(avg_lat / 10))
-        trust_score_pct = (1 - error_rate)
+        trust_score_pct = 1 - error_rate
         gov_score = max(0, int(seed["govScore"] * trust_score_pct))
         dev_score = max(0, int(seed["devScore"] * trust_score_pct - latency_penalty))
-        
+
         sla_val = round(1 - error_rate, 4)
         uptime = round(sla_val * 100, 2)
-        status_str = "Excellent" if error_rate < 0.01 else "Healthy" if error_rate < 0.05 else "Degraded"
+        status_str = (
+            "Excellent" if error_rate < 0.01 else "Healthy" if error_rate < 0.05 else "Degraded"
+        )
 
         real_providers[provider_key] = {
             "id": provider_key,
@@ -382,7 +370,7 @@ async def get_markets(db: Session = Depends(get_session)):
             "targetApi": "GPT-4o",
             "resolved": False,
             "outcome": None,
-        }
+        },
     ]
 
     return markets
@@ -394,19 +382,14 @@ async def get_logs(db: Session = Depends(get_session)):
 
     Returns a flat JSON array of ProbeLog objects directly, matching Next.js SWR.
     """
-    recent_events_raw = (
-        db.query(AuditEvent)
-        .order_by(desc(AuditEvent.created_at))
-        .limit(10)
-        .all()
-    )
+    recent_events_raw = db.query(AuditEvent).order_by(desc(AuditEvent.created_at)).limit(10).all()
 
     logs = []
     for e in recent_events_raw:
         # Determine source, type and severity
         op = (e.operation_type or "").upper()
         source = "AGENT" if "RUN" in op else "ENCLAVE"
-        
+
         if "VIOLATION" in op or "FAIL" in op:
             log_type = "warning"
         elif "ALLOW" in op or "VERIFY" in op or "MINT" in op:
@@ -414,23 +397,57 @@ async def get_logs(db: Session = Depends(get_session)):
         else:
             log_type = "info"
 
-        logs.append({
-            "id": e.log_id,
-            "timestamp": e.created_at.strftime("%H:%M:%S") if e.created_at else datetime.now(timezone.utc).strftime("%H:%M:%S"),
-            "source": source,
-            "type": log_type,
-            "message": f"Audit {e.operation_type} recorded under block hash {e.log_hash[:16]}...",
-        })
+        logs.append(
+            {
+                "id": e.log_id,
+                "timestamp": e.created_at.strftime("%H:%M:%S")
+                if e.created_at
+                else datetime.now(timezone.utc).strftime("%H:%M:%S"),
+                "source": source,
+                "type": log_type,
+                "message": f"Audit {e.operation_type} recorded under block hash {e.log_hash[:16]}...",
+            }
+        )
 
     # If no logs exist, return high-quality seed consensus logging telemetry
     if not logs:
         now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
         logs = [
-            {"id": "log_1", "timestamp": now_str, "source": "PROBE", "type": "success", "message": "Synthesized probe request sent to Gemini 2.5 Flash: Success (85.2ms)"},
-            {"id": "log_2", "timestamp": now_str, "source": "AUDITOR", "type": "info", "message": "Re-verifying PGL hash chains... Integrity confirmed (block 140228)"},
-            {"id": "log_3", "timestamp": now_str, "source": "ORACLE", "type": "success", "message": "SLA performance indices validated for Claude 3.5 Sonnet"},
-            {"id": "log_4", "timestamp": now_str, "source": "PROBE", "type": "success", "message": "Stateless x402 payment validated for GPT-4o execution context"},
-            {"id": "log_5", "timestamp": now_str, "source": "ENCLAVE", "type": "info", "message": "Muted execution identity check passed for Local Ollama"},
+            {
+                "id": "log_1",
+                "timestamp": now_str,
+                "source": "PROBE",
+                "type": "success",
+                "message": "Synthesized probe request sent to Gemini 2.5 Flash: Success (85.2ms)",
+            },
+            {
+                "id": "log_2",
+                "timestamp": now_str,
+                "source": "AUDITOR",
+                "type": "info",
+                "message": "Re-verifying PGL hash chains... Integrity confirmed (block 140228)",
+            },
+            {
+                "id": "log_3",
+                "timestamp": now_str,
+                "source": "ORACLE",
+                "type": "success",
+                "message": "SLA performance indices validated for Claude 3.5 Sonnet",
+            },
+            {
+                "id": "log_4",
+                "timestamp": now_str,
+                "source": "PROBE",
+                "type": "success",
+                "message": "Stateless x402 payment validated for GPT-4o execution context",
+            },
+            {
+                "id": "log_5",
+                "timestamp": now_str,
+                "source": "ENCLAVE",
+                "type": "info",
+                "message": "Muted execution identity check passed for Local Ollama",
+            },
         ]
 
     return logs
@@ -450,7 +467,7 @@ async def compile_plan(body: CompileRequest, db: Session = Depends(get_session))
     """
     api_name = body.apiName or "Synthetic API"
     cat = body.category or "General Reasoning"
-    
+
     mcp_tool_def = {
         "name": f"{api_name.lower().replace(' ', '_')}_query",
         "description": f"Trigger query against the {api_name} endpoint",
@@ -458,12 +475,12 @@ async def compile_plan(body: CompileRequest, db: Session = Depends(get_session))
             "type": "object",
             "properties": {
                 "query": {"type": "string"},
-                "max_tokens": {"type": "integer", "default": 256}
+                "max_tokens": {"type": "integer", "default": 256},
             },
-            "required": ["query"]
-        }
+            "required": ["query"],
+        },
     }
-    
+
     return {
         "apiName": api_name,
         "category": cat,
@@ -476,6 +493,6 @@ async def compile_plan(body: CompileRequest, db: Session = Depends(get_session))
             "driftScore": round(0.005 + (len(body.codeText) % 100) / 10000.0, 4),
             "uniquenessFactor": round(0.80 + (len(body.codeText) % 20) / 100.0, 2),
             "comprehensionScore": min(100, 80 + (len(body.codeText) % 21)),
-            "aiFeedback": f"Successfully compiled {api_name} documentation into a unified MCP API schema with zero schema validation errors."
-        }
+            "aiFeedback": f"Successfully compiled {api_name} documentation into a unified MCP API schema with zero schema validation errors.",
+        },
     }

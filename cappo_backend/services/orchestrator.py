@@ -115,7 +115,13 @@ class RunOrchestrator:
         # register a real genome and derive genome_hash from the Merkle root.
         genome_hash = request.get("genome_hash")
         if self._genome_service is not None and not genome_hash:
-            layer_keys = {"model_layer", "prompt_layer", "policy_layer", "watchtower_layer", "task_profile"}
+            layer_keys = {
+                "model_layer",
+                "prompt_layer",
+                "policy_layer",
+                "watchtower_layer",
+                "task_profile",
+            }
             if layer_keys.issubset(request.keys()):
                 result = self._genome_service.register_genome(
                     model_layer=request["model_layer"],
@@ -136,7 +142,8 @@ class RunOrchestrator:
             request_payload=request,
             hashes={
                 "genome_hash": genome_hash or sha256_json(request),
-                "constitution_hash": request.get("constitution_hash") or sha256_json({"version": "1"}),
+                "constitution_hash": request.get("constitution_hash")
+                or sha256_json({"version": "1"}),
                 "plan_hash": request.get("plan_hash") or sha256_json(request.get("prompt", "")),
             },
             scope=request.get("scope") or {"tools": ["llm.exec"]},
@@ -171,7 +178,9 @@ class RunOrchestrator:
             run_id=run.run_id,
             workspace_id=run.workspace_id,
             actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
-            agent_id=run.request_payload.get("agent", {}).get("id") if run.request_payload else None,
+            agent_id=run.request_payload.get("agent", {}).get("id")
+            if run.request_payload
+            else None,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
@@ -324,7 +333,9 @@ class RunOrchestrator:
             run_id=run.run_id,
             workspace_id=run.workspace_id,
             actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
-            agent_id=run.request_payload.get("agent", {}).get("id") if run.request_payload else None,
+            agent_id=run.request_payload.get("agent", {}).get("id")
+            if run.request_payload
+            else None,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),

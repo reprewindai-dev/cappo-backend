@@ -69,6 +69,7 @@ class PaymentGate:
             if now >= quota.reset_at:
                 quota.runs_used = 0
                 from cappo_backend.models.free_run_quota import _tomorrow
+
                 quota.reset_at = _tomorrow()
                 self._db.flush()
 
@@ -111,9 +112,7 @@ class PaymentGate:
     def set_budget(self, workspace_id: str, balance_cents: int) -> WorkspaceBudget:
         budget = self._db.get(WorkspaceBudget, workspace_id)
         if budget is None:
-            budget = WorkspaceBudget(
-                workspace_id=workspace_id, balance_cents=balance_cents
-            )
+            budget = WorkspaceBudget(workspace_id=workspace_id, balance_cents=balance_cents)
             self._db.add(budget)
         else:
             budget.balance_cents = balance_cents

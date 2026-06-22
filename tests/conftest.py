@@ -26,6 +26,7 @@ _TestSession = sessionmaker(bind=_test_engine, autoflush=False, expire_on_commit
 @pytest.fixture(autouse=True)
 def _create_tables() -> Iterator[None]:
     import cappo_backend.models  # noqa: F401 — register models
+
     Base.metadata.create_all(_test_engine)
     yield
     Base.metadata.drop_all(_test_engine)
@@ -64,20 +65,20 @@ def prod_settings() -> Settings:
     )
 
 
-
 @pytest.fixture
 def client(db: Session, settings: Settings) -> TestClient:
     """TestClient with DI overrides for db session and settings."""
+
     def _override_session() -> Iterator[Session]:
         yield db
 
     app.dependency_overrides[get_session] = _override_session
     from cappo_backend.config import get_settings as _gs
+
     app.dependency_overrides[_gs] = lambda: settings
-    
+
     # Provide default auth header to avoid breaking existing tests
     test_client = TestClient(app)
     test_client.headers.update({"X-API-Key": "test-key"})
     yield test_client
     app.dependency_overrides.clear()
-

@@ -53,9 +53,7 @@ class TestProductionFailClosed:
             _prod(ei_signing_key="short").validate_production()
 
     def test_non_persistent_pgl_rejected(self) -> None:
-        with pytest.raises(
-            InsecureProductionConfigError, match="CAPPO_REQUIRE_PERSISTENT_PGL"
-        ):
+        with pytest.raises(InsecureProductionConfigError, match="CAPPO_REQUIRE_PERSISTENT_PGL"):
             _prod(cappo_require_persistent_pgl=False).validate_production()
 
     def test_sqlite_rejected_in_prod(self) -> None:

@@ -64,10 +64,12 @@ class HmacSigner:
 
     def sign(self, payload: Any) -> str:
         from cappo_backend.services.canonical import sign_payload_hmac
+
         return sign_payload_hmac(payload, self.signing_key)
 
     def verify(self, payload: Any, signature: str) -> bool:
         from cappo_backend.services.canonical import verify_signature_hmac
+
         return verify_signature_hmac(payload, signature, self.signing_key)
 
 
@@ -153,7 +155,9 @@ class ExecutionIdentityBuilder:
             identity["pgl_pre_certificate_id"] = body["pgl_certificate_id"]
             identity["directive"] = inputs.get("directive") or "ALLOW"
             identity["risk_tier"] = inputs.get("risk_tier") or "standard"
-            identity["scope"] = inputs.get("scope") or {"tools": [c["capability_id"] for c in body["capabilities"]]}
+            identity["scope"] = inputs.get("scope") or {
+                "tools": [c["capability_id"] for c in body["capabilities"]]
+            }
             identity["budget_approved_cents"] = int(body["budget"]["max_spend"] * 100)
             identity["budget_reserve_cents"] = int(inputs.get("budget_reserve_cents") or 0)
             identity["delegation_depth"] = body["delegation"]["max_depth"]
@@ -162,6 +166,7 @@ class ExecutionIdentityBuilder:
         # Add JCS signatures and hashes
         identity["signature"] = self.signer.sign(body)
         from cappo_backend.services.canonical import sha256_json
+
         identity["hash"] = sha256_json(body)
 
         return identity
@@ -181,7 +186,9 @@ class ExecutionIdentityBuilder:
         ]
 
         # Determine if we should enforce legacy list or new list
-        is_legacy = any(k in inputs for k in ("pgl_pre_certificate_id", "directive", "scope", "issuer"))
+        is_legacy = any(
+            k in inputs for k in ("pgl_pre_certificate_id", "directive", "scope", "issuer")
+        )
 
         if is_legacy:
             inputs["_is_legacy"] = True
@@ -197,13 +204,18 @@ class ExecutionIdentityBuilder:
             inputs["tenant_id"] = inputs.get("workspace_id") or "default"
             inputs["run_id"] = inputs.get("execution_id") or str(uuid.uuid4())
             inputs["subject"] = {"type": "agent", "id": inputs.get("agent_id") or "agent-1"}
-            inputs["delegation"] = {"max_depth": int(inputs.get("delegation_depth") or 0), "parent_ei_id": None}
+            inputs["delegation"] = {
+                "max_depth": int(inputs.get("delegation_depth") or 0),
+                "parent_ei_id": None,
+            }
             inputs["budget"] = {
                 "tokens": 100000,
                 "currency": "USD",
                 "max_spend": float((inputs.get("budget_approved_cents") or 10000) / 100.0),
             }
-            inputs["authority_bundle_hash"] = inputs.get("authority_bundle_hash") or "sha256-" + "a" * 64
+            inputs["authority_bundle_hash"] = (
+                inputs.get("authority_bundle_hash") or "sha256-" + "a" * 64
+            )
             inputs["policy_hash"] = inputs.get("policy_hash") or "sha256-" + "p" * 64
 
             tools = inputs["scope"].get("tools") or ["llm.exec"]
@@ -318,7 +330,9 @@ class ExecutionSessionTokenBuilder:
         if any(x in tool_lower for x in ("read", "view", "get", "status")):
             default_ttl = 60
             max_ttl = 120
-        elif any(x in tool_lower for x in ("pay", "write", "delete", "admin", "execute", "run", "http")):
+        elif any(
+            x in tool_lower for x in ("pay", "write", "delete", "admin", "execute", "run", "http")
+        ):
             default_ttl = 15
             max_ttl = 30
         else:
@@ -351,6 +365,7 @@ class ExecutionSessionTokenBuilder:
 
         token = dict(body)
         from cappo_backend.services.canonical import sign_payload_hmac
+
         token["signature"] = sign_payload_hmac(body, self.hmac_key)
         return token
 
@@ -405,6 +420,7 @@ class ExecutionSessionTokenVerifier:
 
         body = {k: v for k, v in token.items() if k != "signature"}
         from cappo_backend.services.canonical import verify_signature_hmac
+
         return verify_signature_hmac(body, token["signature"], self.hmac_key)
 
 

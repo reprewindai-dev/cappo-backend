@@ -62,7 +62,7 @@ def test_compile_endpoint(client: TestClient) -> None:
     body = {
         "codeText": "API Name: Test API\nGET /test - returns status ok",
         "apiName": "Test API",
-        "category": "Testing"
+        "category": "Testing",
     }
     resp = client.post("/api/v1/benchmarks/compile", json=body)
     assert resp.status_code == 200
@@ -75,7 +75,7 @@ def test_compile_endpoint(client: TestClient) -> None:
     assert data["schemaType"] == "MCP+REST Schema"
     assert "mcpToolDefinition" in data
     assert "syntheticVerificationResult" in data
-    
+
     verify_result = data["syntheticVerificationResult"]
     assert "latencyMs" in verify_result
     assert "driftScore" in verify_result

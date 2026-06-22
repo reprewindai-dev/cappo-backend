@@ -38,6 +38,7 @@ settings = get_settings()
 # Request / Response schemas
 # ---------------------------------------------------------------------------
 
+
 class IssueRequest(BaseModel):
     plan_tier: str = "starter"
     workspace_id: str | None = None
@@ -82,9 +83,10 @@ class DeactivateRequest(BaseModel):
 # Auth helper — shared secret between byos-backend and cappo
 # ---------------------------------------------------------------------------
 
+
 def _verify_admin_token(x_license_admin_key: str = Header(default="")) -> None:
     """Verify the admin token for protected license endpoints.
-    
+
     The veklom-byos-backend sends this as X-License-Admin-Key.
     Set LICENSE_ADMIN_KEY in both services' env vars.
     """
@@ -99,6 +101,7 @@ def _verify_admin_token(x_license_admin_key: str = Header(default="")) -> None:
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def _hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
@@ -139,6 +142,7 @@ def _license_to_dict(lic: LicenseKey) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
 
 @router.post("/issue", dependencies=[Depends(_verify_admin_token)])
 def issue_license(body: IssueRequest, db: Session = Depends(get_session)) -> IssueResponse:
@@ -190,7 +194,8 @@ def validate_license(body: ValidateRequest, db: Session = Depends(get_session)) 
 
     if lic.status == "revoked":
         return ValidateResponse(
-            valid=False, status="revoked",
+            valid=False,
+            status="revoked",
             reason=lic.revoke_reason or "License has been revoked",
         )
 
@@ -201,12 +206,15 @@ def validate_license(body: ValidateRequest, db: Session = Depends(get_session)) 
         return ValidateResponse(valid=False, status="expired", reason="License has expired")
 
     if lic.status not in ("active", "issued"):
-        return ValidateResponse(valid=False, status=lic.status, reason=f"License status is {lic.status}")
+        return ValidateResponse(
+            valid=False, status=lic.status, reason=f"License status is {lic.status}"
+        )
 
     # Workspace binding check
     if lic.workspace_id and body.workspace_id and lic.workspace_id != body.workspace_id:
         return ValidateResponse(
-            valid=False, status="workspace_mismatch",
+            valid=False,
+            status="workspace_mismatch",
             reason="License is bound to a different workspace",
         )
 
@@ -245,7 +253,9 @@ def activate_license(body: ActivateRequest, db: Session = Depends(get_session)) 
 
 
 @router.post("/deactivate", dependencies=[Depends(_verify_admin_token)])
-def deactivate_license(body: DeactivateRequest, db: Session = Depends(get_session)) -> dict[str, Any]:
+def deactivate_license(
+    body: DeactivateRequest, db: Session = Depends(get_session)
+) -> dict[str, Any]:
     """Revoke / deactivate a license key."""
     key_hash = _hash_key(body.key)
     lic = db.query(LicenseKey).filter(LicenseKey.key_hash == key_hash).first()

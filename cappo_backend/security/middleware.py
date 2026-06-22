@@ -107,6 +107,7 @@ class PaymentGateMiddleware(BaseHTTPMiddleware):
             if override:
                 gen = override()
                 db = next(gen)
+
                 def close_db():
                     next(gen, None)
             else:
@@ -164,12 +165,14 @@ class EATEnforcementMiddleware(BaseHTTPMiddleware):
             eat = json.loads(eat_header)
         except json.JSONDecodeError:
             return Response(
-                content=json.dumps({
-                    "error": "EXECUTION_AUTHORIZATION_REQUIRED",
-                    "detail": "X-Execution-Authorization header contains invalid JSON",
-                    "law0": True,
-                    "rule": "V0",
-                }),
+                content=json.dumps(
+                    {
+                        "error": "EXECUTION_AUTHORIZATION_REQUIRED",
+                        "detail": "X-Execution-Authorization header contains invalid JSON",
+                        "law0": True,
+                        "rule": "V0",
+                    }
+                ),
                 status_code=403,
                 media_type="application/json",
             )
@@ -207,13 +210,15 @@ class EATEnforcementMiddleware(BaseHTTPMiddleware):
             rule = getattr(exc, "rule", "UNKNOWN")
             eat_id = eat.get("eat_id", "unknown")
             return Response(
-                content=json.dumps({
-                    "error": "EXECUTION_AUTHORIZATION_REQUIRED",
-                    "detail": detail,
-                    "law0": True,
-                    "eat_id": eat_id,
-                    "rule": rule,
-                }),
+                content=json.dumps(
+                    {
+                        "error": "EXECUTION_AUTHORIZATION_REQUIRED",
+                        "detail": detail,
+                        "law0": True,
+                        "eat_id": eat_id,
+                        "rule": rule,
+                    }
+                ),
                 status_code=403,
                 media_type="application/json",
             )

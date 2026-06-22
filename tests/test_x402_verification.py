@@ -44,14 +44,16 @@ class TestX402Payments:
         resp = client.post(
             "/api/v1/x402/discovery/unlock",
             json={"feature_id": "premium"},
-            headers={"x-wallet-address": wallet}
+            headers={"x-wallet-address": wallet},
         )
         assert resp.status_code == 402
         assert resp.json()["detail"]["x402Version"] == 1
         assert "accepts" in resp.json()["detail"]
 
     @patch("cappo_backend.api.routers.x402_router._verify_onchain")
-    def test_valid_eip712_signature_and_tx_hash_unlocks(self, mock_verify, client: TestClient) -> None:
+    def test_valid_eip712_signature_and_tx_hash_unlocks(
+        self, mock_verify, client: TestClient
+    ) -> None:
         mock_verify.return_value = (True, None, "123456")
 
         # Create wallet and signing account
@@ -97,7 +99,7 @@ class TestX402Payments:
                 "method": "POST",
                 "resource": "/api/v1/x402/discovery/unlock",
                 "bodyHash": body_hash,
-            }
+            },
         }
 
         # Generate signature
@@ -108,25 +110,17 @@ class TestX402Payments:
         headers = {
             "x-wallet-address": caller_wallet,
             "x-payment": tx_hash,
-            "x-signature": signature
+            "x-signature": signature,
         }
 
-        resp = client.post(
-            "/api/v1/x402/discovery/unlock",
-            json=body_data,
-            headers=headers
-        )
+        resp = client.post("/api/v1/x402/discovery/unlock", json=body_data, headers=headers)
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
         assert resp.json()["wallet"] == caller_wallet.lower()
 
         # Try to replay same transaction -> Should fail with 400 already consumed
-        resp_replay = client.post(
-            "/api/v1/x402/discovery/unlock",
-            json=body_data,
-            headers=headers
-        )
+        resp_replay = client.post("/api/v1/x402/discovery/unlock", json=body_data, headers=headers)
         assert resp_replay.status_code == 400
         assert "already used" in resp_replay.json()["detail"]["message"]
 
@@ -139,7 +133,7 @@ class TestX402Payments:
 
         tx_hash = "0x" + "c" * 64
         nonce_bytes = Web3.to_bytes(hexstr=tx_hash)
-        
+
         # Build signature targeting /api/v1/x402/discovery/unlock (cheap endpoint)
         structured_data = {
             "types": {
@@ -172,7 +166,7 @@ class TestX402Payments:
                 "method": "POST",
                 "resource": "/api/v1/x402/discovery/unlock",  # TARGET PATH
                 "bodyHash": Web3.keccak(b'{"feature_id":"premium-metrics"}'),
-            }
+            },
         }
         encoded_message = encode_typed_data(full_message=structured_data)
         signature = acct.sign_message(encoded_message).signature.hex()
@@ -181,13 +175,11 @@ class TestX402Payments:
         headers = {
             "x-wallet-address": caller_wallet,
             "x-payment": tx_hash,
-            "x-signature": signature
+            "x-signature": signature,
         }
 
         resp = client.post(
-            "/api/v1/x402/exec/run",
-            json={"prompt": "launch", "agent_id": "test"},
-            headers=headers
+            "/api/v1/x402/exec/run", json={"prompt": "launch", "agent_id": "test"}, headers=headers
         )
 
         # Context-Binding mismatch yields HTTP 403 Forbidden!
@@ -203,10 +195,7 @@ class TestX402Payments:
         resp = client.post(
             "/api/v1/x402/discovery/unlock",
             json={"feature_id": "premium"},
-            headers={
-                "x-wallet-address": "0x" + "2" * 40,
-                "x-payment": tx_hash
-            }
+            headers={"x-wallet-address": "0x" + "2" * 40, "x-payment": tx_hash},
         )
 
         # Should yield HTTP 409 Conflict (nonce linearized)

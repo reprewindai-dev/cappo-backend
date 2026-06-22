@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 class SNMPAdapter:
     """Adapter for legacy SNMP integration."""
-    
+
     def __init__(self, community_string: str = "public", port: int = 162):
         self.community_string = community_string
         self.port = port
@@ -18,7 +18,7 @@ class SNMPAdapter:
         self.mib_cache: Dict[str, str] = {
             "1.3.6.1.2.1.1.1.0": "sysDescr",
             "1.3.6.1.2.1.1.3.0": "sysUpTime",
-            "1.3.6.1.2.1.2.2.1.8": "ifOperStatus"
+            "1.3.6.1.2.1.2.2.1.8": "ifOperStatus",
         }
 
     def start_listener(self) -> bool:
@@ -34,7 +34,7 @@ class SNMPAdapter:
     def normalize_trap(self, raw_trap: Dict[str, Any]) -> Dict[str, Any]:
         """Convert a raw SNMP trap into a UACP-compatible event."""
         event_id = f"evt_snmp_{uuid.uuid4().hex[:8]}"
-        
+
         normalized_data = {}
         for oid, value in raw_trap.get("bindings", {}).items():
             name = self.mib_cache.get(oid, oid)
@@ -47,7 +47,7 @@ class SNMPAdapter:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "payload": normalized_data,
             "normalized_at": datetime.now(timezone.utc).isoformat(),
-            "status": "processed"
+            "status": "processed",
         }
 
     def get_status(self) -> Dict[str, Any]:
@@ -58,5 +58,5 @@ class SNMPAdapter:
             "port": self.port,
             "community": "***" if self.community_string else "none",
             "supported_mibs": len(self.mib_cache),
-            "messages_processed": 0 if not self.active else 42
+            "messages_processed": 0 if not self.active else 42,
         }

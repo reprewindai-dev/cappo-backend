@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 class ModbusAdapter:
     """Adapter for legacy Modbus integration."""
-    
+
     def __init__(self, host: str = "127.0.0.1", port: int = 502):
         self.host = host
         self.port = port
@@ -18,7 +18,7 @@ class ModbusAdapter:
         self.registers = {
             40001: "temperature_celsius",
             40002: "pressure_psi",
-            40003: "flow_rate_gpm"
+            40003: "flow_rate_gpm",
         }
 
     def connect(self) -> bool:
@@ -34,7 +34,7 @@ class ModbusAdapter:
     def normalize_reading(self, raw_registers: Dict[int, int]) -> Dict[str, Any]:
         """Convert raw Modbus registers into a UACP-compatible event."""
         event_id = f"evt_mb_{uuid.uuid4().hex[:8]}"
-        
+
         normalized_data = {}
         for reg_addr, value in raw_registers.items():
             name = self.registers.get(reg_addr, f"register_{reg_addr}")
@@ -47,7 +47,7 @@ class ModbusAdapter:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "payload": normalized_data,
             "normalized_at": datetime.now(timezone.utc).isoformat(),
-            "status": "processed"
+            "status": "processed",
         }
 
     def get_status(self) -> Dict[str, Any]:
@@ -58,5 +58,5 @@ class ModbusAdapter:
             "host": self.host,
             "port": self.port,
             "mapped_registers": len(self.registers),
-            "polls_completed": 0 if not self.active else 128
+            "polls_completed": 0 if not self.active else 128,
         }

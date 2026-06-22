@@ -83,7 +83,9 @@ def log_activity(event_type: str, data: dict):
 def audit_page(page_info: dict) -> dict:
     result = {"url": page_info["url"], "page": page_info["page"], "issues": [], "signals": {}}
     try:
-        resp = requests.get(page_info["url"], timeout=10, headers={"User-Agent": "VeklomSEOAudit/1.0"})
+        resp = requests.get(
+            page_info["url"], timeout=10, headers={"User-Agent": "VeklomSEOAudit/1.0"}
+        )
         result["signals"]["status_code"] = resp.status_code
         result["signals"]["response_time_ms"] = int(resp.elapsed.total_seconds() * 1000)
 
@@ -91,6 +93,7 @@ def audit_page(page_info: dict) -> dict:
 
         # Check title tag
         import re
+
         title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
         if title_match:
             title = title_match.group(1).strip()
@@ -104,7 +107,9 @@ def audit_page(page_info: dict) -> dict:
             result["issues"].append("Missing <title> tag")
 
         # Check meta description
-        meta_match = re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)', html, re.IGNORECASE)
+        meta_match = re.search(
+            r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)', html, re.IGNORECASE
+        )
         if meta_match:
             desc = meta_match.group(1)
             result["signals"]["meta_description_length"] = len(desc)
@@ -211,10 +216,13 @@ if __name__ == "__main__":
     report_path = generate_report(audit_results, recommendations)
     print(f"\nReport saved: {report_path}")
 
-    log_activity("REPORT_GENERATED", {
-        "message": f"SEO report generated: {report_path}",
-        "pages_audited": len(audit_results),
-        "total_issues": sum(len(r["issues"]) for r in audit_results),
-    })
+    log_activity(
+        "REPORT_GENERATED",
+        {
+            "message": f"SEO report generated: {report_path}",
+            "pages_audited": len(audit_results),
+            "total_issues": sum(len(r["issues"]) for r in audit_results),
+        },
+    )
 
     print("=== Agent 040 complete ===")

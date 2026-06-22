@@ -133,4 +133,3 @@ def verify_signature(payload: Any, signature: str, signing_key: str) -> bool:
     except Exception:
         pass
     return False
-

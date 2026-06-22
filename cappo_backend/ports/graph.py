@@ -10,9 +10,7 @@ class GraphPort(ABC):
     """Port defining the graph lineage operations for AI Genomes."""
 
     @abstractmethod
-    def add_edge(
-        self, from_genome_hash: str, to_genome_hash: str, relationship_type: str
-    ) -> None:
+    def add_edge(self, from_genome_hash: str, to_genome_hash: str, relationship_type: str) -> None:
         """Create a directed lineage edge from a parent to a child genome."""
         pass
 

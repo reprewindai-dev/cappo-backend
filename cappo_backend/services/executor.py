@@ -130,9 +130,7 @@ class ResilientExecutor:
         timeout: float = 30.0,
     ) -> None:
         if providers is None and api_url is None:
-            raise ValueError(
-                "ResilientExecutor requires either providers list or api_url"
-            )
+            raise ValueError("ResilientExecutor requires either providers list or api_url")
         if providers is not None:
             if not providers:
                 raise ValueError("ResilientExecutor requires at least one provider")
@@ -162,9 +160,7 @@ class ResilientExecutor:
                 )
                 continue
             try:
-                return provider.breaker.call(
-                    lambda p=provider: p.executor.execute(request)
-                )
+                return provider.breaker.call(lambda p=provider: p.executor.execute(request))
             except CircuitOpenError as exc:  # raced to open between check and call
                 last_error = exc
                 continue

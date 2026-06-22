@@ -1,6 +1,6 @@
 """MCP Gateway — LAW 0 enforcement boundary.
 
-Forward-constructed (migration note §4). Enforces proof-derived authority via 
+Forward-constructed (migration note §4). Enforces proof-derived authority via
 the updated fail-closed validation contract for ExecutionIdentityV1 and
 ExecutionSessionTokenV1.
 
@@ -67,7 +67,12 @@ class MCPGateway:
         is logged to the audit service as a LAW 0 violation.
         """
         if identity is None:
-            self._reject("execution identity is missing", code="LAW0_EI_INVALID", workspace_id=workspace_id, run_id=run_id)
+            self._reject(
+                "execution identity is missing",
+                code="LAW0_EI_INVALID",
+                workspace_id=workspace_id,
+                run_id=run_id,
+            )
 
         try:
             self._rule_1_persisted_pgl(identity)
@@ -82,7 +87,9 @@ class MCPGateway:
             self._rule_10_context_binding(identity, workspace_id, run_id)
         except EIValidationError as exc:
             self._audit.record_law0_violation(
-                exc.detail, workspace_id=workspace_id or identity.get("tenant_id"), run_id=run_id or identity.get("run_id")
+                exc.detail,
+                workspace_id=workspace_id or identity.get("tenant_id"),
+                run_id=run_id or identity.get("run_id"),
             )
             raise
 
@@ -98,19 +105,34 @@ class MCPGateway:
     ) -> None:
         """Validate an ExecutionSessionTokenV1 against its parent EI."""
         if token is None:
-            self._reject("session token is missing", code="LAW0_EI_INVALID", workspace_id=workspace_id, run_id=run_id)
+            self._reject(
+                "session token is missing",
+                code="LAW0_EI_INVALID",
+                workspace_id=workspace_id,
+                run_id=run_id,
+            )
 
         # Verify HMAC signature and fields
         verifier = ExecutionSessionTokenVerifier(self._settings.ei_signing_key)
         if not verifier.verify(token, parent_ei):
-            self._reject("session token verification failed", code="LAW0_EI_INVALID", workspace_id=workspace_id, run_id=run_id)
+            self._reject(
+                "session token verification failed",
+                code="LAW0_EI_INVALID",
+                workspace_id=workspace_id,
+                run_id=run_id,
+            )
 
         # Check that parent EI is not revoked
         self._rule_9_not_revoked(parent_ei)
 
         # Enforce action scope
         if action and token["tool_id"] != action:
-            self._reject(f"session token tool scope mismatch: token={token['tool_id']}, requested={action}", code="LAW0_POLICY_MISMATCH", workspace_id=workspace_id, run_id=run_id)
+            self._reject(
+                f"session token tool scope mismatch: token={token['tool_id']}, requested={action}",
+                code="LAW0_POLICY_MISMATCH",
+                workspace_id=workspace_id,
+                run_id=run_id,
+            )
 
         # Enforce budget against parent
         self._rule_6_budget(parent_ei, action_cost_cents)
@@ -150,23 +172,37 @@ class MCPGateway:
             return
 
         # Check standard hashes
-        for field in ("genome_hash", "constitution_hash", "plan_hash", "authority_bundle_hash", "policy_hash"):
+        for field in (
+            "genome_hash",
+            "constitution_hash",
+            "plan_hash",
+            "authority_bundle_hash",
+            "policy_hash",
+        ):
             ei_val = ei.get(field)
             cert_val = getattr(cert, field, None)
             if ei_val and cert_val and ei_val != cert_val:
-                self._reject(f"{field} mismatch: EI={ei_val!r}, cert={cert_val!r}", code="LAW0_POLICY_MISMATCH")
+                self._reject(
+                    f"{field} mismatch: EI={ei_val!r}, cert={cert_val!r}",
+                    code="LAW0_POLICY_MISMATCH",
+                )
 
         # Verify run_id matches certificate if not legacy
         if not ei.get("pgl_pre_certificate_id"):
             token_run_id = ei.get("run_id")
             if token_run_id and hasattr(cert, "run_id") and cert.run_id != token_run_id:
-                self._reject(f"run_id mismatch: token={token_run_id}, cert={cert.run_id}", code="LAW0_PGL_MISSING")
+                self._reject(
+                    f"run_id mismatch: token={token_run_id}, cert={cert.run_id}",
+                    code="LAW0_PGL_MISSING",
+                )
 
     def _rule_3_directive(self, ei: dict[str, Any]) -> None:
         """Rule 3 — SEKED directive permits execution."""
         directive = ei.get("directive")
         if directive and directive not in ("ALLOW", "ALLOW_WITH_AUDIT"):
-            self._reject(f"directive {directive!r} does not permit execution", code="LAW0_POLICY_MISMATCH")
+            self._reject(
+                f"directive {directive!r} does not permit execution", code="LAW0_POLICY_MISMATCH"
+            )
 
     def _rule_4_ttl(self, ei: dict[str, Any]) -> None:
         """Rule 4 — expires_at is in the future."""
@@ -179,10 +215,14 @@ class MCPGateway:
             elif isinstance(expires_raw, datetime):
                 expires = expires_raw
             else:
-                self._reject(f"expires_at has unexpected type: {type(expires_raw)}", code="LAW0_EI_INVALID")
+                self._reject(
+                    f"expires_at has unexpected type: {type(expires_raw)}", code="LAW0_EI_INVALID"
+                )
                 return
         except ValueError:
-            self._reject(f"expires_at is not a valid datetime: {expires_raw!r}", code="LAW0_EI_INVALID")
+            self._reject(
+                f"expires_at is not a valid datetime: {expires_raw!r}", code="LAW0_EI_INVALID"
+            )
             return
 
         if expires.tzinfo is None:
@@ -204,13 +244,19 @@ class MCPGateway:
                     match_cap = cap
                     break
             if not match_cap:
-                self._reject(f"scope (capabilities) does not cover requested action: {action}", code="LAW0_POLICY_MISMATCH")
+                self._reject(
+                    f"scope (capabilities) does not cover requested action: {action}",
+                    code="LAW0_POLICY_MISMATCH",
+                )
         else:
             # Check legacy scope
             scope = ei.get("scope") or {}
             tools = scope.get("tools") or []
             if tools and action not in tools:
-                self._reject(f"scope does not cover action {action!r} (allowed: {tools!r})", code="LAW0_POLICY_MISMATCH")
+                self._reject(
+                    f"scope does not cover action {action!r} (allowed: {tools!r})",
+                    code="LAW0_POLICY_MISMATCH",
+                )
 
     def _rule_6_budget(self, ei: dict[str, Any], cost_cents: int) -> None:
         """Rule 6 — budget covers action cost."""
@@ -222,12 +268,18 @@ class MCPGateway:
         if budget:
             max_spend = budget.get("max_spend", 0.0)
             if max_spend * 100 < cost_cents:
-                self._reject(f"budget limit exceeded: max={max_spend} USD, cost={cost_cents / 100.0} USD", code="LAW0_BUDGET_EXCEEDED")
+                self._reject(
+                    f"budget limit exceeded: max={max_spend} USD, cost={cost_cents / 100.0} USD",
+                    code="LAW0_BUDGET_EXCEEDED",
+                )
 
         # Backcompat budget approved check
         legacy_budget = ei.get("budget_approved_cents", 0)
         if legacy_budget > 0 and legacy_budget < cost_cents:
-            self._reject(f"budget insufficient: approved={legacy_budget} cents, cost={cost_cents} cents", code="LAW0_BUDGET_EXCEEDED")
+            self._reject(
+                f"budget insufficient: approved={legacy_budget} cents, cost={cost_cents} cents",
+                code="LAW0_BUDGET_EXCEEDED",
+            )
 
     def _rule_7_delegation_depth(self, ei: dict[str, Any]) -> None:
         """Rule 7 — delegation depth within configured max."""
@@ -238,7 +290,10 @@ class MCPGateway:
             depth = ei.get("delegation_depth", 0)
 
         if depth > self._settings.max_delegation_depth:
-            self._reject(f"delegation depth {depth} exceeds max {self._settings.max_delegation_depth}", code="LAW0_POLICY_MISMATCH")
+            self._reject(
+                f"delegation depth {depth} exceeds max {self._settings.max_delegation_depth}",
+                code="LAW0_POLICY_MISMATCH",
+            )
 
     def _rule_8_signature_hash(self, ei: dict[str, Any]) -> None:
         """Rule 8 — signature and hash verify against signing key."""
@@ -257,24 +312,32 @@ class MCPGateway:
         """Rule 9 — identity is not revoked."""
         if ei.get("revoked"):
             self._reject("execution identity has been revoked", code="LAW0_EI_REVOKED")
-        
+
         ei_id = ei.get("ei_id") or ei.get("execution_id")
         if ei_id and self._revocation_lookup is not None:
             if self._revocation_lookup(ei_id):
                 self._reject(f"execution identity {ei_id} has been revoked", code="LAW0_EI_REVOKED")
 
-    def _rule_10_context_binding(self, ei: dict[str, Any], workspace_id: str | None, run_id: str | None) -> None:
+    def _rule_10_context_binding(
+        self, ei: dict[str, Any], workspace_id: str | None, run_id: str | None
+    ) -> None:
         """Rule 10 — Enforce context bindings to prevent session hijacking."""
         # Match run_id if provided and not legacy
         if not ei.get("pgl_pre_certificate_id"):
             token_run_id = ei.get("run_id") or ei.get("execution_id")
             if run_id and token_run_id and token_run_id != run_id:
-                self._reject(f"hijack check: run_id mismatch: token={token_run_id}, request={run_id}", code="LAW0_POLICY_MISMATCH")
+                self._reject(
+                    f"hijack check: run_id mismatch: token={token_run_id}, request={run_id}",
+                    code="LAW0_POLICY_MISMATCH",
+                )
 
         # Match tenant_id/workspace_id if provided
         token_tenant_id = ei.get("tenant_id") or ei.get("workspace_id")
         if workspace_id and token_tenant_id and token_tenant_id != workspace_id:
-            self._reject(f"hijack check: tenant_id mismatch: token={token_tenant_id}, request={workspace_id}", code="LAW0_POLICY_MISMATCH")
+            self._reject(
+                f"hijack check: tenant_id mismatch: token={token_tenant_id}, request={workspace_id}",
+                code="LAW0_POLICY_MISMATCH",
+            )
 
     # ------------------------------------------------------------------
     # Rejection Helper

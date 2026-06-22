@@ -34,16 +34,12 @@ class AuditService:
         self._alert_sink: AlertSink = alert_sink or default_alert_sink
 
     def _latest_hash(self) -> str | None:
-        all_hashes = list(
-            self._db.execute(select(AuditEvent.log_hash)).scalars()
-        )
+        all_hashes = list(self._db.execute(select(AuditEvent.log_hash)).scalars())
         if not all_hashes:
             return None
         referenced = set(
             self._db.execute(
-                select(AuditEvent.previous_log_hash).where(
-                    AuditEvent.previous_log_hash.isnot(None)
-                )
+                select(AuditEvent.previous_log_hash).where(AuditEvent.previous_log_hash.isnot(None))
             ).scalars()
         )
         tails = [h for h in all_hashes if h not in referenced]
@@ -101,6 +97,4 @@ class AuditService:
         payload = {"detail": detail, "law0": True}
         if extra:
             payload.update(extra)
-        return self.record(
-            LAW0_VIOLATION, payload, workspace_id=workspace_id, run_id=run_id
-        )
+        return self.record(LAW0_VIOLATION, payload, workspace_id=workspace_id, run_id=run_id)

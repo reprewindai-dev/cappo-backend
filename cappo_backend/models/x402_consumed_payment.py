@@ -28,6 +28,4 @@ class X402ConsumedPayment(Base):
     chain_id: Mapped[str] = mapped_column(String)
     block_number: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    verified_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

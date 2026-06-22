@@ -200,15 +200,11 @@ class RiskScoringService:
                 )
             )
         if factors.significant_behavioral_change:
-            risk_factors.append(
-                RiskFactor("Significant behavioral change", 20.0, "high")
-            )
+            risk_factors.append(RiskFactor("Significant behavioral change", 20.0, "high"))
         if factors.high_failure_rate:
             risk_factors.append(RiskFactor("High failure rate", 10.0, "medium"))
         if factors.policy_violations > 0:
-            risk_factors.append(
-                RiskFactor("Multiple policy violations", 20.0, "critical")
-            )
+            risk_factors.append(RiskFactor("Multiple policy violations", 20.0, "critical"))
 
         overall = min(100.0, sum(f.contribution for f in risk_factors))
         threat = self._threat_level(overall)

@@ -28,6 +28,7 @@ EAT_SIGNING_KEY = "test-eat-signing-key"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_orchestrator(db, with_eat: bool = True) -> RunOrchestrator:
     """Create a full orchestrator with or without EAT builder."""
     ei_signer = HmacSigner(signing_key=EI_SIGNING_KEY)
