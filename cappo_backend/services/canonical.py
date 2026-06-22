@@ -16,9 +16,12 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric import ed25519
+
+logger = logging.getLogger(__name__)
 
 
 def canonical_json(payload: Any) -> str:
@@ -86,7 +89,7 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
         public_key.verify(sig_bytes, serialized)
         is_ed25519_ok = True
     except Exception:
-        pass
+        logger.debug("Ed25519 signature verification failed", exc_info=True)
 
     if is_ed25519_ok:
         return True
@@ -97,12 +100,12 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
             if verify_signature_hmac(payload, signature, public_key_or_seed):
                 return True
         except Exception:
-            pass
+            logger.debug("Fallback signature verification failed", exc_info=True)
         try:
             if verify_signature(payload, signature, public_key_or_seed):
                 return True
         except Exception:
-            pass
+            logger.debug("Fallback signature verification failed", exc_info=True)
 
     return False
 
@@ -142,6 +145,6 @@ def verify_signature(payload: Any, signature: str, signing_key: str) -> bool:
         if verify_signature_hmac(payload, signature, signing_key):
             return True
     except Exception:
-        pass
+        logger.debug("Legacy signature verification failed", exc_info=True)
     return False
 
