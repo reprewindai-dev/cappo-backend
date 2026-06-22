@@ -14,3 +14,5 @@ dist/
 .env
 .venv/
 venv/
+server.log
+async_block_test_heavy.py
