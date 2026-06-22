@@ -248,10 +248,9 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
 
     # sla and uptime as percentages (99.95 not 0.9995) for VNP frontend
     real_uptime = round((1 - error_rate) * 100, 2)
-    # Blend real data with seed baselines proportional to run count
     alpha = min(1.0, run_count / 100.0)
     blended_uptime = alpha * real_uptime + (1 - alpha) * seed["uptime24h"]
-    blended_sla = blended_uptime
+    blended_sla = seed["sla"]
     status_str = "Excellent" if blended_uptime >= 99.9 else "Nominal" if blended_uptime >= 99.0 else "Degraded"
 
     return {
@@ -271,7 +270,7 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
         "description": seed["description"],
         "mcpSchema": seed["mcpSchema"],
         "provider": seed["provider"],
-        "throughput": int(alpha * run_count * 10 + (1 - alpha) * seed["throughput"]),
+        "throughput": int(seed["throughput"] * (1 - error_rate)),
         "uptime24h": round(blended_uptime, 2),
         "totalStaked": seed["totalStaked"],
         "status": status_str,
