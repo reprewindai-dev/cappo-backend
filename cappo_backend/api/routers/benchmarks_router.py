@@ -389,7 +389,7 @@ async def get_markets(db: Session = Depends(get_session)):
 
 
 @router.get("/logs")
-async def get_logs(db: Session = Depends(get_session)):
+def get_logs(db: Session = Depends(get_session)):
     """Consensus Log Feed — real audit logs mapped to ProbeLog shape.
 
     Returns a flat JSON array of ProbeLog objects directly, matching Next.js SWR.
