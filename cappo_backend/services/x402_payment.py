@@ -39,6 +39,8 @@ import logging
 import os
 from typing import Any
 
+from cappo_backend.config import Settings, get_settings
+
 logger = logging.getLogger("cappo.x402")
 
 try:
@@ -68,8 +70,6 @@ except ImportError:
         def register(self, network: Any, scheme: Any) -> None: pass
     class PaymentMiddlewareASGI:  # type: ignore
         def __init__(self, **kwargs: Any) -> None: pass
-
-from cappo_backend.config import Settings, get_settings
 
 # ---------------------------------------------------------------------------
 # Network identifiers for multi-chain support
