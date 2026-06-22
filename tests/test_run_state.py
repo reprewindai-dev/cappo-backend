@@ -1,6 +1,6 @@
 import pytest
 
-from cappo_backend.services.run_state import RunState, assert_transition, InvalidTransitionError
+from cappo_backend.services.run_state import InvalidTransitionError, RunState, assert_transition
 
 
 def test_valid_transition():
