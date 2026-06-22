@@ -182,13 +182,8 @@ _PROVIDER_SEED = {
 }
 
 
-@router.get("/leaderboard")
-async def get_leaderboard(db: Session = Depends(get_session)):
-    """Live API Trust Rankings derived from real GovernedRun execution data.
-
-    Returns a flat JSON array of BenchApi objects directly, matching Next.js SWR.
-    """
-    stats = (
+def _get_provider_stats(db: Session) -> list:
+    return (
         db.query(
             GovernedRun.result_payload,
             func.count(GovernedRun.run_id).label("run_count"),
@@ -206,78 +201,77 @@ async def get_leaderboard(db: Session = Depends(get_session)):
         .all()
     )
 
-    real_providers: dict[str, dict] = {}
-    for row in stats:
-        if not isinstance(row.result_payload, dict):
-            continue
-        provider_key = row.result_payload.get("provider", "unknown")
-        run_count = row.run_count or 0
-        avg_lat = float(row.avg_latency or 0)
-        seed = _PROVIDER_SEED.get(provider_key, {
-            "name": provider_key.title(),
-            "provider": provider_key.title(),
-            "category": "Reasoning Model",
-            "p50": 100.0,
-            "p95": 125.0,
-            "p99": 140.0,
-            "sla": 0.999,
-            "drift": 0.01,
-            "sovereignTier": 2,
-            "complianceLabels": ["TLS 1.3"],
-            "govScore": 85,
-            "devScore": 85,
-            "endpointUrl": None,
-            "description": None,
-            "throughput": 20.0,
-            "uptime24h": 99.9,
-            "totalStaked": 10000,
-            "status": "Healthy",
-            "mcpSchema": None,
-        })
 
-        error_run_count = (
-            db.query(func.count(GovernedRun.run_id))
-            .filter(
-                GovernedRun.state.in_(["failed", "error", "law0_violation"]),
-                func.json_extract(GovernedRun.result_payload, "$.provider") == provider_key
-            )
-            .scalar()
-            or 0
+def _get_error_run_count(db: Session, provider_key: str) -> int:
+    return (
+        db.query(func.count(GovernedRun.run_id))
+        .filter(
+            GovernedRun.state.in_(["failed", "error", "law0_violation"]),
+            func.json_extract(GovernedRun.result_payload, "$.provider") == provider_key
         )
-        error_rate = (error_run_count / run_count) if run_count > 0 else 0
-        latency_penalty = min(50, int(avg_lat / 10))
-        trust_score_pct = (1 - error_rate)
-        gov_score = max(0, int(seed["govScore"] * trust_score_pct))
-        dev_score = max(0, int(seed["devScore"] * trust_score_pct - latency_penalty))
-        
-        sla_val = round(1 - error_rate, 4)
-        uptime = round(sla_val * 100, 2)
-        status_str = "Excellent" if error_rate < 0.01 else "Healthy" if error_rate < 0.05 else "Degraded"
+        .scalar()
+        or 0
+    )
 
-        real_providers[provider_key] = {
-            "id": provider_key,
-            "name": seed["name"],
-            "category": seed["category"],
-            "p50": round(avg_lat, 1) if avg_lat > 0 else seed["p50"],
-            "p95": round(avg_lat * 1.25, 1) if avg_lat > 0 else seed["p95"],
-            "p99": round(avg_lat * 1.4, 1) if avg_lat > 0 else seed["p99"],
-            "sla": sla_val,
-            "drift": seed["drift"],
-            "sovereignTier": seed["sovereignTier"],
-            "complianceLabels": seed["complianceLabels"],
-            "govScore": gov_score,
-            "devScore": dev_score,
-            "endpointUrl": seed["endpointUrl"],
-            "description": seed["description"],
-            "mcpSchema": seed["mcpSchema"],
-            "provider": seed["provider"],
-            "throughput": round(seed["throughput"] * (1 - error_rate), 1),
-            "uptime24h": uptime,
-            "totalStaked": seed["totalStaked"],
-            "status": status_str,
-        }
 
-    # Fill in seed providers not yet seen in real runs
+def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, error_run_count: int) -> dict:
+    seed = _PROVIDER_SEED.get(provider_key, {
+        "name": provider_key.title(),
+        "provider": provider_key.title(),
+        "category": "Reasoning Model",
+        "p50": 100.0,
+        "p95": 125.0,
+        "p99": 140.0,
+        "sla": 0.999,
+        "drift": 0.01,
+        "sovereignTier": 2,
+        "complianceLabels": ["TLS 1.3"],
+        "govScore": 85,
+        "devScore": 85,
+        "endpointUrl": None,
+        "description": None,
+        "throughput": 20.0,
+        "uptime24h": 99.9,
+        "totalStaked": 10000,
+        "status": "Healthy",
+        "mcpSchema": None,
+    })
+
+    error_rate = (error_run_count / run_count) if run_count > 0 else 0
+    latency_penalty = min(50, int(avg_lat / 10))
+    trust_score_pct = (1 - error_rate)
+    gov_score = max(0, int(seed["govScore"] * trust_score_pct))
+    dev_score = max(0, int(seed["devScore"] * trust_score_pct - latency_penalty))
+
+    sla_val = round(1 - error_rate, 4)
+    uptime = round(sla_val * 100, 2)
+    status_str = "Excellent" if error_rate < 0.01 else "Healthy" if error_rate < 0.05 else "Degraded"
+
+    return {
+        "id": provider_key,
+        "name": seed["name"],
+        "category": seed["category"],
+        "p50": round(avg_lat, 1) if avg_lat > 0 else seed["p50"],
+        "p95": round(avg_lat * 1.25, 1) if avg_lat > 0 else seed["p95"],
+        "p99": round(avg_lat * 1.4, 1) if avg_lat > 0 else seed["p99"],
+        "sla": sla_val,
+        "drift": seed["drift"],
+        "sovereignTier": seed["sovereignTier"],
+        "complianceLabels": seed["complianceLabels"],
+        "govScore": gov_score,
+        "devScore": dev_score,
+        "endpointUrl": seed["endpointUrl"],
+        "description": seed["description"],
+        "mcpSchema": seed["mcpSchema"],
+        "provider": seed["provider"],
+        "throughput": round(seed["throughput"] * (1 - error_rate), 1),
+        "uptime24h": uptime,
+        "totalStaked": seed["totalStaked"],
+        "status": status_str,
+    }
+
+
+def _fill_missing_seed_providers(real_providers: dict[str, dict]) -> None:
     for key, seed in _PROVIDER_SEED.items():
         if key not in real_providers:
             real_providers[key] = {
@@ -303,15 +297,41 @@ async def get_leaderboard(db: Session = Depends(get_session)):
                 "status": seed["status"],
             }
 
+
+@router.get("/leaderboard")
+async def get_leaderboard(db: Session = Depends(get_session)):
+    """Live API Trust Rankings derived from real GovernedRun execution data.
+
+    Returns a flat JSON array of BenchApi objects directly, matching Next.js SWR.
+    """
+    stats = _get_provider_stats(db)
+
+    real_providers: dict[str, dict] = {}
+    for row in stats:
+        if not isinstance(row.result_payload, dict):
+            continue
+        provider_key = row.result_payload.get("provider", "unknown")
+        run_count = row.run_count or 0
+        avg_lat = float(row.avg_latency or 0)
+
+        error_run_count = _get_error_run_count(db, provider_key)
+
+        real_providers[provider_key] = _build_provider_data(
+            provider_key, run_count, avg_lat, error_run_count
+        )
+
+    # Fill in seed providers not yet seen in real runs
+    _fill_missing_seed_providers(real_providers)
+
     # Sort by overall trust score derived from gov + dev + compliance
+    def Math_round_trust(val):
+        return round(val)
+
     def trust_score(item):
         security = item["govScore"]
         performance = item["devScore"]
         compliance = 70 + (4 - item["sovereignTier"]) * 7 + len(item["complianceLabels"]) * 3
         return Math_round_trust((security + performance + compliance) / 3 * 10)
-
-    def Math_round_trust(val):
-        return round(val)
 
     sorted_apis = sorted(
         real_providers.values(),
