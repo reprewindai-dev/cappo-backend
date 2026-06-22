@@ -343,7 +343,7 @@ async def get_leaderboard(db: Session = Depends(get_session)):
 
 
 @router.get("/staking/markets")
-async def get_markets(db: Session = Depends(get_session)):
+def get_markets(db: Session = Depends(get_session)):
     """SLA Staking Prediction Markets — derived from real execution reliability.
 
     Returns a flat JSON array of StakingMarket objects directly, matching Next.js SWR.
