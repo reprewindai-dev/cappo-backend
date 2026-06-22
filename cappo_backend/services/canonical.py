@@ -36,6 +36,15 @@ def canonical_json(payload: Any) -> str:
 
 def sha256_json(payload: Any) -> str:
     """Return the hex SHA-256 of the canonical JSON of ``payload``."""
+    if not isinstance(payload, dict):
+        serialized = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 

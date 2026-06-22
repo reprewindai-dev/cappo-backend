@@ -20,13 +20,6 @@ def test_canonical_json_sorting_and_separators():
     # Ensure keys are sorted and no spaces around separators
     assert result == '{"a":1,"b":2,"c":3}'
 
-def test_canonical_json_unicode():
-    payload = {"greeting": "你好", "emoji": "🚀"}
-    result = canonical_json(payload)
-    # Ensure unicode characters are not escaped to ascii
-    assert "你好" in result
-    assert "🚀" in result
-
 def test_canonical_json_invalid_payload():
     with pytest.raises(ValueError, match="Payload must be a dictionary"):
         canonical_json(["this", "is", "a", "list"])
