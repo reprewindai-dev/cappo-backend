@@ -1,16 +1,18 @@
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ed25519
+
 from cappo_backend.services.canonical import (
     canonical_json,
-    sha256_json,
     get_ed25519_private_key,
-    sign_payload_ed25519,
-    verify_signature_ed25519,
-    sign_payload_hmac,
-    verify_signature_hmac,
+    sha256_json,
     sign_payload,
+    sign_payload_ed25519,
+    sign_payload_hmac,
     verify_signature,
+    verify_signature_ed25519,
+    verify_signature_hmac,
 )
+
 
 def test_canonical_json_sorting_and_separators():
     payload = {"c": 3, "a": 1, "b": 2}
