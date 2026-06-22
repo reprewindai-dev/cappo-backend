@@ -23,6 +23,8 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 
 def canonical_json(payload: Any) -> str:
     """Serialize ``payload`` to a canonical, deterministic JSON string."""
+    if not isinstance(payload, dict):
+        raise ValueError("Payload must be a dictionary")
     return json.dumps(
         payload,
         sort_keys=True,
