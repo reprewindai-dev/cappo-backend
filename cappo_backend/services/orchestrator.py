@@ -27,7 +27,7 @@ from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.executor import Executor
-from cappo_backend.services.pgl_client import PGLClient, PreCertificateParams, PostCertificateParams
+from cappo_backend.services.pgl_client import PGLClient, PostCertificateParams, PreCertificateParams
 from cappo_backend.services.run_state import RunState, assert_transition
 
 

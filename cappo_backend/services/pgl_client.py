@@ -24,7 +24,6 @@ from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.services.canonical import sha256_json
 
 
-
 @dataclass
 class PreCertificateParams:
     run_id: str

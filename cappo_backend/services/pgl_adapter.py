@@ -12,7 +12,12 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from cappo_backend.config import Settings, get_settings
-from cappo_backend.services.pgl_client import PGLCertificate, PGLClient, PreCertificateParams, PostCertificateParams
+from cappo_backend.services.pgl_client import (
+    PGLCertificate,
+    PGLClient,
+    PostCertificateParams,
+    PreCertificateParams,
+)
 from cappo_backend.services.veklom_pgl_client import VeklomAgentCertificate, VeklomPGLClient
 
 
