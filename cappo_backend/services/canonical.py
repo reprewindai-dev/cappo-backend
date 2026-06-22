@@ -77,7 +77,7 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
         sig_bytes = base64.urlsafe_b64decode(signature_padded.encode("utf-8"))
         public_key.verify(sig_bytes, serialized)
         is_ed25519_ok = True
-    except Exception as e:
+    except Exception:
         logger.debug("Ed25519 signature verification failed", exc_info=True)
 
     if is_ed25519_ok:
@@ -88,12 +88,12 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
         try:
             if verify_signature_hmac(payload, signature, public_key_or_seed):
                 return True
-        except Exception as e:
+        except Exception:
             logger.debug("Fallback signature verification failed", exc_info=True)
         try:
             if verify_signature(payload, signature, public_key_or_seed):
                 return True
-        except Exception as e:
+        except Exception:
             logger.debug("Fallback signature verification failed", exc_info=True)
 
     return False
@@ -133,7 +133,7 @@ def verify_signature(payload: Any, signature: str, signing_key: str) -> bool:
     try:
         if verify_signature_hmac(payload, signature, signing_key):
             return True
-    except Exception as e:
+    except Exception:
         logger.debug("Legacy signature verification failed", exc_info=True)
     return False
 
