@@ -1,5 +1,5 @@
-import pytest
 from fastapi.testclient import TestClient
+
 
 def test_get_stats_benchmark(client: TestClient, benchmark):
     def fetch_stats():
