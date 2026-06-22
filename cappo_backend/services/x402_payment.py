@@ -43,7 +43,6 @@ try:
     from x402.http.middleware.fastapi import PaymentMiddlewareASGI
     from x402.http.types import RouteConfig
     from x402.mechanisms.evm.exact import ExactEvmServerScheme
-    from x402.schemas import Network
     from x402.server import x402ResourceServer
     X402_AVAILABLE = True
 except ImportError:
@@ -57,8 +56,6 @@ except ImportError:
     class RouteConfig:  # type: ignore
         def __init__(self, **kwargs: Any) -> None: pass
     class ExactEvmServerScheme:  # type: ignore
-        pass
-    class Network:  # type: ignore
         pass
     class x402ResourceServer:  # type: ignore
         def __init__(self, facilitator: Any = None) -> None: pass
