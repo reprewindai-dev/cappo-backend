@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
 from fastapi import HTTPException
-from unittest.mock import patch
+
 from cappo_backend.api.routers.license_router import _verify_admin_token
+
 
 def test_verify_admin_token_no_key_in_production():
     with patch("cappo_backend.api.routers.license_router.settings") as mock_settings:
