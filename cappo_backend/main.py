@@ -11,8 +11,6 @@ There is **no** public-path bypass for ``/v1/exec`` — it is authenticated here
 and authority-checked (EI/LAW 0) downstream in the orchestrator (Option A).
 """
 
-from __future__ import annotations
-
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
