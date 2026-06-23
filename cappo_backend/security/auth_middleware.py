@@ -29,6 +29,10 @@ PUBLIC_PATHS = frozenset({
     "/openapi.json",
     "/v1/license/validate",
     "/v1/license/activate",
+    "/.well-known/x402",
+    "/.well-known/x402.json",
+    "/x402/bazaar",
+    "/api/v1/pricing",
 })
 
 

@@ -43,30 +43,12 @@ from cappo_backend.config import Settings, get_settings
 
 logger = logging.getLogger("cappo.x402")
 
-try:
-    from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
-    from x402.http.middleware.fastapi import PaymentMiddlewareASGI
-    from x402.http.types import RouteConfig
-    from x402.mechanisms.evm.exact import ExactEvmServerScheme
-    from x402.server import x402ResourceServer
-    X402_AVAILABLE = True
-except ImportError:
-    X402_AVAILABLE = False
-    class FacilitatorConfig:  # type: ignore
-        def __init__(self, url: str = "") -> None: pass
-    class HTTPFacilitatorClient:  # type: ignore
-        def __init__(self, config: Any = None) -> None: pass
-    class PaymentOption:  # type: ignore
-        def __init__(self, **kwargs: Any) -> None: pass
-    class RouteConfig:  # type: ignore
-        def __init__(self, **kwargs: Any) -> None: pass
-    class ExactEvmServerScheme:  # type: ignore
-        pass
-    class x402ResourceServer:  # type: ignore
-        def __init__(self, facilitator: Any = None) -> None: pass
-        def register(self, network: Any, scheme: Any) -> None: pass
-    class PaymentMiddlewareASGI:  # type: ignore
-        def __init__(self, **kwargs: Any) -> None: pass
+from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
+from x402.http.middleware.fastapi import PaymentMiddlewareASGI
+from x402.http.types import RouteConfig
+from x402.mechanisms.evm.exact import ExactEvmServerScheme
+from x402.server import x402ResourceServer
+X402_AVAILABLE = True
 
 # ---------------------------------------------------------------------------
 # Network identifiers for multi-chain support
@@ -152,10 +134,10 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
 
 # Prices per tier (USD string format consumed by PaymentOption)
 TIER_PRICES: dict[str, str] = {
-    "micro":   "$0.001",
-    "read":    "$0.005",
-    "action":  "$0.05",
-    "compute": "$0.50",
+    "micro":   "$0.10",
+    "read":    "$0.10",
+    "action":  "$0.80",
+    "compute": "$0.80",
 }
 
 # Human-readable descriptions for each tier (used in RouteConfig.description)
@@ -172,13 +154,9 @@ class X402PaymentConfig:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self.evm_address    = self._settings.veklom_evm_address
+        self.evm_address    = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
         self.facilitator_url = self._settings.x402_facilitator_url
-        self.exec_price     = self._settings.x402_exec_price
-        self.mint_price     = self._settings.x402_mint_price
-        self.enabled_networks = [
-            n.strip() for n in self._settings.x402_networks.split(",") if n.strip()
-        ]
+        self.enabled_networks = ["base"]
 
     @property
     def is_configured(self) -> bool:
@@ -202,18 +180,6 @@ def create_x402_server(config: X402PaymentConfig | None = None) -> x402ResourceS
 
     # Always register Base (primary revenue network)
     server.register(NETWORKS["base"], ExactEvmServerScheme())
-    server.register(NETWORKS["base-sepolia"], ExactEvmServerScheme())
-
-    if "zksync" in config.enabled_networks:
-        server.register(NETWORKS["zksync"], ExactEvmServerScheme())
-        server.register(NETWORKS["zksync-sepolia"], ExactEvmServerScheme())
-
-    if "unichain" in config.enabled_networks:
-        server.register(NETWORKS["unichain"], ExactEvmServerScheme())
-        server.register(NETWORKS["unichain-sepolia"], ExactEvmServerScheme())
-
-    if "monad" in config.enabled_networks:
-        server.register(NETWORKS["monad"], ExactEvmServerScheme())
 
     return server
 

@@ -7,13 +7,13 @@ from typing import Any
 
 import pytest
 
-from cappo_backend.services.canonical import sha256_json, verify_signature
+from cappo_backend.services.canonical import sha256_json, verify_signature_ed25519
 from cappo_backend.services.eat_builder import (
     EATBuilder,
     MissingEATInputError,
     eat_canonical_body,
 )
-from cappo_backend.services.ei_builder import HmacSigner
+from cappo_backend.services.ei_builder import Ed25519Signer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -45,7 +45,7 @@ def _make_ei(**overrides: Any) -> dict[str, Any]:
 
 
 def _builder(**kwargs: Any) -> EATBuilder:
-    signer = HmacSigner(signing_key=SIGNING_KEY)
+    signer = Ed25519Signer(signing_key=SIGNING_KEY)
     return EATBuilder(signer=signer, **kwargs)
 
 
@@ -119,7 +119,7 @@ class TestEATBuilderHappyPath:
             risk_tier="standard",
         )
         body = eat_canonical_body(eat)
-        assert verify_signature(body, eat["signature"], SIGNING_KEY)
+        assert verify_signature_ed25519(body, eat["signature"], SIGNING_KEY)
 
     def test_custom_ttl(self):
         builder = _builder()

@@ -3,6 +3,8 @@
 Translates legacy Enterprise Webhooks (SAP, Oracle, ServiceNow) into standardized agent-readable JSON.
 """
 
+import hmac
+import hashlib
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -18,8 +20,16 @@ class WebhookAdapter:
 
     def verify_signature(self, signature: str, payload: str) -> bool:
         """Verify webhook signature from legacy system."""
-        # Mock verification
-        return True
+        if not signature or not payload:
+            return False
+            
+        expected_sig = hmac.new(
+            self.endpoint_secret.encode('utf-8'),
+            payload.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return hmac.compare_digest(expected_sig, signature)
 
     def normalize_payload(self, system: str, raw_payload: Dict[str, Any]) -> Dict[str, Any]:
         """Convert a raw enterprise webhook into a UACP-compatible event."""

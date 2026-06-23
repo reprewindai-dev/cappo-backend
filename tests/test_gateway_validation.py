@@ -11,13 +11,13 @@ from cappo_backend.config import Settings
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
+from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, Ed25519Signer
 
 SIGNING_KEY = "test-signing-key"
 
 
 def _valid_ei(**overrides: object) -> dict:
-    signer = HmacSigner(SIGNING_KEY)
+    signer = Ed25519Signer(SIGNING_KEY)
     builder = ExecutionIdentityBuilder(signer=signer)
     inputs = {
         "pgl_pre_certificate_id": "cert-1",
@@ -109,7 +109,7 @@ class TestRule3Directive:
 class TestRule4TTL:
     def test_expired(self, db: Session, gateway: MCPGateway) -> None:
         _make_cert(db)
-        signer = HmacSigner(SIGNING_KEY)
+        signer = Ed25519Signer(SIGNING_KEY)
         builder = ExecutionIdentityBuilder(signer=signer)
         past = datetime(2020, 1, 1, tzinfo=timezone.utc)
         ei = builder.build({

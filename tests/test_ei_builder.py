@@ -9,7 +9,7 @@ import pytest
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.ei_builder import (
     ExecutionIdentityBuilder,
-    HmacSigner,
+    Ed25519Signer,
     MissingEIInputError,
     canonical_body,
 )
@@ -36,7 +36,7 @@ def _min_inputs(**overrides: object) -> dict:
 
 @pytest.fixture
 def builder() -> ExecutionIdentityBuilder:
-    return ExecutionIdentityBuilder(signer=HmacSigner(SIGNING_KEY))
+    return ExecutionIdentityBuilder(signer=Ed25519Signer(SIGNING_KEY))
 
 
 class TestDeterminism:
@@ -59,12 +59,12 @@ class TestHashAndSignature:
 
     def test_signature_verifies(self, builder: ExecutionIdentityBuilder) -> None:
         ei = builder.build(_min_inputs())
-        signer = HmacSigner(SIGNING_KEY)
+        signer = Ed25519Signer(SIGNING_KEY)
         assert signer.verify(canonical_body(ei), ei["signature"])
 
     def test_wrong_key_fails_verify(self, builder: ExecutionIdentityBuilder) -> None:
         ei = builder.build(_min_inputs())
-        wrong = HmacSigner("wrong-key")
+        wrong = Ed25519Signer("wrong-key")
         assert not wrong.verify(canonical_body(ei), ei["signature"])
 
 
