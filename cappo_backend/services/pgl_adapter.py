@@ -13,7 +13,12 @@ import logging
 from typing import Any, Protocol
 
 from cappo_backend.config import Settings, get_settings
-from cappo_backend.services.pgl_client import PGLCertificate, PGLClient
+from cappo_backend.services.pgl_client import (
+    PGLCertificate,
+    PGLClient,
+    PostCertificateParams,
+    PreCertificateParams,
+)
 from cappo_backend.services.veklom_pgl_client import VeklomAgentCertificate, VeklomPGLClient
 
 logger = logging.getLogger(__name__)
@@ -27,8 +32,8 @@ class PGLPort(Protocol):
     """
 
     def get_certificate(self, certificate_id: str) -> Any | None: ...
-    def mint_pre_certificate(self, **kwargs: Any) -> Any: ...
-    def mint_post_certificate(self, **kwargs: Any) -> Any: ...
+    def mint_pre_certificate(self, params: PreCertificateParams) -> Any: ...
+    def mint_post_certificate(self, params: PostCertificateParams) -> Any: ...
 
 
 class VeklomPGLAdapter:
@@ -158,41 +163,50 @@ class VeklomPGLAdapter:
         except Exception as e:
             logger.warning("Failed to get trust score from Veklom for %s: %s", agent_id, e)
             return 0.0
-
-    def mint_pre_certificate(self, **kwargs: Any) -> PGLCertificate:
+    
+    def mint_pre_certificate(self, params: PreCertificateParams) -> PGLCertificate:
         """For veklom integration, this validates agent instead of minting.
 
         The real certificate already exists in veklom - we just validate it.
         """
-        run_id = kwargs.get("run_id", "")
-
+        run_id = params.run_id
+        
         # Use run_id as agent_id to lookup
         try:
+            # Note: `tools` is not part of PreCertificateParams directly, so we assume empty or we need to pass it differently.
+            # In cappo_backend/services/orchestrator.py, `mint_pre_certificate` doesn't currently pass `tools`.
+            # We'll pass an empty list here, which matches the default behavior of `kwargs.get("tools", [])`.
             agent = self._veklom.validate_agent_for_execution(
                 agent_id=run_id,
-                requested_tools=kwargs.get("tools", []),
-                budget_cents=kwargs.get("approved_budget_cents", 0),
+                requested_tools=[],
+                budget_cents=params.approved_budget_cents,
             )
             return self._to_pgl_certificate(agent)
         except Exception as e:
             logger.warning("Failed to validate agent for execution in Veklom for %s: %s", run_id, e)
             # Fallback to local if veklom fails
             if self._local:
-                return self._local.mint_pre_certificate(**kwargs)
+                return self._local.mint_pre_certificate(params)
             raise
-
-    def mint_post_certificate(self, **kwargs: Any) -> PGLCertificate:
+    
+    def mint_post_certificate(self, params: PostCertificateParams) -> PGLCertificate:
         """Record execution attestation back to veklom ledger.
 
         After CAPPO execution completes, this updates the agent's
         ledger with the execution outcome.
         """
+        run_id = params.run_id
+        # We don't have outcome directly, but we can synthesize it from outcome_hash or execution_id
+        # Note: In cappo_backend/services/orchestrator.py, `mint_post_certificate` doesn't currently pass `outcome` or `execution_id`.
+        # We'll use defaults as before.
+        outcome = {}
+        execution_id = ""
+        
         run_id = kwargs.get("run_id", "")
         outcome = kwargs.get("outcome", {})
 
         # Record in veklom
         try:
-            execution_id = kwargs.get("execution_id", "")
             self._veklom.record_execution_attestation(
                 agent_id=run_id,
                 execution_id=execution_id,
@@ -204,14 +218,14 @@ class VeklomPGLAdapter:
 
         # Also mint local if available
         if self._local:
-            return self._local.mint_post_certificate(**kwargs)
-
+            return self._local.mint_post_certificate(params)
+        
         # Return minimal cert
         return PGLCertificate(
-            certificate_id=str(kwargs.get("pre_certificate_id", "")),
+            certificate_id=str(params.pre_certificate_id),
             run_id=run_id,
-            workspace_id=kwargs.get("workspace_id", ""),
-            genome_hash=kwargs.get("genome_hash", ""),
+            workspace_id=params.workspace_id,
+            genome_hash=params.genome_hash,
             constitution_hash="",
             plan_hash="",
             governance_decision="ALLOW",
