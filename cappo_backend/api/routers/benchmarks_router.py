@@ -185,13 +185,6 @@ _PROVIDER_SEED = {
 }
 
 
-@router.get("/leaderboard")
-def get_leaderboard(db: Session = Depends(get_session)):
-    """Live API Trust Rankings derived from real GovernedRun execution data.
-
-    Returns a flat JSON array of BenchApi objects directly, matching Next.js SWR.
-    """
-    stats = (
 def _get_provider_stats(db: Session) -> list:
     return (
         db.query(
