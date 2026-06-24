@@ -53,23 +53,6 @@ class Ed25519Signer:
         return verify_signature_ed25519(payload, signature, self.signing_key)
 
 
-@dataclass
-class HmacSigner:
-    """Legacy/Testing HMAC-SHA256 signer.
-
-    Used if tests require standard HMAC mock signing instead of Ed25519.
-    """
-
-    signing_key: str
-
-    def sign(self, payload: Any) -> str:
-        from cappo_backend.services.canonical import sign_payload_hmac
-        return sign_payload_hmac(payload, self.signing_key)
-
-    def verify(self, payload: Any, signature: str) -> bool:
-        from cappo_backend.services.canonical import verify_signature_hmac
-        return verify_signature_hmac(payload, signature, self.signing_key)
-
 
 @dataclass
 class ExecutionIdentityBuilder:

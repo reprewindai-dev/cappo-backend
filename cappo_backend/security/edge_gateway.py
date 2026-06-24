@@ -21,7 +21,7 @@ from typing import Any
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.security.nonce_cache import NonceBackend
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.canonical import sha256_json, verify_signature
+from cappo_backend.services.canonical import sha256_json, verify_signature_ed25519
 from cappo_backend.services.eat_builder import eat_canonical_body
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ class EdgeGateway:
     def _v1_signature(self, eat: dict[str, Any]) -> None:
         """V1 — HMAC signature over canonical body must verify."""
         body = eat_canonical_body(eat)
-        if not verify_signature(body, eat.get("signature", ""), self._eat_signing_key):
+        if not verify_signature_ed25519(body, eat.get("signature", ""), self._eat_signing_key):
             self._reject("signature verification failed", "V1")
 
     def _v2_hash(self, eat: dict[str, Any]) -> None:

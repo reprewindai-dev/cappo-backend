@@ -166,6 +166,10 @@ class Settings(BaseSettings):
             problems.append(
                 "API_KEYS must contain at least one key when AUTH_ENABLED is true."
             )
+        if not self.license_admin_key:
+            problems.append(
+                "LICENSE_ADMIN_KEY must be set in production to secure admin endpoints."
+            )
 
         if problems:
             raise InsecureProductionConfigError(

@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from cappo_backend.config import Settings
-from cappo_backend.services.pgl_client import PGLClient, PGLPersistenceError
+from cappo_backend.services.pgl_client import PGLClient, PGLPersistenceError, PreCertificateParams
 
 
 class TestProductionGuard:
@@ -28,7 +28,7 @@ class TestProductionGuard:
 
     def test_dev_mint_non_persisted(self, settings: Settings) -> None:
         client = PGLClient(db=None, settings=settings)
-        cert = client.mint_pre_certificate(
+        params = PreCertificateParams(
             run_id="r",
             workspace_id="ws",
             genome_hash="g",
@@ -37,11 +37,12 @@ class TestProductionGuard:
             governance_decision="ALLOW",
             risk_tier="standard",
         )
+        cert = client.mint_pre_certificate(params)
         assert cert.persisted is False
 
     def test_persistent_mint_with_db(self, db, settings: Settings) -> None:
         client = PGLClient(db=db, settings=settings)
-        cert = client.mint_pre_certificate(
+        params = PreCertificateParams(
             run_id="r",
             workspace_id="ws",
             genome_hash="g",
@@ -50,4 +51,5 @@ class TestProductionGuard:
             governance_decision="ALLOW",
             risk_tier="standard",
         )
+        cert = client.mint_pre_certificate(params)
         assert cert.persisted is True

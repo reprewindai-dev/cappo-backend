@@ -371,8 +371,8 @@ def create_enterprise_signer(
     elif provider == "vault":
         return HashiCorpVaultSigner(**kwargs)
     elif provider == "hmac":
-        from cappo_backend.services.ei_builder import HmacSigner
-        return HmacSigner(**kwargs)
+        from cappo_backend.services.ei_builder import Ed25519Signer
+        return Ed25519Signer(**kwargs)
     else:
         raise ValueError(f"Unknown signer provider: {provider}")
 
@@ -420,7 +420,7 @@ def create_enterprise_signer_from_settings(settings: Any) -> Any:
             token=settings.vault_token,
         )
     elif provider == "hmac":
-        from cappo_backend.services.ei_builder import HmacSigner
-        return HmacSigner(signing_key=settings.ei_signing_key)
+        from cappo_backend.services.ei_builder import Ed25519Signer
+        return Ed25519Signer(signing_key=settings.ei_signing_key)
     else:
         raise SigningError(f"Unknown EI_SIGNING_PROVIDER: {provider}")

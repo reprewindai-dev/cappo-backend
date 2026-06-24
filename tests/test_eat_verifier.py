@@ -12,7 +12,7 @@ from cappo_backend.security.nonce_cache import InMemoryNonceCache
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json, sign_payload
 from cappo_backend.services.eat_builder import EATBuilder, eat_canonical_body
-from cappo_backend.services.ei_builder import HmacSigner
+from cappo_backend.services.ei_builder import Ed25519Signer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -42,7 +42,7 @@ def _make_ei(**overrides: Any) -> dict[str, Any]:
 
 def _mint_eat(**overrides: Any) -> dict[str, Any]:
     """Mint a valid EAT for testing."""
-    signer = HmacSigner(signing_key=SIGNING_KEY)
+    signer = Ed25519Signer(signing_key=SIGNING_KEY)
     builder = EATBuilder(signer=signer)
     kwargs: dict[str, Any] = {
         "execution_identity": _make_ei(),
@@ -126,7 +126,7 @@ class TestV2Hash:
 class TestV3Expiry:
     def test_expired_eat_rejected(self, db):
         """An EAT with expires_at in the past should be rejected."""
-        signer = HmacSigner(signing_key=SIGNING_KEY)
+        signer = Ed25519Signer(signing_key=SIGNING_KEY)
         past = datetime.now(timezone.utc) - timedelta(seconds=10)
 
         # Build a manually-expired EAT

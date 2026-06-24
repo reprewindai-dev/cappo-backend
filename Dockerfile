@@ -42,6 +42,10 @@ COPY alembic.ini .
 # Expose port
 EXPOSE 8000
 
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD curl -f http://127.0.0.1:8000/health || exit 1
+
 # Entrypoint script to run migrations and start uvicorn
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh

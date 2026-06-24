@@ -13,6 +13,7 @@ development and is clearly marked ``persisted=False``.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -21,6 +22,42 @@ from cappo_backend.config import Settings, get_settings
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.services.canonical import sha256_json
+
+
+@dataclass
+class PreCertificateParams:
+    run_id: str
+    workspace_id: str
+    genome_hash: str
+    constitution_hash: str
+    plan_hash: str
+    governance_decision: str
+    risk_tier: str
+    actor_id: str | None = None
+    agent_id: str | None = None
+    approved_budget_cents: int = 0
+    reserve_cents: int = 0
+    input_hash: str | None = None
+    decision_frame_hash: str | None = None
+    provenance: dict[str, Any] | None = None
+
+
+@dataclass
+class PostCertificateParams:
+    pre_certificate_id: str
+    run_id: str
+    workspace_id: str
+    genome_hash: str
+    constitution_hash: str
+    plan_hash: str
+    governance_decision: str
+    risk_tier: str
+    output_hash: str
+    outcome_hash: str
+    actor_id: str | None = None
+    agent_id: str | None = None
+    input_hash: str | None = None
+    provenance: dict[str, Any] | None = None
 
 
 class PGLPersistenceError(RuntimeError):
@@ -45,21 +82,7 @@ class PGLClient:
 
     def mint_pre_certificate(
         self,
-        *,
-        run_id: str,
-        workspace_id: str,
-        actor_id: str | None = None,
-        agent_id: str | None = None,
-        genome_hash: str,
-        constitution_hash: str,
-        plan_hash: str,
-        governance_decision: str,
-        risk_tier: str,
-        approved_budget_cents: int = 0,
-        reserve_cents: int = 0,
-        input_hash: str | None = None,
-        decision_frame_hash: str | None = None,
-        provenance: dict[str, Any] | None = None,
+        params: PreCertificateParams,
     ) -> PGLCertificate:
         """Mint a pre-execution PGL certificate.
 
@@ -69,20 +92,20 @@ class PGLClient:
         """
         cert = PGLCertificate(
             certificate_id=str(uuid.uuid4()),
-            run_id=run_id,
-            workspace_id=workspace_id,
-            actor_id=actor_id,
-            agent_id=agent_id,
-            genome_hash=genome_hash,
-            constitution_hash=constitution_hash,
-            plan_hash=plan_hash,
-            input_hash=input_hash,
-            decision_frame_hash=decision_frame_hash,
-            governance_decision=governance_decision,
-            risk_tier=risk_tier,
-            approved_budget_cents=approved_budget_cents,
-            reserve_cents=reserve_cents,
-            provenance_json=provenance or {},
+            run_id=params.run_id,
+            workspace_id=params.workspace_id,
+            actor_id=params.actor_id,
+            agent_id=params.agent_id,
+            genome_hash=params.genome_hash,
+            constitution_hash=params.constitution_hash,
+            plan_hash=params.plan_hash,
+            input_hash=params.input_hash,
+            decision_frame_hash=params.decision_frame_hash,
+            governance_decision=params.governance_decision,
+            risk_tier=params.risk_tier,
+            approved_budget_cents=params.approved_budget_cents,
+            reserve_cents=params.reserve_cents,
+            provenance_json=params.provenance or {},
             persisted=self.persistent,
         )
 
@@ -95,21 +118,7 @@ class PGLClient:
 
     def mint_post_certificate(
         self,
-        *,
-        pre_certificate_id: str,
-        run_id: str,
-        workspace_id: str,
-        actor_id: str | None = None,
-        agent_id: str | None = None,
-        genome_hash: str,
-        constitution_hash: str,
-        plan_hash: str,
-        governance_decision: str,
-        risk_tier: str,
-        output_hash: str,
-        outcome_hash: str,
-        input_hash: str | None = None,
-        provenance: dict[str, Any] | None = None,
+        params: PostCertificateParams,
     ) -> PGLCertificate:
         """Mint a post-execution PGL certificate linked back to the pre-cert.
 
@@ -120,27 +129,27 @@ class PGLClient:
         """
         cert = PGLCertificate(
             certificate_id=str(uuid.uuid4()),
-            run_id=run_id,
-            workspace_id=workspace_id,
-            actor_id=actor_id,
-            agent_id=agent_id,
-            pre_execution_certificate_id=pre_certificate_id,
-            genome_hash=genome_hash,
-            constitution_hash=constitution_hash,
-            plan_hash=plan_hash,
-            input_hash=input_hash,
-            output_hash=output_hash,
-            outcome_hash=outcome_hash,
-            governance_decision=governance_decision,
-            risk_tier=risk_tier,
-            provenance_json=provenance or {},
+            run_id=params.run_id,
+            workspace_id=params.workspace_id,
+            actor_id=params.actor_id,
+            agent_id=params.agent_id,
+            pre_execution_certificate_id=params.pre_certificate_id,
+            genome_hash=params.genome_hash,
+            constitution_hash=params.constitution_hash,
+            plan_hash=params.plan_hash,
+            input_hash=params.input_hash,
+            output_hash=params.output_hash,
+            outcome_hash=params.outcome_hash,
+            governance_decision=params.governance_decision,
+            risk_tier=params.risk_tier,
+            provenance_json=params.provenance or {},
             persisted=self.persistent,
         )
 
         if self._db is not None:
             self._db.add(cert)
             self._db.flush()
-            pre = self._db.get(PGLCertificate, pre_certificate_id)
+            pre = self._db.get(PGLCertificate, params.pre_certificate_id)
             if pre is not None:
                 pre.post_execution_certificate_id = cert.certificate_id
                 self._db.flush()

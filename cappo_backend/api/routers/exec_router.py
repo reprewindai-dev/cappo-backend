@@ -69,31 +69,16 @@ class ExecResponse(BaseModel):
 
 # ---------- route ----------
 
-@router.post("/exec", response_model=ExecResponse)
-def governed_exec(
-    body: ExecRequest,
-    request: Request,
-    db: Session = Depends(get_session),
-    settings: Settings = Depends(get_settings),
-) -> ExecResponse:
-    """Single governed execution entry path (Option A)."""
-    start = time.monotonic()
-
-    audit = AuditService(db)
-
-    # Payment/kill-switch gate runs FIRST: a 402 takes precedence over the LAW 0
-    # 403 (migration note §7 / EI Plan §Priority rule). It short-circuits before
-    # any governed pipeline work or EI enforcement.
+def _check_payment(db: Session, workspace_id: str, cost_cents: int) -> None:
     try:
-        PaymentGate(db).check(body.workspace_id, cost_cents=body.action_cost_cents)
+        PaymentGate(db).check(workspace_id, cost_cents=cost_cents)
     except PaymentRequiredError as exc:
         raise HTTPException(
             status_code=402,
             detail={"error": "PAYMENT_REQUIRED", "detail": exc.detail, "reason": exc.reason},
         )
 
-    # Assemble orchestrator collaborators.
-    # Use real veklom-byos-backend if configured, otherwise local DB
+def _build_orchestrator(db: Session, settings: Settings, audit: AuditService) -> RunOrchestrator:
     pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
     signer = create_enterprise_signer_from_settings(settings)
     builder = ExecutionIdentityBuilder(signer=signer)
@@ -115,7 +100,7 @@ def governed_exec(
         cache=_global_cache,
         queue=_global_queue,
     )
-    orchestrator = RunOrchestrator(
+    return RunOrchestrator(
         db=db,
         pgl=pgl,
         builder=builder,
@@ -125,13 +110,9 @@ def governed_exec(
         genome_service=genome_service,
     )
 
-    payload: dict[str, Any] = body.model_dump()
-
-    # Run the governed pipeline (governance, PGL cert, EI mint, LAW 0 enforcement,
-    # execution, post-cert + attestation). A failed EI check raises before any
-    # side effect and is mapped to the 403 LAW 0 contract.
+def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Session) -> dict[str, Any]:
     try:
-        result = orchestrator.run_governed(payload)
+        return orchestrator.run_governed(payload)
     except EIValidationError as exc:
         db.commit()  # persist the FAILED run + law0_violation audit event
         raise HTTPException(
@@ -144,6 +125,21 @@ def governed_exec(
                 "incident_logged": True,
             },
         )
+
+@router.post("/exec", response_model=ExecResponse)
+def governed_exec(
+    body: ExecRequest,
+    request: Request,
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ExecResponse:
+    """Single governed execution entry path (Option A)."""
+    start = time.monotonic()
+    audit = AuditService(db)
+
+    _check_payment(db, body.workspace_id, body.action_cost_cents)
+    orchestrator = _build_orchestrator(db, settings, audit)
+    result = _execute_run(orchestrator, body.model_dump(), db)
 
     run = orchestrator.last_run
     db.commit()

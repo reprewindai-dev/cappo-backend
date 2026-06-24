@@ -11,7 +11,7 @@ from cappo_backend.security.edge_gateway import EATVerificationError, EdgeGatewa
 from cappo_backend.security.nonce_cache import InMemoryNonceCache
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.eat_builder import EATBuilder
-from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, HmacSigner
+from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, Ed25519Signer
 from cappo_backend.services.executor import EchoExecutor
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
@@ -30,7 +30,7 @@ EAT_SIGNING_KEY = "test-eat-signing-key"
 
 def _make_orchestrator(db, with_eat: bool = True) -> RunOrchestrator:
     """Create a full orchestrator with or without EAT builder."""
-    ei_signer = HmacSigner(signing_key=EI_SIGNING_KEY)
+    ei_signer = Ed25519Signer(signing_key=EI_SIGNING_KEY)
     ei_builder = ExecutionIdentityBuilder(signer=ei_signer)
     pgl = PGLClient(db=db)
     executor = EchoExecutor()
@@ -38,7 +38,7 @@ def _make_orchestrator(db, with_eat: bool = True) -> RunOrchestrator:
 
     eat_builder = None
     if with_eat:
-        eat_signer = HmacSigner(signing_key=EAT_SIGNING_KEY)
+        eat_signer = Ed25519Signer(signing_key=EAT_SIGNING_KEY)
         eat_builder = EATBuilder(signer=eat_signer)
 
     return RunOrchestrator(
@@ -148,13 +148,13 @@ class TestEATExpiry:
     def test_expired_eat_rejected_at_edge(self, db):
         """An EAT minted with a clock in the past should be rejected."""
         past = datetime.now(timezone.utc) - timedelta(seconds=600)
-        eat_signer = HmacSigner(signing_key=EAT_SIGNING_KEY)
+        eat_signer = Ed25519Signer(signing_key=EAT_SIGNING_KEY)
         eat_builder = EATBuilder(
             signer=eat_signer,
             _clock=lambda: past,  # mint in the past
         )
 
-        ei_signer = HmacSigner(signing_key=EI_SIGNING_KEY)
+        ei_signer = Ed25519Signer(signing_key=EI_SIGNING_KEY)
         ei_builder = ExecutionIdentityBuilder(signer=ei_signer)
         pgl = PGLClient(db=db)
         executor = EchoExecutor()
