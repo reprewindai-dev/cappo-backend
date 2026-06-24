@@ -90,6 +90,8 @@ def _verify_admin_token(x_license_admin_key: str = Header(default="")) -> None:
     """
     expected = settings.license_admin_key
     if not expected:
+        if settings.is_production:
+            raise HTTPException(status_code=403, detail="License admin key not configured in production")
         # No key configured — allow all (dev/test only)
         return
     if not hmac.compare_digest(x_license_admin_key, expected):

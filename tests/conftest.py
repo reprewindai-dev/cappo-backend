@@ -46,6 +46,7 @@ def settings() -> Settings:
         database_url="sqlite:///:memory:",
         ei_signing_key="test-signing-key",
         cappo_require_persistent_pgl=False,
+        cappo_internal_api_keys="test-key",
         environment="test",
     )
 
@@ -73,11 +74,20 @@ def client(db: Session, settings: Settings) -> TestClient:
 
     app.dependency_overrides[get_session] = _override_session
     from cappo_backend.config import get_settings as _gs
-    app.dependency_overrides[_gs] = lambda: settings
+    from cappo_backend.main import create_app
+    
+    # Create a fresh app instance with test settings so middlewares get the right config
+    test_app = create_app(settings)
+    test_app.dependency_overrides[get_session] = _override_session
+    test_app.dependency_overrides[_gs] = lambda: settings
     
     # Provide default auth header to avoid breaking existing tests
-    test_client = TestClient(app)
-    test_client.headers.update({"X-API-Key": "test-key"})
+    test_client = TestClient(test_app)
+    api_key = next(iter(settings.api_key_set)) if settings.api_key_set else "test-key"
+    test_client.headers.update({
+        "X-API-Key": api_key,
+        "X-Wallet-Address": "test-wallet"
+    })
     yield test_client
-    app.dependency_overrides.clear()
+    test_app.dependency_overrides.clear()
 

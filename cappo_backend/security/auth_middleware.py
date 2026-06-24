@@ -23,12 +23,19 @@ from cappo_backend.config import Settings
 # License endpoints use their own X-License-Admin-Key header for admin operations;
 # /validate and /activate are intentionally public for veklom-byos-backend to call.
 PUBLIC_PATHS = frozenset({
+    "/",
+    "/favicon.ico",
+    "/robots.txt",
     "/health",
     "/docs",
     "/redoc",
     "/openapi.json",
     "/v1/license/validate",
     "/v1/license/activate",
+    "/.well-known/x402",
+    "/.well-known/x402.json",
+    "/x402/bazaar",
+    "/api/v1/pricing",
 })
 
 

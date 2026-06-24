@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/v1/gpc", tags=["Governed Plan Compiler"])
 
 
 @router.get("/stats")
-async def get_stats(db: Session = Depends(get_session)):
+def get_stats(db: Session = Depends(get_session)):
     """Real GPC statistics derived from the GovernedRun table."""
     total_runs: int = db.query(func.count(GovernedRun.run_id)).scalar() or 0
 

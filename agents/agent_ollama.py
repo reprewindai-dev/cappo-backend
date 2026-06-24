@@ -298,6 +298,45 @@ async def ollama_chat(messages: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Core agent loop helpers
+# ---------------------------------------------------------------------------
+def _get_system_prompt() -> str:
+    """Generate the system prompt for the Ollama agent."""
+    return (
+        f"You are the Veklom Sovereign Agent running entirely on a private Hetzner server.\n"
+        f"Your inference engine is Ollama ({OLLAMA_MODEL}). No data leaves this server.\n"
+        f"You help operate the Veklom BYOS backend: marketplace, tenants, billing, IronGrid routing.\n"
+        f"Reason step by step. Use tools to gather information and take action.\n\n"
+        + TOOL_SCHEMA_TEXT
+    )
+
+
+def _parse_model_response(raw: str) -> dict | str:
+    """Parse the raw response from the model into a dictionary or string."""
+    clean = raw.strip()
+    for fence in ["```json", "```JSON", "```"]:
+        clean = clean.strip(fence).strip()
+
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        return raw
+
+
+async def _execute_tool(tool_name: str, tool_args: dict) -> dict:
+    """Execute a tool by name with the given arguments."""
+    if tool_name not in TOOL_MAP:
+        return {"error": f"Unknown tool '{tool_name}'. Valid tools: {list(TOOL_MAP.keys())}"}
+
+    try:
+        return await TOOL_MAP[tool_name](**tool_args)
+    except TypeError as exc:
+        return {"error": f"Bad args for {tool_name}: {exc}"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
 # Core agent loop
 # ---------------------------------------------------------------------------
 async def run_agent(goal: str, session_id: str | None = None) -> dict:
@@ -316,16 +355,8 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
     log("AGENT", f"Model:   {OLLAMA_MODEL} @ {OLLAMA_BASE_URL}")
     log("AGENT", f"Goal:    {goal}")
 
-    system_prompt = (
-        f"You are the Veklom Sovereign Agent running entirely on a private Hetzner server.\n"
-        f"Your inference engine is Ollama ({OLLAMA_MODEL}). No data leaves this server.\n"
-        f"You help operate the Veklom BYOS backend: marketplace, tenants, billing, IronGrid routing.\n"
-        f"Reason step by step. Use tools to gather information and take action.\n\n"
-        + TOOL_SCHEMA_TEXT
-    )
-
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": _get_system_prompt()},
         {"role": "user",   "content": goal},
     ]
 
@@ -342,18 +373,12 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
 
         messages.append({"role": "assistant", "content": raw})
 
-        # Strip markdown fences if model wraps output
-        clean = raw.strip()
-        for fence in ["```json", "```JSON", "```"]:
-            clean = clean.strip(fence).strip()
+        parsed = _parse_model_response(raw)
 
-        # Try to parse JSON
-        try:
-            parsed = json.loads(clean)
-        except json.JSONDecodeError:
+        if isinstance(parsed, str):
             # Model gave prose — treat as final answer
             log("DONE", "Prose response — treating as final answer")
-            final_answer = raw
+            final_answer = parsed
             break
 
         # Done signal
@@ -373,15 +398,7 @@ async def run_agent(goal: str, session_id: str | None = None) -> dict:
 
         log("ACT", f"{tool_name}({json.dumps(tool_args)[:120]})")
 
-        if tool_name not in TOOL_MAP:
-            observation = {"error": f"Unknown tool '{tool_name}'. Valid tools: {list(TOOL_MAP.keys())}"}
-        else:
-            try:
-                observation = await TOOL_MAP[tool_name](**tool_args)
-            except TypeError as exc:
-                observation = {"error": f"Bad args for {tool_name}: {exc}"}
-            except Exception as exc:
-                observation = {"error": str(exc)}
+        observation = await _execute_tool(tool_name, tool_args)
 
         obs_str = json.dumps(observation)
         log("OBSERVE", obs_str[:300])

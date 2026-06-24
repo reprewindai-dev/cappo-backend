@@ -9,6 +9,7 @@ This is the integration layer between CAPPO and the real agent registry.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol
 
 from cappo_backend.config import Settings, get_settings
@@ -20,14 +21,16 @@ from cappo_backend.services.pgl_client import (
 )
 from cappo_backend.services.veklom_pgl_client import VeklomAgentCertificate, VeklomPGLClient
 
+logger = logging.getLogger(__name__)
+
 
 class PGLPort(Protocol):
     """Unified interface for PGL operations.
-    
+
     Both PGLClient (local DB) and VeklomPGLClient (external API) implement
     this interface through the adapter.
     """
-    
+
     def get_certificate(self, certificate_id: str) -> Any | None: ...
     def mint_pre_certificate(self, params: PreCertificateParams) -> Any: ...
     def mint_post_certificate(self, params: PostCertificateParams) -> Any: ...
@@ -35,12 +38,12 @@ class PGLPort(Protocol):
 
 class VeklomPGLAdapter:
     """Adapter that makes VeklomPGLClient work with CAPPO orchestrator.
-    
+
     Translates between:
     - CAPPO's certificate_id lookups → veklom agent_id lookups
     - CAPPO's local PGL minting → veklom agent validation
     - CAPPO's risk_tier → veklom trust_score
-    
+
     Usage:
         adapter = VeklomPGLAdapter(db_session)
         orchestrator = RunOrchestrator(
@@ -49,21 +52,21 @@ class VeklomPGLAdapter:
             ...
         )
     """
-    
+
     def __init__(self, db: Any | None = None, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._veklom = VeklomPGLClient(settings)
         self._local = PGLClient(db=db, settings=settings) if db else None
         self._cert_cache: dict[str, VeklomAgentCertificate] = {}
-    
+
     @property
     def persistent(self) -> bool:
         """Always true when connected to real veklom backend."""
         return True
-    
+
     def get_certificate(self, certificate_id: str) -> PGLCertificate | None:
         """Lookup certificate by ID.
-        
+
         For veklom: certificate_id is agent_id.
         Fetches from veklom API and converts to PGLCertificate format.
         """
@@ -71,18 +74,21 @@ class VeklomPGLAdapter:
         if certificate_id in self._cert_cache:
             agent_cert = self._cert_cache[certificate_id]
             return self._to_pgl_certificate(agent_cert)
-        
+
         try:
             # Try veklom (agent_id lookup)
             agent_cert = self._veklom.get_agent_certificate(certificate_id)
             self._cert_cache[certificate_id] = agent_cert
             return self._to_pgl_certificate(agent_cert)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "Failed to get agent certificate from Veklom for %s: %s", certificate_id, e
+            )
             # Fallback to local DB if available
             if self._local:
                 return self._local.get_certificate(certificate_id)
             return None
-    
+
     def _to_pgl_certificate(self, agent: VeklomAgentCertificate) -> PGLCertificate:
         """Convert VeklomAgentCertificate to PGLCertificate format."""
         cert = PGLCertificate(
@@ -100,32 +106,28 @@ class VeklomPGLAdapter:
         # Attach veklom data for reference
         cert._veklom_agent = agent  # type: ignore
         return cert
-    
+
     def _hash_constitution(self, agent: VeklomAgentCertificate) -> str:
         """Generate constitution hash from agent rules."""
         import hashlib
         import json
-        
+
         constitution = {
             "safety_rules": agent.safety_rules,
             "permissions": agent.permissions,
             "risk_category": agent.risk_category,
         }
-        return hashlib.sha256(
-            json.dumps(constitution, sort_keys=True).encode()
-        ).hexdigest()
-    
+        return hashlib.sha256(json.dumps(constitution, sort_keys=True).encode()).hexdigest()
+
     def _hash_plan(self, agent: VeklomAgentCertificate) -> str:
         """Generate plan hash from declared purpose."""
         import hashlib
-        
-        return hashlib.sha256(
-            agent.declared_purpose.encode()
-        ).hexdigest()
-    
+
+        return hashlib.sha256(agent.declared_purpose.encode()).hexdigest()
+
     def _trust_score_to_risk_tier(self, trust_score: float) -> str:
         """Convert veklom trust score to CAPPO risk tier.
-        
+
         90-100: production (high trust)
         70-89: standard (medium trust)
         40-69: sandbox (low trust)
@@ -139,7 +141,7 @@ class VeklomPGLAdapter:
             return "sandbox"
         else:
             return "terminated"
-    
+
     def validate_agent(
         self,
         agent_id: str,
@@ -152,18 +154,19 @@ class VeklomPGLAdapter:
             requested_tools=requested_tools,
             budget_cents=budget_cents,
         )
-    
+
     def get_trust_score(self, agent_id: str) -> float:
         """Get real trust score from veklom."""
         try:
             cert = self._veklom.get_agent_certificate(agent_id)
             return cert.trust_score
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to get trust score from Veklom for %s: %s", agent_id, e)
             return 0.0
     
     def mint_pre_certificate(self, params: PreCertificateParams) -> PGLCertificate:
         """For veklom integration, this validates agent instead of minting.
-        
+
         The real certificate already exists in veklom - we just validate it.
         """
         run_id = params.run_id
@@ -179,7 +182,8 @@ class VeklomPGLAdapter:
                 budget_cents=params.approved_budget_cents,
             )
             return self._to_pgl_certificate(agent)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to validate agent for execution in Veklom for %s: %s", run_id, e)
             # Fallback to local if veklom fails
             if self._local:
                 return self._local.mint_pre_certificate(params)
@@ -187,7 +191,7 @@ class VeklomPGLAdapter:
     
     def mint_post_certificate(self, params: PostCertificateParams) -> PGLCertificate:
         """Record execution attestation back to veklom ledger.
-        
+
         After CAPPO execution completes, this updates the agent's
         ledger with the execution outcome.
         """
@@ -198,6 +202,9 @@ class VeklomPGLAdapter:
         outcome = {}
         execution_id = ""
         
+        run_id = kwargs.get("run_id", "")
+        outcome = kwargs.get("outcome", {})
+
         # Record in veklom
         try:
             self._veklom.record_execution_attestation(
@@ -205,9 +212,10 @@ class VeklomPGLAdapter:
                 execution_id=execution_id,
                 outcome=outcome,
             )
-        except Exception:
-            pass  # Non-fatal - CAPPO attestation is primary
-        
+        except Exception as e:
+            logger.warning("Failed to record execution attestation to Veklom for %s: %s", run_id, e)
+            # Non-fatal - CAPPO attestation is primary
+
         # Also mint local if available
         if self._local:
             return self._local.mint_post_certificate(params)
@@ -232,18 +240,18 @@ def create_pgl_client(
     use_veklom: bool = True,
 ) -> PGLClient | VeklomPGLAdapter:
     """Factory to create appropriate PGL client.
-    
+
     Args:
         db: Database session (for local fallback)
         settings: CAPPO settings
         use_veklom: If True and veklom URL configured, use real backend
-        
+
     Returns:
         PGL client (veklom adapter or local DB client)
     """
     settings = settings or get_settings()
-    
+
     if use_veklom and settings.veklom_byos_backend_url:
         return VeklomPGLAdapter(db=db, settings=settings)
-    
+
     return PGLClient(db=db, settings=settings)

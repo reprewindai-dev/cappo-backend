@@ -8,7 +8,9 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from cappo_backend.db.session import SessionLocal
+from cappo_backend.models.license_key import LicenseKey
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
+from datetime import datetime, timezone
 
 
 class AuthEntitlementMiddleware(BaseHTTPMiddleware):
@@ -57,13 +59,32 @@ class AuthEntitlementMiddleware(BaseHTTPMiddleware):
                 media_type="application/json",
             )
 
-        # 4. Entitlement check (mock logic: key containing "unlicensed" is rejected)
-        if "unlicensed" in token:
-            return Response(
-                content=json.dumps({"detail": "License key is invalid or expired."}),
-                status_code=403,
-                media_type="application/json",
-            )
+        # 4. Entitlement check via Database
+        db = SessionLocal()
+        try:
+            license_entry = db.query(LicenseKey).filter(LicenseKey.key == token).first()
+            if not license_entry:
+                return Response(
+                    content=json.dumps({"detail": "License key not found."}),
+                    status_code=403,
+                    media_type="application/json",
+                )
+            
+            if license_entry.status != "active":
+                return Response(
+                    content=json.dumps({"detail": f"License key is not active. Status: {license_entry.status}"}),
+                    status_code=403,
+                    media_type="application/json",
+                )
+                
+            if license_entry.expires_at and license_entry.expires_at < datetime.now(timezone.utc):
+                return Response(
+                    content=json.dumps({"detail": "License key has expired."}),
+                    status_code=403,
+                    media_type="application/json",
+                )
+        finally:
+            db.close()
 
         return await call_next(request)
 

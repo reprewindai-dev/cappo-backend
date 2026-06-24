@@ -26,6 +26,7 @@ def _prod(**overrides) -> Settings:
         database_url=_PG_URL,
         auth_enabled=True,
         api_keys="prod-key-1",
+        license_admin_key="prod-license-key",
     )
     base.update(overrides)
     return Settings(**base)
