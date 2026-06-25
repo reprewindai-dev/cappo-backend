@@ -23,16 +23,17 @@ POST /v1/exec  ──►  RunOrchestrator (single governed entry path, no bypass
 
 | Component | Module |
 |---|---|
-| Config (incl. `CAPPO_REQUIRE_PERSISTENT_PGL`, EI signing key) | `cappo_backend/config.py` |
+| Config (incl. `CAPPO_REQUIRE_PERSISTENT_PGL`, `PGL_LEDGER_URL`) | `cappo_backend/config.py` |
 | Data models (`PGLCertificate`, `PGLLedgerEvent`, `ExecutionIdentity`, `GovernedRun`, `AuditEvent`) | `cappo_backend/models/` |
 | Canonical hash/sign helpers | `cappo_backend/services/canonical.py` |
 | ExecutionIdentityV1 builder | `cappo_backend/services/ei_builder.py` |
-| PGL client (+ production fail-closed guard) | `cappo_backend/services/pgl_client.py` |
+| PGL client (+ gnomledger forwarding) | `cappo_backend/services/pgl_client.py` |
 | Run state machine | `cappo_backend/services/run_state.py` |
-| Orchestrator | `cappo_backend/services/orchestrator.py` |
-| Audit/ledger service | `cappo_backend/services/audit_service.py` |
+| Orchestrator (audit all rejections) | `cappo_backend/services/orchestrator.py` |
+| Audit/ledger service (forwarding) | `cappo_backend/services/audit_service.py` |
 | MCP gateway (LAW 0 enforcement) | `cappo_backend/security/mcp_gateway.py` |
 | Governed `/v1/exec` route | `cappo_backend/api/routers/exec_router.py` |
+| Queryable Audit API | `cappo_backend/api/routers/audit_router.py` |
 
 ## Quickstart
 

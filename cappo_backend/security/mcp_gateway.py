@@ -97,23 +97,29 @@ class MCPGateway:
         run_id: str | None = None,
     ) -> None:
         """Validate an ExecutionSessionTokenV1 against its parent EI."""
-        if token is None:
-            self._reject("session token is missing", code="LAW0_EI_INVALID", workspace_id=workspace_id, run_id=run_id)
+        try:
+            if token is None:
+                self._reject("session token is missing", code="LAW0_EI_INVALID", workspace_id=workspace_id, run_id=run_id)
 
-        # Verify HMAC signature and fields
-        verifier = ExecutionSessionTokenVerifier(self._settings.ei_signing_key)
-        if not verifier.verify(token, parent_ei):
-            self._reject("session token verification failed", code="LAW0_EI_INVALID", workspace_id=workspace_id, run_id=run_id)
+            # Verify HMAC signature and fields
+            verifier = ExecutionSessionTokenVerifier(self._settings.ei_signing_key)
+            if not verifier.verify(token, parent_ei):
+                self._reject("session token verification failed", code="LAW0_EI_INVALID", workspace_id=workspace_id, run_id=run_id)
 
-        # Check that parent EI is not revoked
-        self._rule_9_not_revoked(parent_ei)
+            # Check that parent EI is not revoked
+            self._rule_9_not_revoked(parent_ei)
 
-        # Enforce action scope
-        if action and token["tool_id"] != action:
-            self._reject(f"session token tool scope mismatch: token={token['tool_id']}, requested={action}", code="LAW0_POLICY_MISMATCH", workspace_id=workspace_id, run_id=run_id)
+            # Enforce action scope
+            if action and token["tool_id"] != action:
+                self._reject(f"session token tool scope mismatch: token={token['tool_id']}, requested={action}", code="LAW0_POLICY_MISMATCH", workspace_id=workspace_id, run_id=run_id)
 
-        # Enforce budget against parent
-        self._rule_6_budget(parent_ei, action_cost_cents)
+            # Enforce budget against parent
+            self._rule_6_budget(parent_ei, action_cost_cents)
+        except EIValidationError as exc:
+            self._audit.record_law0_violation(
+                exc.detail, workspace_id=workspace_id or parent_ei.get("tenant_id"), run_id=run_id or parent_ei.get("run_id")
+            )
+            raise
 
     # ------------------------------------------------------------------
     # Verification Rules

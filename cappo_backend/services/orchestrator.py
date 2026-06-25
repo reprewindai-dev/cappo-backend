@@ -102,8 +102,19 @@ class RunOrchestrator:
             result = self.execute_run(run)
             self.attest_run(run)
             return result
-        except Exception:
+        except Exception as exc:
             self._transition(run, RunState.FAILED)
+            # Record the failure in the audit log (audit all rejections/failures).
+            self._audit.record(
+                "run_failed",
+                {
+                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
+                    "state_at_failure": run.state,
+                },
+                workspace_id=run.workspace_id,
+                run_id=run.run_id,
+            )
             raise
 
     # ------------------------------------------------------------------
