@@ -37,6 +37,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy app code
 COPY cappo_backend/ /app/cappo_backend/
 COPY migrations/ /app/migrations/
+COPY agents/ /app/agents/
 COPY alembic.ini .
 
 # Expose port

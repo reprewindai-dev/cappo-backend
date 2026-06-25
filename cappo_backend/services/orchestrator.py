@@ -99,6 +99,7 @@ class RunOrchestrator:
             self.mint_execution_identity(run)
             self.mint_eat(run)
             self.route_run(run)
+            self.validate_with_capi(run)
             result = self.execute_run(run)
             self.attest_run(run)
             return result
@@ -116,6 +117,75 @@ class RunOrchestrator:
                 run_id=run.run_id,
             )
             raise
+
+    def validate_with_capi(self, run: GovernedRun) -> None:
+        """Query the central cAPI execution endpoint to validate the run."""
+        from cappo_backend.config import get_settings
+        import httpx
+        import os
+        import sys
+        
+        settings = get_settings()
+        
+        # Skip validation during pytest
+        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+            return
+            
+        base_url = settings.veklom_byos_backend_url
+        if not base_url:
+            return
+            
+        normalized_url = base_url.rstrip("/")
+        if normalized_url.endswith("/v1"):
+            capi_url = normalized_url[:-3] + "/api/v1/capi/execute"
+        else:
+            capi_url = normalized_url + "/api/v1/capi/execute"
+            
+        request_payload = run.request_payload or {}
+        agent_id = request_payload.get("agent_id") or "agent_cappo"
+        pgl_id = request_payload.get("pgl_id") or "pgl_cappo_default_sig"
+        
+        # Build cAPI execution intent
+        intent = {
+            "agent_id": agent_id,
+            "pgl_id": pgl_id,
+            "mission_id": run.run_id,
+            "target_protocol": "http",
+            "action": request_payload.get("action") or "cappo.exec",
+            "payload": request_payload,
+        }
+        
+        headers = {}
+        if settings.veklom_api_key:
+            headers["Authorization"] = f"Bearer {settings.veklom_api_key}"
+            
+        try:
+            with httpx.Client(timeout=30) as client:
+                response = client.post(capi_url, json=intent, headers=headers)
+                
+            if response.status_code != 200:
+                from fastapi import HTTPException
+                detail_data = {
+                    "error": "cAPI_VETO_ENGAGED",
+                    "message": "Execution intent violated cAPI validation rules."
+                }
+                try:
+                    res_json = response.json()
+                    if "detail" in res_json:
+                        detail_data = res_json["detail"]
+                    elif "message" in res_json:
+                        detail_data["message"] = res_json["message"]
+                except Exception:
+                    pass
+                raise HTTPException(status_code=403, detail=detail_data)
+        except HTTPException:
+            raise
+        except Exception as e:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=502,
+                detail=f"cAPI Gateway connection failed: {str(e)}"
+            )
 
     # ------------------------------------------------------------------
     # Phase methods

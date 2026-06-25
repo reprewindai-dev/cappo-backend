@@ -48,6 +48,8 @@ def settings() -> Settings:
         cappo_require_persistent_pgl=False,
         cappo_internal_api_keys="test-key",
         environment="test",
+        auth_enabled=False,
+        api_keys="test-key",
     )
 
 

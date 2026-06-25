@@ -88,7 +88,6 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
     # ---- Tier 1: MICRO $0.001 — Discovery & status reads ----
     ("GET /legacy/status",                          "micro"),
     ("GET /api/v1/platform/pulse",                   "micro"),
-    ("GET /api/v1/x402/config",                      "micro"),
 
     # ---- Tier 2: READ $0.005 — Governed data reads ----
     ("GET /v1/audit-logs",                           "read"),
@@ -107,6 +106,10 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
     ("GET /api/v1/gpc/stats",                        "read"),
     ("GET /api/v1/x402/ledger",                      "read"),
     ("GET /api/v1/x402/benchmarks/premium",          "read"),
+    ("GET /v1/genomes",                              "read"),
+    ("GET /v1/genomes/:genome_hash",                 "read"),
+    ("GET /v1/genomes/:genome_hash/lineage",         "read"),
+    ("GET /v1/genomes/:genome_hash/birth-certificate", "read"),
 
     # ---- Tier 3: ACTION $0.05 — State mutations ----
     ("PUT /v1/kill-switch/:workspace_id",                        "action"),
@@ -119,6 +122,7 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
     ("POST /legacy/snmp/toggle",                                 "action"),
     ("POST /legacy/modbus/toggle",                               "action"),
     ("POST /legacy/simulate",                                    "action"),
+    ("POST /v1/genomes",                                         "action"),
 
     # ---- Tier 4: COMPUTE $0.50 — Agent execution & premium ops ----
     ("POST /v1/exec",                       "compute"),
@@ -130,6 +134,7 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
     ("POST /api/v1/benchmarks/compile",      "compute"),
     ("POST /api/v1/gpc/compile",             "compute"),
     ("POST /api/v1/x402/discovery/unlock",   "compute"),
+    ("POST /v1/genomes/diff",                "compute"),
 ]
 
 # Prices per tier (USD string format consumed by PaymentOption)

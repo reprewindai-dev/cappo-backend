@@ -45,7 +45,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._settings = settings
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        if not self._settings.auth_enabled:
+        from cappo_backend.config import get_settings
+        settings = get_settings()
+        if not settings.auth_enabled:
             return await call_next(request)
 
         path = request.url.path
@@ -58,7 +60,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 content={"error": "AUTHENTICATION_REQUIRED", "detail": "missing X-API-Key"},
             )
-        if api_key not in self._settings.api_key_set:
+        if api_key not in settings.api_key_set:
             return JSONResponse(
                 status_code=401,
                 content={"error": "AUTHENTICATION_REQUIRED", "detail": "invalid X-API-Key"},

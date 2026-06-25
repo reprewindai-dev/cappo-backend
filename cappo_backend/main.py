@@ -30,6 +30,7 @@ from cappo_backend.config import Settings, get_settings
 from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
+from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 
 
 @asynccontextmanager
@@ -58,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # add_middleware adds outermost-last, so register innermost first.
     app.add_middleware(AuthMiddleware, settings=settings)
+    app.add_middleware(AmphotericSensingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
