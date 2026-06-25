@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     ei_signing_key: str = INSECURE_EI_SIGNING_KEY
     ei_signing_provider: str = "hmac"
 
+    # --- PGL ledger (gnomledger) forwarding ---
+    # When PGL_LEDGER_URL is set, every governance event is mirrored into
+    # gnomledger's append-only, hash-chained ledger.
+    pgl_ledger_url: str | None = None
+    pgl_ledger_api_key: str | None = None
+    pgl_ledger_timeout_ms: int = 8000
+
+    # --- Phase 6 execution bridge (Veklom BYOS MCP gateway) ---
+    byos_mcp_gateway_url: str | None = None
+    byos_internal_api_key: str | None = None
+    covenant_exec_timeout_ms: int = 10000
+
     # --- Authority limits ---
     max_delegation_depth: int = 4
 
