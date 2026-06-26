@@ -37,7 +37,7 @@ def test_vnp_control_plane_onboarding(client: TestClient, db: Session):
     api_did = response.json()["api_did"]
 
     # Verify in DB
-    api = db.query(APIState).get(api_id)
+    api = db.get(APIState, uuid.UUID(api_id))
     assert api.provider_id == uuid.UUID(provider_id)
     assert api.api_did == api_did
 
