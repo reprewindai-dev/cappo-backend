@@ -13,6 +13,20 @@ from cappo_backend.models.kill_switch import KillSwitch
 from cappo_backend.models.license_key import LicenseKey
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
+from cappo_backend.models.vnp_models import (
+    APIState,
+    ComplianceAuditLog,
+    PerformanceLeaderboard,
+    RegionalTelemetry,
+    VNPTransaction,
+    VNPUser,
+    VNPProvider,
+    ProbeEvent,
+    RouteSnapshot,
+    VNPSDKCredential,
+    VNPValidator,
+    VNPIncident,
+)
 from cappo_backend.models.workspace_budget import WorkspaceBudget
 from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 
@@ -29,4 +43,16 @@ __all__ = [
     "X402ConsumedPayment",
     "Genome",
     "GenomeLineage",
+    "APIState",
+    "ComplianceAuditLog",
+    "PerformanceLeaderboard",
+    "RegionalTelemetry",
+    "VNPTransaction",
+    "VNPUser",
+    "VNPProvider",
+    "ProbeEvent",
+    "RouteSnapshot",
+    "VNPSDKCredential",
+    "VNPValidator",
+    "VNPIncident",
 ]

@@ -32,6 +32,7 @@ PUBLIC_PATHS = frozenset({
     "/openapi.json",
     "/v1/license/validate",
     "/v1/license/activate",
+    "/v1/vnp/metrics",
     "/.well-known/x402",
     "/.well-known/x402.json",
     "/x402/bazaar",
@@ -45,9 +46,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._settings = settings
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        from cappo_backend.config import get_settings
-        settings = get_settings()
-        if not settings.auth_enabled:
+        if not self._settings.auth_enabled:
             return await call_next(request)
 
         path = request.url.path
@@ -60,7 +59,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 content={"error": "AUTHENTICATION_REQUIRED", "detail": "missing X-API-Key"},
             )
-        if api_key not in settings.api_key_set:
+        if api_key not in self._settings.api_key_set:
             return JSONResponse(
                 status_code=401,
                 content={"error": "AUTHENTICATION_REQUIRED", "detail": "invalid X-API-Key"},
