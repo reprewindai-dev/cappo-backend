@@ -24,8 +24,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 FROM python:3.11-slim AS runner
 
 # Create low-privilege system user and group
-RUN groupadd -g 10001 appuser && \
-    useradd -r -u 10001 -g appuser -d /app -s /sbin/nologin appuser
+RUN groupadd -g 10001 cappo && \
+    useradd -r -u 10001 -g cappo -d /app -s /sbin/nologin cappo
 
 WORKDIR /app
 
@@ -39,17 +39,17 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy app code and set ownership
-COPY --chown=appuser:appuser cappo_backend/ /app/cappo_backend/
-COPY --chown=appuser:appuser migrations/ /app/migrations/
-COPY --chown=appuser:appuser agents/ /app/agents/
-COPY --chown=appuser:appuser alembic.ini /app/alembic.ini
-COPY --chown=appuser:appuser entrypoint.sh /app/entrypoint.sh
+COPY --chown=cappo:cappo cappo_backend/ /app/cappo_backend/
+COPY --chown=cappo:cappo migrations/ /app/migrations/
+COPY --chown=cappo:cappo agents/ /app/agents/
+COPY --chown=cappo:cappo alembic.ini /app/alembic.ini
+COPY --chown=cappo:cappo entrypoint.sh /app/entrypoint.sh
 
 # Ensure entrypoint script is executable and own everything in /app
-RUN chmod +x /app/entrypoint.sh && chown -R appuser:appuser /app
+RUN chmod +x /app/entrypoint.sh && chown -R cappo:cappo /app
 
 # Switch to non-root user
-USER appuser
+USER cappo
 
 # Expose port
 EXPOSE 8000

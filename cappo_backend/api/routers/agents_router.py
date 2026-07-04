@@ -16,6 +16,11 @@ from sqlalchemy.orm import Session
 from cappo_backend.db.session import get_session
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
+from cappo_backend.services.pgl_identity_lifecycle import (
+    compute_lifecycle,
+    stamp_agent_provenance,
+    build_renewal_patch,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["Agents"])
 
@@ -68,6 +73,15 @@ def register_agent(
         }
         constitution_hash_val = canonical_hash(constitution_data)
 
+        # Build lifecycle-stamped provenance — creator is the human anchor.
+        # This is what links every agent back to its human owner.
+        lifecycle_meta = stamp_agent_provenance(
+            agent_id=agent_id,
+            agent_name=body.agent_name,
+            creator=body.creator,            # human operator ID — the chain root
+            workspace_id=genome_payload.get("workspace_id") or body.creator,
+        )
+
         # Create PGLCertificate entry
         cert = PGLCertificate(
             certificate_id=certificate_id,
@@ -83,10 +97,9 @@ def register_agent(
             approved_budget_cents=0,
             reserve_cents=0,
             provenance_json={
-                "agent_name": body.agent_name,
-                "creator": body.creator,
+                **lifecycle_meta,
                 "jurisdiction": body.jurisdiction,
-                "genome": genome_payload,
+                "genome":       genome_payload,
                 "parent_agent_ids": body.parent_agent_ids,
             },
             persisted=True,
@@ -121,6 +134,12 @@ def register_agent(
         db.refresh(cert)
         db.refresh(event)
 
+        prov = cert.provenance_json or {}
+        lifecycle = compute_lifecycle(
+            provenance=prov,
+            created_at=cert.created_at,
+        )
+
         return {
             "certificate_id": certificate_id,
             "agent_id": agent_id,
@@ -133,6 +152,7 @@ def register_agent(
             "parent_agent_ids": body.parent_agent_ids,
             "created_at": cert.created_at.isoformat() if cert.created_at else datetime.now(timezone.utc).isoformat(),
             "version_count": 1,
+            "lifecycle": lifecycle.to_dict(),
             "ledger_events": [
                 {
                     "event_id": event.event_id,
@@ -403,3 +423,129 @@ def verify_agent_chain(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/agents/{agent_id}/lifecycle  — trust level / probation / renewal
+# ---------------------------------------------------------------------------
+
+
+@router.get("/agents/{agent_id}/lifecycle", response_model=Dict[str, Any])
+def get_agent_lifecycle(
+    agent_id: str,
+    db: Session = Depends(get_session),
+) -> Any:
+    """Return the PGL lifecycle status for an agent's birth certificate.
+
+    Shows:
+    - trust_level: PROBATIONARY | ACTIVE | RENEWAL_DUE | EXPIRED
+    - probation_ends_at: when the 90-day probation window closes
+    - renewal_due_at: when the annual renewal is required
+    - can_execute: false when EXPIRED (must renew first)
+    - warning: human-readable warning if action needed
+    """
+    cert = db.query(PGLCertificate).filter(
+        (PGLCertificate.agent_id == agent_id) | (PGLCertificate.certificate_id == agent_id)
+    ).first()
+
+    if not cert:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    prov = cert.provenance_json or {}
+    lifecycle = compute_lifecycle(provenance=prov, created_at=cert.created_at)
+
+    return {
+        "certificate_id": cert.certificate_id,
+        "agent_id":       cert.agent_id,
+        "creator":        cert.actor_id,   # human anchor
+        "owner_pgl_id":   prov.get("owner_pgl_id"),
+        "lifecycle":      lifecycle.to_dict(),
+        "can_execute":    lifecycle.can_execute,
+        "warning":        lifecycle.warning,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/agents/{agent_id}/renew  — annual renewal (same cert_id)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/agents/{agent_id}/renew", response_model=Dict[str, Any])
+def renew_agent_identity(
+    agent_id: str,
+    db: Session = Depends(get_session),
+) -> Any:
+    """Renew the agent's PGL identity for another year.
+
+    INVARIANT: The certificate_id never changes. Only the renewal_due_at is
+    pushed forward 365 days. Same cert, new expiry. Identical to renewing a
+    driver's license.
+
+    In production: gate this behind payment verification before calling.
+    No payment = renewal denied = cert stays expired = no execution.
+    """
+    cert = db.query(PGLCertificate).filter(
+        (PGLCertificate.agent_id == agent_id) | (PGLCertificate.certificate_id == agent_id)
+    ).first()
+
+    if not cert:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Apply renewal patch — same cert_id, new expiry, bumped version
+    new_provenance = build_renewal_patch(cert.provenance_json or {})
+    cert.provenance_json = new_provenance
+    db.add(cert)
+
+    # Get last event hash for chain continuity
+    last_event = db.query(PGLLedgerEvent).filter(
+        PGLLedgerEvent.certificate_id == cert.certificate_id
+    ).order_by(PGLLedgerEvent.created_at.desc()).first()
+    prev_hash = last_event.event_hash if last_event else None
+
+    renewal_payload = {
+        "certificate_id":   cert.certificate_id,
+        "agent_id":         cert.agent_id,
+        "event_type":       "identity_renewed",
+        "renewal_count":    new_provenance["renewal_count"],
+        "new_renewal_due":  new_provenance["renewal_due_at"],
+        "identity_version": new_provenance["identity_version"],
+        "previous_event_hash": prev_hash,
+    }
+    chain_input = json.dumps(renewal_payload, sort_keys=True, separators=(",", ":"))
+    if prev_hash:
+        chain_input += prev_hash
+    event_hash_val = hashlib.sha256(chain_input.encode()).hexdigest()
+
+    renewal_event = PGLLedgerEvent(
+        event_id=f"evt_{uuid.uuid4().hex[:16]}",
+        certificate_id=cert.certificate_id,
+        event_type="identity_renewed",
+        payload=renewal_payload,
+        previous_event_hash=prev_hash,
+        event_hash=event_hash_val,
+    )
+    db.add(renewal_event)
+
+    try:
+        db.commit()
+        db.refresh(cert)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    lifecycle = compute_lifecycle(provenance=new_provenance, created_at=cert.created_at)
+    return {
+        "certificate_id":  cert.certificate_id,
+        "agent_id":        cert.agent_id,
+        "status":          "renewed",
+        "renewal_count":   new_provenance["renewal_count"],
+        "new_expiry":      new_provenance["renewal_due_at"],
+        "ledger_event_id": renewal_event.event_id,
+        "event_hash":      event_hash_val,
+        "lifecycle":       lifecycle.to_dict(),
+        "message":         (
+            f"Identity renewed. Same cert ID, new expiry: "
+            f"{new_provenance['renewal_due_at'][:10]}. "
+            f"Renewal #{new_provenance['renewal_count']}."
+        ),
+    }

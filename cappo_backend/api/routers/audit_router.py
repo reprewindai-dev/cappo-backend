@@ -63,3 +63,10 @@ def query_audit_trail(
             for e in events
         ],
     }
+
+
+@router.get("/verify")
+def verify_ledger(db: Session = Depends(get_session)) -> dict[str, Any]:
+    """Verify the integrity of all ledger chains."""
+    from cappo_backend.services.ledger_verifier import LedgerVerifier
+    return LedgerVerifier(db).verify_all()

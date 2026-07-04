@@ -70,7 +70,7 @@ def test_quarantine_flow_via_facade_and_api(client: TestClient) -> None:
         stack.baselines.record_observation(
             "spiker",
             Observation(
-                timestamp=datetime(2026, 6, 1, 12, tzinfo=timezone.utc),
+                timestamp=datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0),
                 requests_in_window=pattern[i % 3],
                 failure_rate=0.05,
                 capabilities_used=("search",),

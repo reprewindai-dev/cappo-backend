@@ -50,6 +50,7 @@ def settings() -> Settings:
         environment="test",
         auth_enabled=False,
         api_keys="test-key",
+        veklom_byos_backend_url=None,
     )
 
 
@@ -64,6 +65,7 @@ def prod_settings() -> Settings:
         eat_signing_provider="aws",
         cappo_require_persistent_pgl=True,
         environment="production",
+        veklom_byos_backend_url=None,
     )
 
 

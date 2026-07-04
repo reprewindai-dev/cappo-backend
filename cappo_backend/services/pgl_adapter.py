@@ -202,8 +202,6 @@ class VeklomPGLAdapter:
         outcome = {}
         execution_id = ""
         
-        run_id = kwargs.get("run_id", "")
-        outcome = kwargs.get("outcome", {})
 
         # Record in veklom
         try:

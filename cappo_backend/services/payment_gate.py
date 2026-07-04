@@ -66,7 +66,10 @@ class PaymentGate:
         else:
             # Reset quota if a new day has started
             now = datetime.now(timezone.utc)
-            if now >= quota.reset_at:
+            reset_at = quota.reset_at
+            if reset_at.tzinfo is None:
+                reset_at = reset_at.replace(tzinfo=timezone.utc)
+            if now >= reset_at:
                 quota.runs_used = 0
                 from cappo_backend.models.free_run_quota import _tomorrow
                 quota.reset_at = _tomorrow()

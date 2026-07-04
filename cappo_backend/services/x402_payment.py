@@ -370,6 +370,11 @@ class X402FreemiumASGI:
             await self.app(scope, receive, send)
             return
 
+        settings = get_settings()
+        if settings.APP_ENV == "production" and not os.environ.get("ENABLE_FREEMIUM"):
+            await self.payment_app(scope, receive, send)
+            return
+
         headers = dict(scope.get("headers", []))
         wallet_address = headers.get(b"x-wallet-address", b"").decode("utf-8")
 

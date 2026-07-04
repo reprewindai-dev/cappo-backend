@@ -22,8 +22,9 @@ from cappo_backend.services.safety import (
 
 
 def _obs(rph: int, fail: float, *, hour: int = 12, caps: tuple[str, ...] = ("search",)) -> Observation:
+    obs_time = datetime.now(timezone.utc).replace(hour=hour, minute=0, second=0, microsecond=0)
     return Observation(
-        timestamp=datetime(2026, 6, 1, hour, 0, tzinfo=timezone.utc),
+        timestamp=obs_time,
         requests_in_window=rph,
         failure_rate=fail,
         capabilities_used=caps,

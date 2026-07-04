@@ -29,8 +29,10 @@ from cappo_backend.models.vnp_models import (
 )
 from cappo_backend.models.workspace_budget import WorkspaceBudget
 from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
+from cappo_backend.models.free_run_quota import FreeRunQuota
 
 __all__ = [
+    "FreeRunQuota",
     "AuditEvent",
     "ExecutionAuthorization",
     "ExecutionIdentity",
