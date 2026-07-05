@@ -15,7 +15,10 @@ async def discover_capabilities(request: Request):
     # In CAPPO, discovery returns governed tools/actions
     capabilities = [
         {"name": "governed_exec", "description": "Execute AI inference via RunOrchestrator"},
-        {"name": "audit_query", "description": "Query the hash-chained audit ledger"}
+        {"name": "audit_query", "description": "Query the hash-chained audit ledger"},
+        {"name": "doc_discover", "description": "Vector-based discovery of documents across a workspace"},
+        {"name": "doc_reason", "description": "Deep reasoning and evidence extraction from a specific long document"},
+        {"name": "doc_trace", "description": "Retrieve provenance metadata for a document reasoning session"}
     ]
 
     if protocol == AmphotericProtocol.WEBMCP:
