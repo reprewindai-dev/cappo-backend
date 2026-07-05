@@ -1,9 +1,11 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON
+
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cappo_backend.db.base import Base
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)

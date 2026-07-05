@@ -1,21 +1,12 @@
 """VNP Test Suite — verifying the trust and routing fabric."""
 
-import pytest
+import uuid
+from decimal import Decimal
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from decimal import Decimal
-import uuid
 
-from cappo_backend.models.vnp_models import (
-    VNPProvider,
-    APIState,
-    RegionalTelemetry,
-    VNPTransaction,
-    ProbeEvent,
-    VNPValidator,
-    VNPIncident,
-    RouteSnapshot
-)
+from cappo_backend.models.vnp_models import APIState, ProbeEvent, RegionalTelemetry, VNPProvider
 
 
 def test_vnp_control_plane_onboarding(client: TestClient, db: Session):

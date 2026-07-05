@@ -9,22 +9,21 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import get_session
 from cappo_backend.models.vnp_models import (
     APIState,
-    RegionalTelemetry,
     PerformanceLeaderboard,
-    VNPUser,
-    VNPValidator,
+    RegionalTelemetry,
+    RouteSnapshot,
     VNPIncident,
-    RouteSnapshot
+    VNPValidator,
 )
-from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 from cappo_backend.services.vnp_proxy_service import VNPProxyService
+from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
 router = APIRouter(prefix="/v1/vnp", tags=["VNP Protocol"])
 

@@ -1,20 +1,19 @@
-import uuid
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
 import hashlib
 import json
+import uuid
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from cappo_backend.models.mcpapi_v2 import (
-    BehavioralBaseline,
-    CurrentMetric,
     AnomalyDetection,
     AnomalyType,
-    Severity,
-    RecommendedAction,
+    ApprovalQuorum,
+    BehavioralBaseline,
+    CurrentMetric,
     QuarantinedRequest,
     QuarantineStatus,
-    ApprovalQuorum,
-    ApprovalSignature
+    RecommendedAction,
+    Severity,
 )
 
 # ============================================================================

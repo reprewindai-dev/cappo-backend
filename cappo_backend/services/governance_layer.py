@@ -1,5 +1,5 @@
-from typing import Dict, Any, Optional
-from cappo_backend.models.mcpapi_v2 import AuthorityPermissions
+from typing import Any, Dict
+
 
 class PolicyCompositionEngine:
     def __init__(self):

@@ -1,7 +1,8 @@
-import os
-from typing import Dict, Any, List
 from dataclasses import dataclass
+from typing import List
+
 from cappo_backend.db.models.ai import DataTier
+
 
 @dataclass(frozen=True)
 class TieringDecision:
@@ -84,11 +85,16 @@ def classify_event(event: EventForTiering) -> TieringDecision:
             eligible = False
             
     # Add positive reason codes for completeness
-    if event.policy_passed: reason_codes.append("policy_passed")
-    if event.evidence_complete: reason_codes.append("evidence_complete")
-    if event.schema_passed: reason_codes.append("schema_passed")
-    if event.quality_passed: reason_codes.append("quality_passed")
-    if rt_health == 1.0: reason_codes.append("runtime_clean")
+    if event.policy_passed:
+        reason_codes.append("policy_passed")
+    if event.evidence_complete:
+        reason_codes.append("evidence_complete")
+    if event.schema_passed:
+        reason_codes.append("schema_passed")
+    if event.quality_passed:
+        reason_codes.append("quality_passed")
+    if rt_health == 1.0:
+        reason_codes.append("runtime_clean")
 
     return TieringDecision(
         data_tier=data_tier,

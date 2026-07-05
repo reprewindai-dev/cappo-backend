@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -10,7 +11,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from cappo_backend.db.session import SessionLocal
 from cappo_backend.models.license_key import LicenseKey
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
-from datetime import datetime, timezone
 
 
 class AuthEntitlementMiddleware(BaseHTTPMiddleware):

@@ -12,7 +12,6 @@ from dotenv import load_dotenv  # type: ignore[import-not-found]
 
 from .models import X402Config
 from .networks import (
-    SupportedNetwork,
     get_default_asset_config,
     get_network_config,
     get_supported_networks,

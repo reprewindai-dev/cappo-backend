@@ -9,17 +9,22 @@ Implements the 40/30/20/10 weighting matrix from the VNP Prototype:
 
 from __future__ import annotations
 
-import logging
-import hmac
 import hashlib
+import hmac
 import json
+import logging
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from cappo_backend.models.vnp_models import APIState, RegionalTelemetry, PerformanceLeaderboard, ProbeEvent
+from cappo_backend.models.vnp_models import (
+    APIState,
+    PerformanceLeaderboard,
+    ProbeEvent,
+    RegionalTelemetry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +174,12 @@ class VNPTelemetryService:
         return composite
 
     def _get_stability_rating(self, score: Decimal) -> str:
-        if score >= 95: return "Absolute Peak"
-        if score >= 90: return "Excellent"
-        if score >= 80: return "Stable"
+        if score >= 95:
+            return "Absolute Peak"
+        if score >= 90:
+            return "Excellent"
+        if score >= 80:
+            return "Stable"
         return "Degraded"
 
     def _update_leaderboard_rankings(self) -> None:

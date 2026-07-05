@@ -120,10 +120,12 @@ class RunOrchestrator:
 
     def validate_with_capi(self, run: GovernedRun) -> None:
         """Query the central cAPI execution endpoint to validate the run."""
-        from cappo_backend.config import get_settings
-        import httpx
         import os
         import sys
+
+        import httpx
+
+        from cappo_backend.config import get_settings
         
         settings = get_settings()
         

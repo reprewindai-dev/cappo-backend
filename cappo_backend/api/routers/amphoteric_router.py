@@ -2,8 +2,8 @@
 Amphoteric Router for CAPPO — Unified Sovereign Execution.
 """
 
-from typing import Any, Dict
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
+
 from cappo_backend.security.amphoteric_middleware import AmphotericProtocol
 
 router = APIRouter(prefix="/v1/amphoteric", tags=["Amphoteric"])

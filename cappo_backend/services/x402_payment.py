@@ -48,6 +48,7 @@ from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import RouteConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.server import x402ResourceServer
+
 X402_AVAILABLE = True
 
 # ---------------------------------------------------------------------------

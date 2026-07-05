@@ -15,7 +15,7 @@ from cappo_backend.config import Settings
 from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, Ed25519Signer
+from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBuilder
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
 from cappo_backend.services.run_state import RunState

@@ -7,7 +7,6 @@ import base64
 import json
 import os
 import random
-import time
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
@@ -161,9 +160,9 @@ class UnifiedFacilitatorClient:
             headers = self._create_coinbase_headers("verify")
 
             # Make request
-            print(f"🔍 FACILITATOR DEBUG:")
+            print("🔍 FACILITATOR DEBUG:")
             print(f"🔍 URL: {self.verify_url}")
-            print(f"🔍 Method: POST")
+            print("🔍 Method: POST")
             print(f"🔍 Headers: {headers}")
             print(f"🔍 Payload: {payload}")
 

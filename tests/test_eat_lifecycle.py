@@ -11,7 +11,7 @@ from cappo_backend.security.edge_gateway import EATVerificationError, EdgeGatewa
 from cappo_backend.security.nonce_cache import InMemoryNonceCache
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.eat_builder import EATBuilder
-from cappo_backend.services.ei_builder import ExecutionIdentityBuilder, Ed25519Signer
+from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBuilder
 from cappo_backend.services.executor import EchoExecutor
 from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient

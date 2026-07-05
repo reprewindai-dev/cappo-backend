@@ -5,9 +5,11 @@ Detects the protocol environment (pH) of incoming requests.
 """
 
 from enum import Enum
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
 
 class AmphotericProtocol(str, Enum):
     WEB_UI = "web_ui"

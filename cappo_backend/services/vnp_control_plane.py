@@ -8,10 +8,9 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cappo_backend.models.vnp_models import VNPProvider, APIState, VNPSDKCredential
+from cappo_backend.models.vnp_models import APIState, VNPProvider, VNPSDKCredential
 
 
 class VNPControlPlaneService:

@@ -8,7 +8,6 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.models.vnp_models import VNPValidator

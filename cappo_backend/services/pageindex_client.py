@@ -1,6 +1,7 @@
 import os
+
 import httpx
-from typing import Any, Dict
+
 
 class PageIndexIngestionService:
     """

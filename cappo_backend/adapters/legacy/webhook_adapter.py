@@ -3,8 +3,8 @@
 Translates legacy Enterprise Webhooks (SAP, Oracle, ServiceNow) into standardized agent-readable JSON.
 """
 
-import hmac
 import hashlib
+import hmac
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict

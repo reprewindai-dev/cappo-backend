@@ -8,8 +8,8 @@ import pytest
 
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.ei_builder import (
-    ExecutionIdentityBuilder,
     Ed25519Signer,
+    ExecutionIdentityBuilder,
     MissingEIInputError,
     canonical_body,
 )

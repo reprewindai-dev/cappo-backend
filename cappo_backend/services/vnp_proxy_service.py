@@ -16,9 +16,9 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cappo_backend.models.vnp_models import APIState, VNPTransaction, ComplianceAuditLog
-from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
+from cappo_backend.models.vnp_models import APIState, ComplianceAuditLog, VNPTransaction
 from cappo_backend.services.canonical import sha256_json
+from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
 logger = logging.getLogger(__name__)
 

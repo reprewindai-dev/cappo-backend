@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import datetime
-from datetime import datetime, timezone
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
 import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -17,9 +17,9 @@ from cappo_backend.db.session import get_session
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.services.pgl_identity_lifecycle import (
+    build_renewal_patch,
     compute_lifecycle,
     stamp_agent_provenance,
-    build_renewal_patch,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["Agents"])

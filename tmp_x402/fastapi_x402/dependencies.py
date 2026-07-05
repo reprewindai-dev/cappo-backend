@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from .facilitator import UnifiedFacilitatorClient
 
-from fastapi import Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException, Request
 
 from .core import (
     get_config,

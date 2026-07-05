@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 if TYPE_CHECKING:
     from .facilitator import UnifiedFacilitatorClient
 
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
@@ -280,7 +280,7 @@ class PaymentMiddleware(BaseHTTPMiddleware):
     ) -> PaymentRequirements:
         """Build payment requirements for the current request."""
 
-        from .networks import get_default_asset_config, get_network_config
+        from .networks import get_default_asset_config
 
         config = get_config()
 

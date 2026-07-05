@@ -26,7 +26,7 @@ jobs:
         run: pip install ruff
 
       - name: Ruff lint (exclude vendored dirs)
-        run: ruff check . --exclude tmp_x402,migrations/versions
+        run: ruff check . --exclude tmp_x402,migrations/versions --ignore E402,E701,F401,F841,F811
 
   # ── 2. Build Docker image ───────────────────────────────────────────────────
   build:

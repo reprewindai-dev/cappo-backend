@@ -1,9 +1,15 @@
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from sqlalchemy.orm import Session
 
-from cappo_backend.models.retrieval import RetrievalSession, RetrievalTrace, SourceDocument
-from cappo_backend.services.retrieval_router import choose_retrieval_route, RetrievalRoute, SourceDescriptor
+from cappo_backend.models.retrieval import RetrievalSession, RetrievalTrace
 from cappo_backend.services.pageindex_mcp import PageIndexMCPClient
+from cappo_backend.services.retrieval_router import (
+    RetrievalRoute,
+    SourceDescriptor,
+    choose_retrieval_route,
+)
+
 
 def extract_page_refs(result: dict) -> list[dict]:
     refs = []

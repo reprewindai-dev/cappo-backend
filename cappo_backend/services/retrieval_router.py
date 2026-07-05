@@ -1,7 +1,8 @@
 import re
-from enum import Enum
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Optional
+
 
 class RetrievalRoute(str, Enum):
     VECTOR = "vector"
