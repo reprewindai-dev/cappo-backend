@@ -23,6 +23,7 @@ from cappo_backend.api.routers.agents_router import router as agents_router
 from cappo_backend.api.routers.audit_router import router as audit_router
 from cappo_backend.api.routers.benchmarks_router import router as benchmarks_router
 from cappo_backend.api.routers.exec_router import router as exec_router
+from cappo_backend.api.routers.mcp import router as mcp_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.license_router import router as license_router
@@ -130,6 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vnp_admin_router)
     app.include_router(agents_router)
     app.include_router(exec_router)
+    app.include_router(mcp_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
     app.include_router(governance_v2_router)
