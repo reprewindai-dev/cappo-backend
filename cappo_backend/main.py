@@ -12,6 +12,7 @@ and authority-checked (EI/LAW 0) downstream in the orchestrator (Option A).
 """
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -74,16 +75,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
     settings.validate_production()
 
-    # Start VNP prober background task
-    prober_task = asyncio.create_task(vnp_prober_loop())
+    prober_task: asyncio.Task[None] | None = None
+    if os.environ.get("ENABLE_VNP_PROBER") == "1":
+        prober_task = asyncio.create_task(vnp_prober_loop())
 
     yield
 
-    prober_task.cancel()
-    try:
-        await prober_task
-    except asyncio.CancelledError:
-        pass
+    if prober_task is not None:
+        prober_task.cancel()
+        try:
+            await prober_task
+        except asyncio.CancelledError:
+            pass
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
