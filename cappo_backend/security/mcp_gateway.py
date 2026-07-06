@@ -327,6 +327,50 @@ class EnhancedMCPAPIRuntime:
             run_timeline.append({"phase": "SYSTEM_FAULT", "error": str(e)})
             return self._create_error_response(connection_id, "500", str(e))
 
+    async def process_interlink_request(self, agent_id: str, capability_id: str, payload: Dict[str, Any], estimated_cost: float = 1.0) -> Dict[str, Any]:
+        """
+        Intercepts a request destined for an external, un-governed Web2 API.
+        Enforces the VNP Micro-Stake budget and logs the cryptographic proof to the ledger,
+        then returns authorization to proceed with the raw HTTP proxy forward.
+        """
+        connection_id = str(uuid.uuid4())
+        request_nonce = payload.get("nonce", str(uuid.uuid4()))
+        run_timeline = []
+        
+        try:
+            # 1. Budget Verification (Phase 4 Equivalent)
+            if not self.cost_attribution.can_afford_request(agent_id, capability_id, estimated_cost=estimated_cost):
+                return self._create_error_response(connection_id, "402", "VNP Micro-Stake budget exceeded. x402 Payment Required for Interlink Proxy.")
+                
+            # 2. Immutable Audit & Cost Deduction (Phase 9 Equivalent)
+            self.cost_attribution.record_cost(
+                agent_id=agent_id, capability_id=capability_id, cost=estimated_cost, currency="VNP", success=True
+            )
+            
+            run_timeline.append({"phase": "INTERLINK_PROXY", "status": "AUTHORIZED", "cost_deducted": estimated_cost})
+            
+            # 3. Merkle Hash Generation
+            event_payload = json.dumps({
+                "connection_id": connection_id,
+                "nonce": request_nonce,
+                "interlink_target": payload.get("target_url", "unknown"),
+                "unified_run_timeline": run_timeline,
+            })
+            final_pgl_hash = hashlib.sha256(event_payload.encode()).hexdigest()
+            
+            return {
+                "connection_id": connection_id,
+                "status": "authorized",
+                "evidence_hash": final_pgl_hash,
+                "metadata": {
+                    "cost_attributed": estimated_cost,
+                    "interlink_cleared": True
+                }
+            }
+        except Exception as e:
+            return self._create_error_response(connection_id, "500", f"Interlink Gateway Fault: {str(e)}")
+
+
     # ========================================================================
     # INTERNAL HELPERS
     # ========================================================================
