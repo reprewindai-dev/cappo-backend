@@ -372,7 +372,7 @@ class X402FreemiumASGI:
             return
 
         settings = get_settings()
-        if settings.APP_ENV == "production" and not os.environ.get("ENABLE_FREEMIUM"):
+        if settings.is_production and not os.environ.get("ENABLE_FREEMIUM"):
             await self.payment_app(scope, receive, send)
             return
 
