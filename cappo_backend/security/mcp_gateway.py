@@ -17,7 +17,9 @@ from cappo_backend.services.safety_layer import (
 )
 from cappo_backend.core.governance.compliance_profiles import get_compliance_profile, ComplianceProfile
 
-
+class EIValidationError(Exception):
+    """Exception raised when Execution Identity validation fails."""
+    pass
 class EnhancedMCPAPIRuntime:
     def __init__(self, compliance_profile_id: str = "global_default"):
         profile_id = os.getenv("VEKLOM_COMPLIANCE_PROFILE", compliance_profile_id)
