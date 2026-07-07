@@ -1,9 +1,9 @@
 """RunOrchestrator — the governed execution pipeline.
 
-Forward-constructed from the orchestrator lineage seeds (migration note §3). Owns
+Forward-constructed from the orchestrator lineage seeds (migration note -3). Owns
 the run **before** any side effect: no post-hoc derivation, no implicit ALLOW.
 
-Method sequence (EI Plan §Mint point):
+Method sequence (EI Plan -Mint point):
     create_run → compile_run → contextualize_run → govern_run → commit_run
         → mint_execution_identity → route_run → execute_run → attest_run
 
@@ -348,7 +348,7 @@ class RunOrchestrator:
         The gateway check fires *before* the side effect (the executor call):
         an invalid/missing EI raises ``EIValidationError`` while the run is still
         ROUTED, so ``run_governed`` transitions it to FAILED and no side effect
-        occurs. This is the enforcement contract from the EI Plan §Enforcement
+        occurs. This is the enforcement contract from the EI Plan -Enforcement
         scope ("before any side-effecting tool call").
         """
         self._enforce_law0(run)
