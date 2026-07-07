@@ -1,4 +1,4 @@
-"""RunOrchestrator — the governed execution pipeline.
+"""RunOrchestrator - the governed execution pipeline.
 
 Forward-constructed from the orchestrator lineage seeds (migration note -3). Owns
 the run **before** any side effect: no post-hoc derivation, no implicit ALLOW.
@@ -272,7 +272,7 @@ class RunOrchestrator:
         self._transition(run, RunState.COMMITTED)
 
     def mint_execution_identity(self, run: GovernedRun) -> None:
-        """Mint ``ExecutionIdentityV1`` — strictly after commit, before route."""
+        """Mint ``ExecutionIdentityV1`` - strictly after commit, before route."""
         ei_inputs: dict[str, Any] = {
             "pgl_pre_certificate_id": run.pgl_identity.get("pre_execution_certificate_id", ""),
             "genome_hash": run.hashes.get("genome_hash", ""),
@@ -318,7 +318,19 @@ class RunOrchestrator:
         self._transition(run, RunState.ROUTED)
 
     def mint_eat(self, run: GovernedRun) -> None:
-        """Mint Execution Authorization Token — strictly after EI, before route.
+        """Mint Execution Authorization Token - strictly after EI, before route."""
+        if self._gateway is None:
+            return
+            
+        request = run.request_payload or {}
+        ei = run.execution_identity
+        if not ei:
+            raise ValueError("Cannot mint EAT without an Execution Identity.")
+            
+        agent_id = request.get("agent", {}).get("id", "unknown")
+        certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "unknown")
+
+        eat = self._gateway.mint_eat(
             execution_identity=ei,
             agent_id=agent_id,
             certificate_id=certificate_id,
@@ -376,7 +388,7 @@ class RunOrchestrator:
 
         The minted ``ExecutionIdentityV1`` is signed *before* execution, so it
         cannot itself carry the post-certificate id. The forward link is recorded
-        on the ``execution_identities`` row and on ``run.pgl_identity`` instead —
+        on the ``execution_identities`` row and on ``run.pgl_identity`` instead -
         the signed identity object is never mutated post-issuance.
         """
         result = run.result_payload or {}
