@@ -1,12 +1,13 @@
+import json
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from typing import Optional
 
-from cappo_backend.security.mcp_gateway import EnhancedMCPAPIRuntime
+from cappo_backend.security.mcp_gateway import MCPGateway, EIValidationError
 
 router = APIRouter()
-runtime = EnhancedMCPAPIRuntime()
+runtime = MCPGateway()
 
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy_interlink(
@@ -15,18 +16,33 @@ async def proxy_interlink(
     x_agent_id: str = Header(..., description="Veklom Agent ID"),
     x_capability_id: str = Header(..., description="Veklom Capability ID"),
     x_target_url: str = Header(..., description="The external Web2 API URL to forward to"),
+    x_execution_identity: str = Header(..., description="JSON String of the CAPPO Execution Identity"),
+    x_provider_key: Optional[str] = Header(None, description="BYOK external API key to forward as Authorization"),
 ):
     """
     Interlink Proxy Endpoint.
     Intercepts the request, enforces VNP micro-stakes via the local ledger, 
-    and forwards the raw request to the legacy Web2 API without X-Veklom headers.
+    verifies Law 0 Execution Identity, and forwards the raw request to the 
+    legacy Web2 API without X-Veklom headers.
     """
+    
+    try:
+        execution_identity = json.loads(x_execution_identity)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid X-Execution-Identity JSON format")
     
     # Extract original headers, stripping out Veklom-specific proprietary headers
     outbound_headers = {}
     for key, value in request.headers.items():
-        if key.lower() not in ["host", "x-agent-id", "x-capability-id", "x-target-url", "x-veklom-receipt-id"]:
+        if key.lower() not in [
+            "host", "x-agent-id", "x-capability-id", "x-target-url", 
+            "x-veklom-receipt-id", "x-execution-identity", "x-provider-key"
+        ]:
             outbound_headers[key] = value
+            
+    # Inject BYOK API key into standard Authorization header
+    if x_provider_key:
+        outbound_headers["Authorization"] = f"Bearer {x_provider_key}"
 
     payload = {
         "target_url": x_target_url,
@@ -34,13 +50,17 @@ async def proxy_interlink(
         "method": request.method
     }
 
-    # 1. Enforce Veklom Ledger & Budget BEFORE forwarding (Zero-Trust Interlink)
-    auth_result = await runtime.process_interlink_request(
-        agent_id=x_agent_id,
-        capability_id=x_capability_id,
-        payload=payload,
-        estimated_cost=1.5 # Fixed micro-stake for proxy execution
-    )
+    # 1. Enforce Veklom Ledger & Budget & Law 0 BEFORE forwarding (Zero-Trust Interlink)
+    try:
+        auth_result = await runtime.process_interlink_request(
+            agent_id=x_agent_id,
+            capability_id=x_capability_id,
+            payload=payload,
+            execution_identity=execution_identity,
+            estimated_cost=1.5 # Fixed micro-stake for proxy execution
+        )
+    except EIValidationError as e:
+        raise HTTPException(status_code=403, detail={"law0": True, "error": str(e)})
 
     if auth_result.get("status") != "authorized":
         raise HTTPException(status_code=402, detail=auth_result)

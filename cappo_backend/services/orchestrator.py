@@ -65,6 +65,7 @@ class RunOrchestrator:
         eat_builder: EATBuilder | None = None,
         issuer: str = "cappo-orchestrator",
         genome_service: Any | None = None,
+        gateway: Any | None = None,
     ) -> None:
         self._db = db
         self._pgl = pgl
@@ -74,6 +75,7 @@ class RunOrchestrator:
         self._eat_builder = eat_builder
         self._issuer = issuer
         self._genome_service = genome_service
+        self._gateway = gateway
         self._last_run: GovernedRun | None = None
 
     @property
