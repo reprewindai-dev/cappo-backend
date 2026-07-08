@@ -15,6 +15,7 @@ protocol (``execute(request) -> dict``) so it drops straight into a
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -191,6 +192,32 @@ def _maybe_wrap_cache(executor: Executor, settings: Settings) -> Executor:
 _breaker_registry: dict[str, CircuitBreaker] = {}
 
 
+def _provider_base_url(settings: Settings) -> str:
+    """Resolve the execution provider base URL.
+
+    CAPPO uses the OpenAI-compatible chat completions surface, while the BYOS
+    agent docs historically exposed Ollama as OLLAMA_BASE_URL. Accept both env
+    names so Coolify deployments do not silently fall back to localhost when
+    Ollama runs on its own server.
+    """
+    base_url = settings.llm_base_url
+    if settings.llm_provider_name.lower() == "ollama":
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL")
+        loopback_defaults = {
+            "http://127.0.0.1:11434/v1",
+            "http://localhost:11434/v1",
+            "http://127.0.0.1:11434",
+            "http://localhost:11434",
+        }
+        if ollama_base_url and settings.llm_base_url.rstrip("/") in loopback_defaults:
+            base_url = ollama_base_url
+
+    normalized = base_url.rstrip("/")
+    if settings.llm_provider_name.lower() == "ollama" and not normalized.endswith("/v1"):
+        normalized = f"{normalized}/v1"
+    return normalized
+
+
 def build_executor(settings: Settings) -> Executor:
     """Construct the execution-layer executor from configuration.
 
@@ -211,7 +238,7 @@ def build_executor(settings: Settings) -> Executor:
             name=settings.llm_provider_name,
             executor=OpenAICompatExecutor(
                 name=settings.llm_provider_name,
-                base_url=settings.llm_base_url,
+                base_url=_provider_base_url(settings),
                 model=settings.llm_model,
                 api_key=settings.llm_api_key or None,
                 timeout=settings.llm_timeout_seconds,
