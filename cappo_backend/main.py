@@ -43,7 +43,7 @@ from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
 
 async def vnp_prober_loop() -> None:
-    """Background task to simulate periodic VNP probing."""
+    """Optional local VNP prober loop; production uses external node telemetry."""
     while True:
         try:
             with SessionLocal() as db:
@@ -57,7 +57,6 @@ async def vnp_prober_loop() -> None:
                 telemetry_service = VNPTelemetryService(db)
 
                 for api in apis:
-                    # Simulate random regional probes
                     regions = ["us-east", "us-west", "eu-west", "ap-southeast", "ap-northeast"]
                     for region in regions:
                         latency = random.randint(50, 800)
@@ -79,11 +78,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     prober_task: asyncio.Task[None] | None = None
     if os.environ.get("ENABLE_VNP_PROBER") == "1":
+    prober_task = None
+    if os.getenv("CAPPO_ENABLE_INTERNAL_VNP_PROBER", "").lower() in {"1", "true", "yes"}:
         prober_task = asyncio.create_task(vnp_prober_loop())
 
     yield
 
     if prober_task is not None:
+    if prober_task:
         prober_task.cancel()
         try:
             await prober_task
