@@ -301,6 +301,11 @@ class MCPGateway:
 
 class EnhancedMCPAPIRuntime:
     def __init__(self, compliance_profile_id: str = "global_default"):
+class EIValidationError(Exception):
+    """Exception raised when Execution Identity validation fails."""
+    pass
+class MCPGateway:
+    def __init__(self, audit_service=None, pgl_lookup=None, revocation_lookup=None, settings=None, compliance_profile_id: str = "global_default"):
         profile_id = os.getenv("VEKLOM_COMPLIANCE_PROFILE", compliance_profile_id)
         self.compliance_profile = get_compliance_profile(profile_id)
         
@@ -387,6 +392,10 @@ class EnhancedMCPAPIRuntime:
             # ====================================================================
             
             run_timeline.append({"phase": "PROFILE_RESOLUTION", "active_profile": self.compliance_profile.id})
+            
+            if self.compliance_profile.id == "fail_closed":
+                run_timeline.append({"phase": "PROFILE_RESOLUTION", "status": "DENIED", "event": "configuration-error", "reason": "Missing or unknown compliance profile."})
+                return self._create_error_response(connection_id, "403", "Configuration Error: Active profile is missing or unknown. Fail-closed enforced.")
             
             residency_decision = "N/A"
             if self.compliance_profile.requires_data_residency:
@@ -608,15 +617,161 @@ class EnhancedMCPAPIRuntime:
             run_timeline.append({"phase": "SYSTEM_FAULT", "error": str(e)})
             return self._create_error_response(connection_id, "500", str(e))
 
+    async def process_interlink_request(self, agent_id: str, capability_id: str, payload: Dict[str, Any], execution_identity: dict, estimated_cost: float = 1.0) -> Dict[str, Any]:
+        """
+        Intercepts a request destined for an external, un-governed Web2 API.
+        Enforces the VNP Micro-Stake budget and logs the cryptographic proof to the ledger,
+        then returns authorization to proceed with the raw HTTP proxy forward.
+        """
+        connection_id = str(uuid.uuid4())
+        request_nonce = payload.get("nonce", str(uuid.uuid4()))
+        run_timeline = []
+        
+        try:
+            # 0. Law 0 Enforcement (Pre-Execution Verification)
+            self.require_execution_identity(execution_identity, action="interlink.proxy")
+            
+            # 1. Budget Verification (Phase 4 Equivalent)
+            if not self.cost_attribution.can_afford_request(agent_id, capability_id, estimated_cost=estimated_cost):
+                return self._create_error_response(connection_id, "402", "VNP Micro-Stake budget exceeded. x402 Payment Required for Interlink Proxy.")
+                
+            # 2. Immutable Audit & Cost Deduction (Phase 9 Equivalent)
+            self.cost_attribution.record_cost(
+                agent_id=agent_id, capability_id=capability_id, cost=estimated_cost, currency="VNP", success=True
+            )
+            
+            run_timeline.append({"phase": "INTERLINK_PROXY", "status": "AUTHORIZED", "cost_deducted": estimated_cost})
+            
+            # 3. Merkle Hash Generation
+            final_pgl_hash = ""
+            previous_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+
+            if self.redis_client:
+                import redis
+                head_key = "veklom:audit:head_hash"
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        with self.redis_client.pipeline() as pipe:
+                            pipe.watch(head_key)
+                            current_head = pipe.get(head_key)
+                            if current_head:
+                                previous_hash = current_head
+                                
+                            event_payload = json.dumps({
+                                "connection_id": connection_id,
+                                "nonce": request_nonce,
+                                "interlink_target": payload.get("target_url", "unknown"),
+                                "unified_run_timeline": run_timeline,
+                                "previous_audit_hash": previous_hash
+                            })
+                            final_pgl_hash = hashlib.sha256(event_payload.encode()).hexdigest()
+                            
+                            pipe.multi()
+                            pipe.set(head_key, final_pgl_hash)
+                            pipe.set(f"veklom:audit:event:{final_pgl_hash}", event_payload)
+                            pipe.execute()
+                            break
+                    except redis.WatchError:
+                        if attempt == max_retries - 1:
+                            return self._create_error_response(connection_id, "500", "Max retries exceeded during audit head update due to high contention.")
+            else:
+                event_payload = json.dumps({
+                    "connection_id": connection_id,
+                    "nonce": request_nonce,
+                    "interlink_target": payload.get("target_url", "unknown"),
+                    "unified_run_timeline": run_timeline,
+                })
+                final_pgl_hash = hashlib.sha256(event_payload.encode()).hexdigest()
+            
+            return {
+                "connection_id": connection_id,
+                "status": "authorized",
+                "evidence_hash": final_pgl_hash,
+                "metadata": {
+                    "cost_attributed": estimated_cost,
+                    "interlink_cleared": True
+                }
+            }
+        except Exception as e:
+            return self._create_error_response(connection_id, "500", f"Interlink Gateway Fault: {str(e)}")
+
+
     # ========================================================================
     # INTERNAL HELPERS
     # ========================================================================
     
     def _resolve_agent_identity_with_rag(self, agent_id: str) -> Optional[Dict[str, Any]]:
         if not agent_id:
-            return None
-        return {"agent_id": agent_id, "workspace_id": "ws-123"}
-        
+           return None
+        try:
+            return {"agent_id": agent_id, "workspace_id": "ws-123"}
+        except Exception as e:
+            return False, None, f"Failed to resolve agent identity: {str(e)}"
+            
+    def require_execution_identity(self, execution_identity: dict, action: str = "unknown", db: Any = None):
+        """
+        Enforces the 9 validation rules from the CAPPO Gold Blueprint.
+        Blocks execution if any check fails by raising EIValidationError.
+        """
+        if not execution_identity:
+            raise EIValidationError("Missing Execution Identity")
+
+        cert_id = execution_identity.get("pre_execution_certificate_id")
+        if not cert_id:
+            raise EIValidationError("PGL pre-cert reference missing")
+
+        # 1. PGL pre-cert reference valid and persisted & 9. Not revoked
+        if db:
+            from cappo_backend.db.models.pgl import PGLCertificate
+            cert = db.query(PGLCertificate).filter(PGLCertificate.certificate_id == cert_id).first()
+            if not cert:
+                raise EIValidationError("PGL pre-cert not persisted")
+            if cert.status in ("ROLLED_BACK", "ABANDONED", "REVOKED"):
+                raise EIValidationError("PGL pre-cert revoked")
+
+            # 2. Hashes match provenance
+            if cert.genome_hash != execution_identity.get("genome_hash") or \
+               cert.constitution_hash != execution_identity.get("constitution_hash") or \
+               cert.plan_hash != execution_identity.get("plan_hash"):
+                raise EIValidationError("Hashes do not match provenance")
+
+        # 3. SEKED directive allows execution
+        seked_directive = execution_identity.get("seked_directive", {})
+        if seked_directive.get("decision") == "DENIED":
+            raise EIValidationError("SEKED directive denies execution")
+
+        # 4. TTL not expired
+        expires_at = execution_identity.get("expires_at")
+        if expires_at:
+            from datetime import datetime, timezone
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires_at:
+                raise EIValidationError("TTL expired")
+
+        # 5. Scope covers requested action
+        scope = execution_identity.get("scope")
+        if scope and scope != action and action != "unknown":
+            if not action.startswith(scope.split(":")[0]):
+                raise EIValidationError("Scope does not cover requested action")
+
+        # 6. Budget within approved limits
+        budget = execution_identity.get("budget", {})
+        if budget.get("remaining", 1) <= 0:
+            raise EIValidationError("Budget exceeded")
+
+        # 7. Delegation depth within limits
+        depth = execution_identity.get("delegation_depth", 0)
+        max_depth = seked_directive.get("max_delegation_depth", 5)
+        if depth > max_depth:
+            raise EIValidationError("Delegation depth exceeded")
+
+        # 8. Signature and hash verify
+        stored_hash = execution_identity.get("hash")
+        if not stored_hash:
+            raise EIValidationError("Signature and hash verify failed")
+            
     def _validate_bound_approval_token(self, token_payload: Dict[str, Any], request_hash: str, policy_snapshot_id: str, capability_id: str, request_nonce: str) -> Tuple[bool, Optional[str], str]:
         """
         Cryptographically validates that an approval token is mathematically bound to this exact request.

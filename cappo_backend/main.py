@@ -24,6 +24,7 @@ from cappo_backend.api.routers.agents_router import router as agents_router
 from cappo_backend.api.routers.audit_router import router as audit_router
 from cappo_backend.api.routers.benchmarks_router import router as benchmarks_router
 from cappo_backend.api.routers.exec_router import router as exec_router
+from cappo_backend.api.routers.mcp import router as mcp_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.license_router import router as license_router
@@ -31,6 +32,7 @@ from cappo_backend.api.routers.platform_router import router as platform_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
+from cappo_backend.api.routers.interlink import router as interlink_router
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import SessionLocal
 from cappo_backend.observability.logging import configure_logging
@@ -133,6 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vnp_admin_router)
     app.include_router(agents_router)
     app.include_router(exec_router)
+    app.include_router(mcp_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
     app.include_router(governance_v2_router)
@@ -143,6 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(gpc_router)
     app.include_router(api_x402_router, prefix="/api")
     app.include_router(root_discovery_router)
+    app.include_router(interlink_router, prefix="/api/interlink")
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:

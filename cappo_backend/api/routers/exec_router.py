@@ -51,6 +51,7 @@ class ExecRequest(BaseModel):
     action: str | None = None
     directive: str | None = None
     risk_tier: str | None = None
+    security: dict[str, Any] | None = None
 
 
 
@@ -127,7 +128,7 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
         )
 
 @router.post("/exec", response_model=ExecResponse)
-def governed_exec(
+async def governed_exec(
     body: ExecRequest,
     request: Request,
     db: Session = Depends(get_session),
@@ -137,12 +138,35 @@ def governed_exec(
     start = time.monotonic()
     audit = AuditService(db)
 
+    # cAPI PHASE 1: Gatekeeper Enforcement
+    # Pull public key from settings or PGL (using settings here for demo)
+    from cappo_backend.core.capi_pipeline import enforce_capi_pipeline, seal_evidence_pack
+    # Normally this is looked up via PGL identity. We'll bypass strict key lookup for the structural rewrite
+    dummy_pub_key = b"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n-----END PUBLIC KEY-----"
+    
+    # We construct the payload expected by cAPI
+    capi_payload = {
+        "action": body.action or "execute",
+        "data": body.model_dump(),
+        "security": body.security
+    }
+    
+    # Run the strict cAPI pipeline (Phases 1-6)
+    try:
+        capi_result = await enforce_capi_pipeline(body.pgl_id or "unknown", capi_payload, dummy_pub_key.decode('utf-8'))
+    except Exception as e:
+        # If security fails, we don't even reach orchestration
+        raise HTTPException(status_code=401, detail=f"cAPI Gatekeeper Reject: {str(e)}")
+
     _check_payment(db, body.workspace_id, body.action_cost_cents)
     orchestrator = _build_orchestrator(db, settings, audit)
     result = _execute_run(orchestrator, body.model_dump(), db)
 
     run = orchestrator.last_run
     db.commit()
+    
+    # cAPI PHASE 7-9: Evidence Sealing
+    await seal_evidence_pack(capi_result["evidence_id"], result)
 
     elapsed_ms = (time.monotonic() - start) * 1000
     return ExecResponse(

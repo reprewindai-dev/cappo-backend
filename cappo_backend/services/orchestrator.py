@@ -1,9 +1,9 @@
-"""RunOrchestrator — the governed execution pipeline.
+"""RunOrchestrator - the governed execution pipeline.
 
-Forward-constructed from the orchestrator lineage seeds (migration note §3). Owns
+Forward-constructed from the orchestrator lineage seeds (migration note -3). Owns
 the run **before** any side effect: no post-hoc derivation, no implicit ALLOW.
 
-Method sequence (EI Plan §Mint point):
+Method sequence (EI Plan -Mint point):
     create_run → compile_run → contextualize_run → govern_run → commit_run
         → mint_execution_identity → route_run → execute_run → attest_run
 
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.governed_run import GovernedRun
-from cappo_backend.security.mcp_gateway import MCPGateway
+from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
@@ -46,9 +46,8 @@ class RunOrchestrator:
         Execution-layer adapter (real provider or echo stub).
     audit : AuditService
         Hash-chained audit service.
-    gateway : MCPGateway
-        LAW 0 enforcement boundary. Validated *before* any side effect; a missing
-        gateway means enforcement is skipped (tests/dev only).
+    audit : AuditService
+        Hash-chained audit service.
     eat_builder : EATBuilder | None
         EAT builder for minting Execution Authorization Tokens. When present, the
         orchestrator mints an EAT after the EI and stores it on the run.
@@ -63,20 +62,20 @@ class RunOrchestrator:
         builder: ExecutionIdentityBuilder,
         executor: Executor,
         audit: AuditService,
-        gateway: MCPGateway | None = None,
         eat_builder: EATBuilder | None = None,
         issuer: str = "cappo-orchestrator",
         genome_service: Any | None = None,
+        gateway: Any | None = None,
     ) -> None:
         self._db = db
         self._pgl = pgl
         self._builder = builder
         self._executor = executor
         self._audit = audit
-        self._gateway = gateway
         self._eat_builder = eat_builder
         self._issuer = issuer
         self._genome_service = genome_service
+        self._gateway = gateway
         self._last_run: GovernedRun | None = None
 
     @property
@@ -273,7 +272,7 @@ class RunOrchestrator:
         self._transition(run, RunState.COMMITTED)
 
     def mint_execution_identity(self, run: GovernedRun) -> None:
-        """Mint ``ExecutionIdentityV1`` — strictly after commit, before route."""
+        """Mint ``ExecutionIdentityV1`` - strictly after commit, before route."""
         ei_inputs: dict[str, Any] = {
             "pgl_pre_certificate_id": run.pgl_identity.get("pre_execution_certificate_id", ""),
             "genome_hash": run.hashes.get("genome_hash", ""),
@@ -319,25 +318,19 @@ class RunOrchestrator:
         self._transition(run, RunState.ROUTED)
 
     def mint_eat(self, run: GovernedRun) -> None:
-        """Mint Execution Authorization Token — strictly after EI, before route.
-
-        The EAT is an authorization envelope around the already-minted EI. It grants
-        the Edge MCP permission to execute exactly one governed operation. When no
-        ``eat_builder`` is configured, this step is a no-op (dev/test shortcut).
-        """
-        if self._eat_builder is None:
-            self._transition(run, RunState.EAT_MINTED)
+        """Mint Execution Authorization Token - strictly after EI, before route."""
+        if self._gateway is None:
             return
-
-        ei = run.execution_identity
-        if ei is None:
-            raise ValueError("Cannot mint EAT without a minted ExecutionIdentityV1")
-
+            
         request = run.request_payload or {}
-        agent_id = request.get("agent_id", run.run_id)
-        certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
+        ei = run.execution_identity
+        if not ei:
+            raise ValueError("Cannot mint EAT without an Execution Identity.")
+            
+        agent_id = request.get("agent", {}).get("id", "unknown")
+        certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "unknown")
 
-        eat = self._eat_builder.build(
+        eat = self._gateway.mint_eat(
             execution_identity=ei,
             agent_id=agent_id,
             certificate_id=certificate_id,
@@ -367,7 +360,7 @@ class RunOrchestrator:
         The gateway check fires *before* the side effect (the executor call):
         an invalid/missing EI raises ``EIValidationError`` while the run is still
         ROUTED, so ``run_governed`` transitions it to FAILED and no side effect
-        occurs. This is the enforcement contract from the EI Plan §Enforcement
+        occurs. This is the enforcement contract from the EI Plan -Enforcement
         scope ("before any side-effecting tool call").
         """
         self._enforce_law0(run)
@@ -395,7 +388,7 @@ class RunOrchestrator:
 
         The minted ``ExecutionIdentityV1`` is signed *before* execution, so it
         cannot itself carry the post-certificate id. The forward link is recorded
-        on the ``execution_identities`` row and on ``run.pgl_identity`` instead —
+        on the ``execution_identities`` row and on ``run.pgl_identity`` instead -
         the signed identity object is never mutated post-issuance.
         """
         result = run.result_payload or {}
