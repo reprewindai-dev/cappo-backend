@@ -371,7 +371,8 @@ class X402FreemiumASGI:
     def _has_valid_internal_api_key(self, scope: Any) -> bool:
         headers = dict(scope.get("headers", []))
         api_key = headers.get(b"x-api-key", b"").decode("utf-8")
-        return bool(api_key and api_key in self.settings.api_key_set)
+        api_key_set = self.settings.api_key_set or get_settings().api_key_set
+        return bool(api_key and api_key in api_key_set)
 
     async def _send_payment_plane_unavailable(self, send: Any) -> None:
         import json
