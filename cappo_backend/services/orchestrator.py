@@ -118,19 +118,15 @@ class RunOrchestrator:
 
     def validate_with_capi(self, run: GovernedRun) -> None:
         """Query the central cAPI execution endpoint to validate the run."""
-        import os
-        import sys
-
         import httpx
 
         from cappo_backend.config import get_settings
         
         settings = get_settings()
-        
-        # Skip validation during pytest
-        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+
+        if not settings.capi_external_validation_enabled:
             return
-            
+
         base_url = settings.veklom_byos_backend_url
         if not base_url:
             return

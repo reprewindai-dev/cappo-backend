@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     # --- Veklom BYOS Backend (Real PGL) ---
     veklom_byos_backend_url: str | None = None  # https://api.veklom.com/v1
     veklom_api_key: str | None = None  # API key for veklom-byos-backend
+    capi_external_validation_enabled: bool = False
 
     # --- Execution layer (real provider + circuit breaker) ---
     # "echo" uses the deterministic stub (default; tests/local dev). "openai"
