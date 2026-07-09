@@ -1,12 +1,16 @@
-import time
 import hashlib
 import json
-import uuid
 import os
-import redis
+import time
+import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple, Set
+from typing import Any, Dict, Optional, Tuple
 
+import redis
+
+from cappo_backend.core.governance.compliance_profiles import (
+    get_compliance_profile,
+)
 from cappo_backend.services.governance_layer import PermissionsCalculator, PolicyCompositionEngine
 from cappo_backend.services.intelligence_layer import CostAttributionService, RiskScoringService
 from cappo_backend.services.safety_layer import (
@@ -15,13 +19,17 @@ from cappo_backend.services.safety_layer import (
     BehavioralBaselineService,
     RequestQuarantineService,
 )
-from cappo_backend.core.governance.compliance_profiles import get_compliance_profile, ComplianceProfile
+
 
 class EIValidationError(Exception):
     """Exception raised when Execution Identity validation fails."""
     pass
 class MCPGateway:
     def __init__(self, audit_service=None, pgl_lookup=None, revocation_lookup=None, settings=None, compliance_profile_id: str = "global_default"):
+        self.audit_service = audit_service
+        self.pgl_lookup = pgl_lookup
+        self.revocation_lookup = revocation_lookup
+        self.settings = settings
         profile_id = os.getenv("VEKLOM_COMPLIANCE_PROFILE", compliance_profile_id)
         self.compliance_profile = get_compliance_profile(profile_id)
         
@@ -61,6 +69,30 @@ class MCPGateway:
         if not self.redis_client:
             return False
         return self.redis_client.exists(f"veklom:nonce:spent:{nonce}") == 1
+
+    def mint_eat(
+        self,
+        *,
+        execution_identity: dict[str, Any],
+        agent_id: str,
+        certificate_id: str,
+        trust_score: float,
+        risk_tier: str,
+    ) -> dict[str, Any]:
+        """Mint a signed Execution Authorization Token for a governed run."""
+        from cappo_backend.config import get_settings
+        from cappo_backend.services.eat_builder import EATBuilder
+        from cappo_backend.services.ei_builder import Ed25519Signer
+
+        settings = self.settings or get_settings()
+        signer = Ed25519Signer(signing_key=settings.ei_signing_key)
+        return EATBuilder(signer=signer).build(
+            execution_identity=execution_identity,
+            agent_id=agent_id,
+            certificate_id=certificate_id,
+            trust_score=trust_score,
+            risk_tier=risk_tier,
+        )
 
     # _get_and_update_merkle_head removed in favor of inline WATCH transaction
 
@@ -155,7 +187,6 @@ class MCPGateway:
                 run_timeline.append({"phase": "CONTEXTUALIZATION", "status": "DENIED", "reason": "External context forbidden"})
                 return self._create_error_response(connection_id, "403", "External context forbidden by Gold-Only Learning doctrine.")
                 
-            gold_context = {"source": "local_vetted_corpus", "confidence": 0.99}
             run_timeline.append({"phase": "CONTEXTUALIZATION", "status": "GOLD_ONLY_ENFORCED"})
 
             # ====================================================================
@@ -225,7 +256,6 @@ class MCPGateway:
             # PHASE 6: Identity-Bound MCPAPI v2.0 Tool Invocation
             # ====================================================================
             
-            ephemeral_session_token = f"ephemeral_bind_{uuid.uuid4()}"
             run_timeline.append({"phase": "TOKEN_ISSUANCE", "status": "ISSUED", "ephemeral_token": True})
 
             # ====================================================================
@@ -425,37 +455,71 @@ class MCPGateway:
         except Exception as e:
             return False, None, f"Failed to resolve agent identity: {str(e)}"
             
-    def require_execution_identity(self, execution_identity: dict, action: str = "unknown", db: Any = None):
+    def require_execution_identity(
+        self,
+        execution_identity: dict,
+        action: str = "unknown",
+        db: Any = None,
+        **context: Any,
+    ):
         """
         Enforces the 9 validation rules from the CAPPO Gold Blueprint.
         Blocks execution if any check fails by raising EIValidationError.
         """
-        if not execution_identity:
-            raise EIValidationError("Missing Execution Identity")
+        try:
+            self._validate_execution_identity(execution_identity, action=action, db=db, **context)
+        except EIValidationError as exc:
+            self._record_law0_violation(exc, execution_identity, action, context)
+            raise
 
-        cert_id = execution_identity.get("pre_execution_certificate_id")
+    def _validate_execution_identity(
+        self,
+        execution_identity: dict,
+        action: str = "unknown",
+        db: Any = None,
+        **context: Any,
+    ) -> None:
+        if not execution_identity:
+            raise EIValidationError("missing execution identity")
+
+        cert_id = (
+            execution_identity.get("pre_execution_certificate_id")
+            or execution_identity.get("pgl_pre_certificate_id")
+        )
         if not cert_id:
-            raise EIValidationError("PGL pre-cert reference missing")
+            raise EIValidationError("pgl pre-cert reference missing")
 
         # 1. PGL pre-cert reference valid and persisted & 9. Not revoked
-        if db:
-            from cappo_backend.db.models.pgl import PGLCertificate
+        cert = None
+        if self.pgl_lookup:
+            cert = self.pgl_lookup(cert_id)
+            if not cert:
+                raise EIValidationError("pgl pre-cert not found")
+        elif db:
+            from cappo_backend.models.pgl_certificate import PGLCertificate
             cert = db.query(PGLCertificate).filter(PGLCertificate.certificate_id == cert_id).first()
             if not cert:
-                raise EIValidationError("PGL pre-cert not persisted")
-            if cert.status in ("ROLLED_BACK", "ABANDONED", "REVOKED"):
-                raise EIValidationError("PGL pre-cert revoked")
+                raise EIValidationError("pgl pre-cert not found")
+
+        if cert is not None:
+            if getattr(cert, "persisted", True) is False:
+                raise EIValidationError("pgl pre-cert not persisted")
+            if getattr(cert, "status", "") in ("ROLLED_BACK", "ABANDONED", "REVOKED"):
+                raise EIValidationError("pgl pre-cert revoked")
 
             # 2. Hashes match provenance
-            if cert.genome_hash != execution_identity.get("genome_hash") or \
-               cert.constitution_hash != execution_identity.get("constitution_hash") or \
-               cert.plan_hash != execution_identity.get("plan_hash"):
-                raise EIValidationError("Hashes do not match provenance")
+            if cert.genome_hash != execution_identity.get("genome_hash"):
+                raise EIValidationError("genome_hash mismatch")
+            if cert.constitution_hash != execution_identity.get("constitution_hash"):
+                raise EIValidationError("constitution_hash mismatch")
+            if cert.plan_hash != execution_identity.get("plan_hash"):
+                raise EIValidationError("plan_hash mismatch")
 
         # 3. SEKED directive allows execution
         seked_directive = execution_identity.get("seked_directive", {})
-        if seked_directive.get("decision") == "DENIED":
-            raise EIValidationError("SEKED directive denies execution")
+        directive = execution_identity.get("directive") or seked_directive.get("decision")
+        if directive == "DENY" or directive == "DENIED":
+            raise EIValidationError("directive does not permit execution")
 
         # 4. TTL not expired
         expires_at = execution_identity.get("expires_at")
@@ -464,29 +528,82 @@ class MCPGateway:
             if isinstance(expires_at, str):
                 expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
             if datetime.now(timezone.utc) > expires_at:
-                raise EIValidationError("TTL expired")
+                raise EIValidationError("ttl expired")
 
         # 5. Scope covers requested action
         scope = execution_identity.get("scope")
-        if scope and scope != action and action != "unknown":
+        if isinstance(scope, dict) and action != "unknown":
+            tools = scope.get("tools") or []
+            if tools and action not in tools and action.split(".")[0] not in {
+                str(tool).split(".")[0] for tool in tools
+            }:
+                raise EIValidationError("scope does not cover requested action")
+        elif isinstance(scope, str) and scope != action and action != "unknown":
             if not action.startswith(scope.split(":")[0]):
-                raise EIValidationError("Scope does not cover requested action")
+                raise EIValidationError("scope does not cover requested action")
 
         # 6. Budget within approved limits
         budget = execution_identity.get("budget", {})
         if budget.get("remaining", 1) <= 0:
-            raise EIValidationError("Budget exceeded")
+            raise EIValidationError("budget exceeded")
+        action_cost_cents = int(context.get("action_cost_cents", 0))
+        approved_cents = (
+            execution_identity.get("budget_approved_cents")
+            or budget.get("approved_cents")
+            or budget.get("limit_cents")
+            or 0
+        )
+        if approved_cents and action_cost_cents > int(approved_cents):
+            raise EIValidationError("budget exceeded")
 
         # 7. Delegation depth within limits
         depth = execution_identity.get("delegation_depth", 0)
         max_depth = seked_directive.get("max_delegation_depth", 5)
         if depth > max_depth:
-            raise EIValidationError("Delegation depth exceeded")
+            raise EIValidationError("delegation depth exceeded")
 
         # 8. Signature and hash verify
+        from cappo_backend.services.canonical import sha256_json, verify_signature_ed25519
+        from cappo_backend.services.ei_builder import canonical_body
+
+        body = canonical_body(execution_identity)
         stored_hash = execution_identity.get("hash")
-        if not stored_hash:
-            raise EIValidationError("Signature and hash verify failed")
+        if not stored_hash or stored_hash != sha256_json(body):
+            raise EIValidationError("hash verification failed")
+        settings = self.settings
+        signing_key = getattr(settings, "ei_signing_key", None) or "test-signing-key"
+        if not verify_signature_ed25519(body, execution_identity.get("signature", ""), signing_key):
+            raise EIValidationError("signature verification failed")
+
+        # 9. Revocation checks.
+        if execution_identity.get("revoked"):
+            raise EIValidationError("execution identity revoked")
+        if self.revocation_lookup and self.revocation_lookup(execution_identity.get("execution_id", "")):
+            raise EIValidationError("execution identity revoked")
+
+    def _record_law0_violation(
+        self,
+        exc: EIValidationError,
+        execution_identity: dict | None,
+        action: str,
+        context: dict[str, Any],
+    ) -> None:
+        if not self.audit_service:
+            return
+        try:
+            self.audit_service.record(
+                "law0_violation",
+                {
+                    "law0": True,
+                    "error": str(exc),
+                    "action": action,
+                    "execution_id": (execution_identity or {}).get("execution_id"),
+                },
+                workspace_id=context.get("workspace_id", "default"),
+                run_id=context.get("run_id"),
+            )
+        except Exception:
+            pass
             
     def _validate_bound_approval_token(self, token_payload: Dict[str, Any], request_hash: str, policy_snapshot_id: str, capability_id: str, request_nonce: str) -> Tuple[bool, Optional[str], str]:
         """

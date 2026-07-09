@@ -51,6 +51,7 @@ def settings() -> Settings:
         auth_enabled=False,
         api_keys="test-key",
         veklom_byos_backend_url=None,
+        executor_mode="echo",
     )
 
 

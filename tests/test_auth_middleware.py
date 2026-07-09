@@ -28,6 +28,7 @@ def auth_settings() -> Settings:
         environment="test",
         auth_enabled=True,
         api_keys=_KEY,
+        executor_mode="echo",
     )
 
 

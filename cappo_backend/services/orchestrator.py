@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.governed_run import GovernedRun
-from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
@@ -319,7 +318,7 @@ class RunOrchestrator:
 
     def mint_eat(self, run: GovernedRun) -> None:
         """Mint Execution Authorization Token - strictly after EI, before route."""
-        if self._gateway is None:
+        if self._gateway is None and self._eat_builder is None:
             return
             
         request = run.request_payload or {}
@@ -330,13 +329,22 @@ class RunOrchestrator:
         agent_id = request.get("agent", {}).get("id", "unknown")
         certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "unknown")
 
-        eat = self._gateway.mint_eat(
-            execution_identity=ei,
-            agent_id=agent_id,
-            certificate_id=certificate_id,
-            trust_score=float(request.get("trust_score", 75.0)),
-            risk_tier=run.risk_tier or "standard",
-        )
+        if self._eat_builder is not None:
+            eat = self._eat_builder.build(
+                execution_identity=ei,
+                agent_id=agent_id,
+                certificate_id=certificate_id,
+                trust_score=float(request.get("trust_score", 75.0)),
+                risk_tier=run.risk_tier or "standard",
+            )
+        else:
+            eat = self._gateway.mint_eat(
+                execution_identity=ei,
+                agent_id=agent_id,
+                certificate_id=certificate_id,
+                trust_score=float(request.get("trust_score", 75.0)),
+                risk_tier=run.risk_tier or "standard",
+            )
         run.eat = eat
         self._db.flush()
 

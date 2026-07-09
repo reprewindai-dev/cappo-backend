@@ -39,15 +39,15 @@ import logging
 import os
 from typing import Any
 
+from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
+from x402.http.middleware.fastapi import PaymentMiddlewareASGI
+from x402.http.types import RouteConfig, RouteConfigurationError
+from x402.mechanisms.evm.exact import ExactEvmServerScheme
+from x402.server import x402ResourceServer
+
 from cappo_backend.config import Settings, get_settings
 
 logger = logging.getLogger("cappo.x402")
-
-from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
-from x402.http.middleware.fastapi import PaymentMiddlewareASGI
-from x402.http.types import RouteConfig
-from x402.mechanisms.evm.exact import ExactEvmServerScheme
-from x402.server import x402ResourceServer
 
 X402_AVAILABLE = True
 
@@ -349,6 +349,8 @@ class X402FreemiumASGI:
         settings: Settings | None = None,
     ) -> None:
         self.app = app
+        self.settings = settings or get_settings()
+        self._payment_route_config_broken = False
         if not X402_AVAILABLE:
             self.payment_app = app
         else:
@@ -366,6 +368,51 @@ class X402FreemiumASGI:
             except Exception:
                 pass
 
+    def _has_valid_internal_api_key(self, scope: Any) -> bool:
+        headers = dict(scope.get("headers", []))
+        api_key = headers.get(b"x-api-key", b"").decode("utf-8")
+        return bool(api_key and api_key in self.settings.api_key_set)
+
+    async def _send_payment_plane_unavailable(self, send: Any) -> None:
+        import json
+
+        body = json.dumps({
+            "error": "X402_PAYMENT_PLANE_UNAVAILABLE",
+            "detail": "x402 payment route configuration is temporarily unavailable",
+        }).encode("utf-8")
+        await send({
+            "type": "http.response.start",
+            "status": 503,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+                (b"x-402-degraded", b"true"),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+    async def _call_payment_app(self, scope: Any, receive: Any, send: Any) -> None:
+        if self._payment_route_config_broken:
+            if self._has_valid_internal_api_key(scope):
+                await self.app(scope, receive, send)
+                return
+            await self._send_payment_plane_unavailable(send)
+            return
+
+        try:
+            await self.payment_app(scope, receive, send)
+        except RouteConfigurationError as exc:
+            self._payment_route_config_broken = True
+            logger.critical(
+                "x402 route configuration unsupported by facilitator; "
+                "payment middleware degraded for authenticated internal traffic",
+                extra={"error": str(exc)},
+            )
+            if self._has_valid_internal_api_key(scope):
+                await self.app(scope, receive, send)
+                return
+            await self._send_payment_plane_unavailable(send)
+
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
@@ -375,7 +422,7 @@ class X402FreemiumASGI:
         # 2. Skip condition check
         # Explicit bypass for local development unless freemium is disabled
         if settings.environment == "production" and not os.environ.get("ENABLE_FREEMIUM"):
-            await self.payment_app(scope, receive, send)
+            await self._call_payment_app(scope, receive, send)
             return
 
         headers = dict(scope.get("headers", []))
@@ -393,4 +440,4 @@ class X402FreemiumASGI:
             except Exception as exc:
                 logger.warning("Redis unavailable during freemium check", extra={"error": str(exc)})
 
-        await self.payment_app(scope, receive, send)
+        await self._call_payment_app(scope, receive, send)
