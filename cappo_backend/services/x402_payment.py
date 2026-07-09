@@ -373,8 +373,9 @@ class X402FreemiumASGI:
             return True
         api_key = ""
         for name, value in scope.get("headers", []):
-            if name.lower() == b"x-api-key":
-                api_key = value.decode("utf-8")
+            header_name = name.decode("latin1").lower() if isinstance(name, bytes) else str(name).lower()
+            if header_name == "x-api-key":
+                api_key = value.decode("utf-8") if isinstance(value, bytes) else str(value)
                 break
         api_key_set = self.settings.api_key_set or get_settings().api_key_set
         return bool(api_key and api_key in api_key_set)

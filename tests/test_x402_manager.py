@@ -130,3 +130,22 @@ class TestX402DegradedMode:
         asyncio.run(middleware(scope, _empty_receive, send))
 
         assert sent[0]["status"] == 204
+
+    def test_valid_internal_key_bypasses_with_string_headers(self) -> None:
+        middleware = self._middleware()
+        middleware.payment_app = _UnexpectedPaymentApp()
+        sent: list[dict[str, object]] = []
+
+        async def send(message: dict[str, object]) -> None:
+            sent.append(message)
+
+        scope = {
+            "type": "http",
+            "headers": [("X-API-Key", "internal-key")],
+            "path": "/v1/exec",
+            "method": "POST",
+        }
+
+        asyncio.run(middleware(scope, _empty_receive, send))
+
+        assert sent[0]["status"] == 204
