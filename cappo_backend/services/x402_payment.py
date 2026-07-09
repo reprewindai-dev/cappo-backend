@@ -369,6 +369,8 @@ class X402FreemiumASGI:
                 pass
 
     def _has_valid_internal_api_key(self, scope: Any) -> bool:
+        if scope.get("cappo_internal_api_key_valid") is True:
+            return True
         api_key = ""
         for name, value in scope.get("headers", []):
             if name.lower() == b"x-api-key":

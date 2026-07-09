@@ -110,3 +110,23 @@ class TestX402DegradedMode:
         asyncio.run(middleware(scope, _empty_receive, send))
 
         assert sent[0]["status"] == 204
+
+    def test_validated_auth_scope_bypasses_payment_middleware(self) -> None:
+        middleware = self._middleware()
+        middleware.payment_app = _UnexpectedPaymentApp()
+        sent: list[dict[str, object]] = []
+
+        async def send(message: dict[str, object]) -> None:
+            sent.append(message)
+
+        scope = {
+            "type": "http",
+            "headers": [],
+            "path": "/v1/exec",
+            "method": "POST",
+            "cappo_internal_api_key_valid": True,
+        }
+
+        asyncio.run(middleware(scope, _empty_receive, send))
+
+        assert sent[0]["status"] == 204

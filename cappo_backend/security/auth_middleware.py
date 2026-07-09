@@ -65,4 +65,5 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 content={"error": "AUTHENTICATION_REQUIRED", "detail": "invalid X-API-Key"},
             )
 
+        request.scope["cappo_internal_api_key_valid"] = True
         return await call_next(request)
