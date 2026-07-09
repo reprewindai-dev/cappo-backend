@@ -418,6 +418,10 @@ class X402FreemiumASGI:
             await self.app(scope, receive, send)
             return
 
+        if self._has_valid_internal_api_key(scope):
+            await self.app(scope, receive, send)
+            return
+
         settings = get_settings()
         # 2. Skip condition check
         # Explicit bypass for local development unless freemium is disabled

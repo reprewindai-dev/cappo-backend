@@ -39,6 +39,11 @@ class _BrokenPaymentApp:
         raise RouteConfigurationError([error])
 
 
+class _UnexpectedPaymentApp:
+    async def __call__(self, scope, receive, send) -> None:
+        raise AssertionError("payment middleware should not run for internal API keys")
+
+
 class TestX402DegradedMode:
     def _middleware(self) -> X402FreemiumASGI:
         async def app(scope, receive, send) -> None:
@@ -86,3 +91,22 @@ class TestX402DegradedMode:
 
         assert sent[0]["status"] == 503
         assert middleware._payment_route_config_broken is True
+
+    def test_valid_internal_key_bypasses_payment_middleware(self) -> None:
+        middleware = self._middleware()
+        middleware.payment_app = _UnexpectedPaymentApp()
+        sent: list[dict[str, object]] = []
+
+        async def send(message: dict[str, object]) -> None:
+            sent.append(message)
+
+        scope = {
+            "type": "http",
+            "headers": [(b"x-api-key", b"internal-key")],
+            "path": "/v1/exec",
+            "method": "POST",
+        }
+
+        asyncio.run(middleware(scope, _empty_receive, send))
+
+        assert sent[0]["status"] == 204
