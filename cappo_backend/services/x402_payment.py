@@ -369,8 +369,11 @@ class X402FreemiumASGI:
                 pass
 
     def _has_valid_internal_api_key(self, scope: Any) -> bool:
-        headers = dict(scope.get("headers", []))
-        api_key = headers.get(b"x-api-key", b"").decode("utf-8")
+        api_key = ""
+        for name, value in scope.get("headers", []):
+            if name.lower() == b"x-api-key":
+                api_key = value.decode("utf-8")
+                break
         api_key_set = self.settings.api_key_set or get_settings().api_key_set
         return bool(api_key and api_key in api_key_set)
 

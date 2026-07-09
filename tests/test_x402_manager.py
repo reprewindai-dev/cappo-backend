@@ -68,7 +68,7 @@ class TestX402DegradedMode:
 
         scope = {
             "type": "http",
-            "headers": [(b"x-api-key", b"internal-key")],
+            "headers": [(b"X-API-Key", b"internal-key")],
             "path": "/v1/exec",
             "method": "POST",
         }
