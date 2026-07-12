@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     veklom_byos_backend_url: str | None = None  # https://api.veklom.com/v1
     veklom_api_key: str | None = None  # API key for veklom-byos-backend
     capi_external_validation_enabled: bool = False
+    # Public verification key used by the local cAPI gatekeeper for signed
+    # request envelopes. Production /v1/exec requests must be signed.
+    capi_gatekeeper_public_key: str = ""
 
     # --- Execution layer (real provider + circuit breaker) ---
     # "echo" uses the deterministic stub (default; tests/local dev). "openai"
@@ -182,6 +185,11 @@ class Settings(BaseSettings):
         if not self.license_admin_key:
             problems.append(
                 "LICENSE_ADMIN_KEY must be set in production to secure admin endpoints."
+            )
+        if not self.capi_gatekeeper_public_key:
+            problems.append(
+                "CAPI_GATEKEEPER_PUBLIC_KEY must be set in production so /v1/exec "
+                "cannot fall back to unsigned or dummy-key cAPI validation."
             )
 
         if problems:

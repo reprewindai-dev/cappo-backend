@@ -127,6 +127,40 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
             },
         )
 
+def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -> str:
+    """Return the configured cAPI verification key or fail closed when needed."""
+    public_key = settings.capi_gatekeeper_public_key.strip()
+    has_security = body.security is not None
+
+    if has_security and not public_key:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "CAPI_GATEKEEPER_KEY_UNAVAILABLE",
+                "detail": "Signed cAPI requests require CAPI_GATEKEEPER_PUBLIC_KEY.",
+            },
+        )
+
+    if settings.is_production and not has_security:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "CAPI_SIGNED_SECURITY_REQUIRED",
+                "detail": "Production /v1/exec requests must include a signed security envelope.",
+            },
+        )
+
+    if settings.is_production and not public_key:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "CAPI_GATEKEEPER_KEY_UNAVAILABLE",
+                "detail": "Production /v1/exec requires CAPI_GATEKEEPER_PUBLIC_KEY.",
+            },
+        )
+
+    return public_key
+
 @router.post("/exec", response_model=ExecResponse)
 async def governed_exec(
     body: ExecRequest,
@@ -139,10 +173,8 @@ async def governed_exec(
     audit = AuditService(db)
 
     # cAPI PHASE 1: Gatekeeper Enforcement
-    # Pull public key from settings or PGL (using settings here for demo)
     from cappo_backend.core.capi_pipeline import enforce_capi_pipeline, seal_evidence_pack
-    # Normally this is looked up via PGL identity. We'll bypass strict key lookup for the structural rewrite
-    dummy_pub_key = b"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n-----END PUBLIC KEY-----"
+    capi_public_key = _resolve_capi_gatekeeper_public_key(settings, body)
     
     # We construct the payload expected by cAPI
     capi_payload = {
@@ -153,7 +185,7 @@ async def governed_exec(
     
     # Run the strict cAPI pipeline (Phases 1-6)
     try:
-        capi_result = await enforce_capi_pipeline(body.pgl_id or "unknown", capi_payload, dummy_pub_key.decode('utf-8'))
+        capi_result = await enforce_capi_pipeline(body.pgl_id or "unknown", capi_payload, capi_public_key)
     except Exception as e:
         # If security fails, we don't even reach orchestration
         raise HTTPException(status_code=401, detail=f"cAPI Gatekeeper Reject: {str(e)}")

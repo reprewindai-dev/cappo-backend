@@ -7,9 +7,16 @@ attestation).
 
 from __future__ import annotations
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from cappo_backend.api.routers.exec_router import (
+    ExecRequest,
+    _resolve_capi_gatekeeper_public_key,
+)
+from cappo_backend.config import Settings
 from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.governed_run import GovernedRun
@@ -96,3 +103,35 @@ class TestNoBypass:
         for bypass in ["/exec", "/v1/run", "/run", "/v1/execute"]:
             r = client.post(bypass, json={"prompt": "probe"})
             assert r.status_code == 404, f"unexpected route {bypass} exists (status {r.status_code})"
+
+
+class TestCAPIGatekeeperKey:
+    def test_dev_unsigned_request_keeps_existing_internal_compatibility(self) -> None:
+        body = ExecRequest(prompt="hello", pgl_id="test-user-id")
+        settings = Settings(environment="test")
+
+        assert _resolve_capi_gatekeeper_public_key(settings, body) == ""
+
+    def test_signed_request_without_configured_key_fails_closed(self) -> None:
+        body = ExecRequest(
+            prompt="hello",
+            pgl_id="test-user-id",
+            security={"nonce": "n-1", "signature": "sig"},
+        )
+        settings = Settings(environment="test")
+
+        with pytest.raises(HTTPException) as exc_info:
+            _resolve_capi_gatekeeper_public_key(settings, body)
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["error"] == "CAPI_GATEKEEPER_KEY_UNAVAILABLE"
+
+    def test_production_unsigned_request_fails_closed(self) -> None:
+        body = ExecRequest(prompt="hello", pgl_id="test-user-id")
+        settings = Settings(environment="production")
+
+        with pytest.raises(HTTPException) as exc_info:
+            _resolve_capi_gatekeeper_public_key(settings, body)
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail["error"] == "CAPI_SIGNED_SECURITY_REQUIRED"
