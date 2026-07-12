@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # Public verification key used by the local cAPI gatekeeper for signed
     # request envelopes. Production /v1/exec requests must be signed.
     capi_gatekeeper_public_key: str = ""
+    # HMAC verification key for bound human-approval resume tokens. Production
+    # approval-gated execution must never accept placeholder signatures.
+    approval_token_signing_key: str = ""
 
     # --- Execution layer (real provider + circuit breaker) ---
     # "echo" uses the deterministic stub (default; tests/local dev). "openai"
@@ -190,6 +193,11 @@ class Settings(BaseSettings):
             problems.append(
                 "CAPI_GATEKEEPER_PUBLIC_KEY must be set in production so /v1/exec "
                 "cannot fall back to unsigned or dummy-key cAPI validation."
+            )
+        if not self.approval_token_signing_key:
+            problems.append(
+                "APPROVAL_TOKEN_SIGNING_KEY must be set in production so approval-gated "
+                "execution cannot resume from placeholder approval-token signatures."
             )
 
         if problems:

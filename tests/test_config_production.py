@@ -28,6 +28,7 @@ def _prod(**overrides) -> Settings:
         api_keys="prod-key-1",
         license_admin_key="prod-license-key",
         capi_gatekeeper_public_key="test-capi-public-key",
+        approval_token_signing_key="test-approval-token-key",
     )
     base.update(overrides)
     return Settings(**base)
@@ -75,6 +76,10 @@ class TestProductionFailClosed:
     def test_missing_capi_gatekeeper_key_rejected(self) -> None:
         with pytest.raises(InsecureProductionConfigError, match="CAPI_GATEKEEPER_PUBLIC_KEY"):
             _prod(capi_gatekeeper_public_key="").validate_production()
+
+    def test_missing_approval_token_signing_key_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="APPROVAL_TOKEN_SIGNING_KEY"):
+            _prod(approval_token_signing_key="").validate_production()
 
     def test_multiple_problems_aggregated(self) -> None:
         with pytest.raises(InsecureProductionConfigError) as exc:

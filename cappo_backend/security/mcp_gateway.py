@@ -638,15 +638,37 @@ class MCPGateway:
             # Check Capability Scope
             if token_payload.get("capability_id") != capability_id:
                 return False, None, "Token capability mismatch. Action scope changed after approval."
-                
-            # (In a real system, verify the cryptographic signature of the token here)
+
             signature = token_payload.get("signature")
-            if not signature or signature != "valid_signature":
+            if not signature:
                 return False, None, "Invalid cryptographic signature on approval token."
-                
+
+            from cappo_backend.config import get_settings
+            from cappo_backend.services.canonical import verify_signature_hmac
+
+            settings = self.settings or get_settings()
+            signing_key = getattr(settings, "approval_token_signing_key", "")
+            if not signing_key:
+                return False, None, "Approval token verifier is not configured."
+
+            signed_payload = self._approval_token_signature_payload(token_payload)
+            if not verify_signature_hmac(signed_payload, signature, signing_key):
+                return False, None, "Invalid cryptographic signature on approval token."
+
             return True, token_payload.get("approver_id", "unknown_human"), "Valid"
         except Exception as e:
             return False, None, str(e)
+
+    def _approval_token_signature_payload(self, token_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the deterministic approval-token body covered by the HMAC signature."""
+        return {
+            "approver_id": token_payload.get("approver_id"),
+            "capability_id": token_payload.get("capability_id"),
+            "expires_at": token_payload.get("expires_at"),
+            "nonce": token_payload.get("nonce"),
+            "policy_snapshot_id": token_payload.get("policy_snapshot_id"),
+            "request_hash": token_payload.get("request_hash"),
+        }
         
     def _handle_quarantine(self, quarantine: Any, connection_id: str) -> Dict[str, Any]:
         return {
