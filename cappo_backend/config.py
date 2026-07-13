@@ -190,9 +190,13 @@ class Settings(BaseSettings):
                 "LICENSE_ADMIN_KEY must be set in production to secure admin endpoints."
             )
         if not self.capi_gatekeeper_public_key:
-            pass # Temporarily bypass for recovery
+            problems.append(
+                "CAPI_GATEKEEPER_PUBLIC_KEY must be set in production to verify signed cAPI envelopes."
+            )
         if not self.approval_token_signing_key:
-            pass # Temporarily bypass for recovery
+            problems.append(
+                "APPROVAL_TOKEN_SIGNING_KEY must be set in production for approval-token verification."
+            )
 
         if problems:
             raise InsecureProductionConfigError(
