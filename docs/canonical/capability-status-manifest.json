@@ -1,0 +1,42 @@
+{
+  "version": "2026-07-13",
+  "repository": "reprewindai-dev/cappo-backend",
+  "authority_role": "final_execution_authority",
+  "owns": [
+    "law_0_execution_authority",
+    "execution_identity",
+    "execution_authorization_tokens",
+    "credential_release",
+    "side_effect_release",
+    "budget_enforcement",
+    "approval_gates",
+    "quarantine",
+    "execution_attestation"
+  ],
+  "does_not_own": [
+    "trust_connection_persistence",
+    "capability_graph_truth",
+    "physical_measurement_truth",
+    "benchmark_certification",
+    "settlement_finality"
+  ],
+  "status_namespaces": [
+    "readiness_status",
+    "connection_state",
+    "execution_state",
+    "policy_decision",
+    "measurement_state",
+    "settlement_stage",
+    "verification_result"
+  ],
+  "capability_lanes": {
+    "lane_1": "No direct ownership; read evidence supplied by BYOS/cAPI.",
+    "lane_2": "No direct ownership except deterministic authorization evidence.",
+    "lane_3": "Sole final authorization before provider calls, credential release, or side effects."
+  },
+  "deployment": {
+    "provider": "Hetzner",
+    "orchestrator": "Coolify",
+    "allowed_nodes": ["us-ashburn", "us-hillsboro", "de-nuremberg", "de-falkenstein", "sg-singapore"]
+  }
+}
