@@ -13,7 +13,7 @@ COPY pyproject.toml .
 COPY README.md .
 
 # Create dummy package directory to install dependencies first
-RUN mkdir cappo_backend && touch cappo_backend/__init__.py
+COPY cappo_backend/ /app/cappo_backend/
 
 # Install dependencies and PostgreSQL adapter
 RUN pip install --no-cache-dir --upgrade pip && \
