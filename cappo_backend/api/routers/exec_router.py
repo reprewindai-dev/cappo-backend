@@ -156,30 +156,21 @@ def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -
     public_key = settings.capi_gatekeeper_public_key.strip()
     has_security = body.security is not None
 
-    if has_security and not public_key:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": "CAPI_GATEKEEPER_KEY_UNAVAILABLE",
-                "detail": "Signed cAPI requests require CAPI_GATEKEEPER_PUBLIC_KEY.",
-            },
-        )
-
-    if settings.is_production and not has_security:
+    if not has_security:
         raise HTTPException(
             status_code=401,
             detail={
                 "error": "CAPI_SIGNED_SECURITY_REQUIRED",
-                "detail": "Production /v1/exec requests must include a signed security envelope.",
+                "detail": "/v1/exec requests must include a signed security envelope.",
             },
         )
 
-    if settings.is_production and not public_key:
+    if not public_key:
         raise HTTPException(
             status_code=503,
             detail={
                 "error": "CAPI_GATEKEEPER_KEY_UNAVAILABLE",
-                "detail": "Production /v1/exec requires CAPI_GATEKEEPER_PUBLIC_KEY.",
+                "detail": "cAPI Gatekeeper requires CAPI_GATEKEEPER_PUBLIC_KEY to be configured.",
             },
         )
 
