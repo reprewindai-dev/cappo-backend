@@ -177,9 +177,16 @@ class EATEnforcementMiddleware(BaseHTTPMiddleware):
         # Extract EAT from header
         eat_header = request.headers.get("X-Execution-Authorization")
         if not eat_header:
-            # No EAT header — let the request through for backward compatibility.
-            # The MCP gateway (LAW 0) will still enforce EI at execute time.
-            return await call_next(request)
+            return Response(
+                content=json.dumps({
+                    "error": "EXECUTION_AUTHORIZATION_REQUIRED",
+                    "detail": "X-Execution-Authorization header is missing",
+                    "law0": True,
+                    "rule": "V0",
+                }),
+                status_code=403,
+                media_type="application/json",
+            )
 
         try:
             eat = json.loads(eat_header)

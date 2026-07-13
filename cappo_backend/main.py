@@ -27,6 +27,7 @@ from cappo_backend.api.routers.exec_router import router as exec_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.interlink import router as interlink_router
+from cappo_backend.api.routers.interlink_vnp import router as interlink_vnp_router
 from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.api.routers.mcp import router as mcp_router
 from cappo_backend.api.routers.platform_router import router as platform_router
@@ -147,6 +148,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(governance_v2_router)
     app.include_router(license_router)
     app.include_router(legacy_adapter_router)
+    app.include_router(interlink_router, prefix="/api/interlink")
+    app.include_router(interlink_vnp_router, prefix="/api/internal/interlink/vnp", tags=["interlink_vnp"])
     app.include_router(platform_router)
     app.include_router(benchmarks_router)
     app.include_router(gpc_router)

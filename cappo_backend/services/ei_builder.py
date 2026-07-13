@@ -134,7 +134,8 @@ class ExecutionIdentityBuilder:
             # Add backwards compatibility key support
             identity["execution_id"] = body["ei_id"]
             identity["pgl_pre_certificate_id"] = body["pgl_certificate_id"]
-            identity["directive"] = inputs.get("directive") or "ALLOW"
+            if inputs.get("directive"):
+                identity["directive"] = inputs["directive"]
             identity["risk_tier"] = inputs.get("risk_tier") or "standard"
             identity["scope"] = inputs.get("scope") or {"tools": [c["capability_id"] for c in body["capabilities"]]}
             identity["budget_approved_cents"] = int(body["budget"]["max_spend"] * 100)

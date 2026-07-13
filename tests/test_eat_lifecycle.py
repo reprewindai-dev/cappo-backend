@@ -59,6 +59,7 @@ def _make_request(**overrides: Any) -> dict[str, Any]:
         "prompt": "Hello, world!",
         "agent_id": "agent-lifecycle-test",
         "trust_score": 75.0,
+        "directive": "ALLOW",
     }
     req.update(overrides)
     return req

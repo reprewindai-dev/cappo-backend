@@ -24,7 +24,11 @@ from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
-from cappo_backend.services.orchestrator import RunOrchestrator
+from cappo_backend.services.orchestrator import (
+    GovernanceDeniedError,
+    MissingGovernanceDecisionError,
+    RunOrchestrator,
+)
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
 from cappo_backend.services.pgl_adapter import create_pgl_client
 from cappo_backend.services.providers import build_executor
@@ -124,6 +128,26 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
                 "detail": exc.detail,
                 "law0": True,
                 "incident_logged": True,
+            },
+        )
+    except MissingGovernanceDecisionError as exc:
+        db.commit()  # persist the FAILED run + audit event
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "CAPPO_GOVERNANCE_DECISION_REQUIRED",
+                "detail": str(exc),
+                "fail_closed": True,
+            },
+        )
+    except GovernanceDeniedError as exc:
+        db.commit()  # persist the FAILED run + audit event
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "CAPPO_GOVERNANCE_DENIED",
+                "detail": str(exc),
+                "fail_closed": True,
             },
         )
 

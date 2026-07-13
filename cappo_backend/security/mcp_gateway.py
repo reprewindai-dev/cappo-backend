@@ -515,10 +515,11 @@ class MCPGateway:
             if cert.plan_hash != execution_identity.get("plan_hash"):
                 raise EIValidationError("plan_hash mismatch")
 
-        # 3. SEKED directive allows execution
+        # 3. SEKED directive explicitly allows execution. Missing directives
+        # fail closed; they are not equivalent to ALLOW.
         seked_directive = execution_identity.get("seked_directive", {})
         directive = execution_identity.get("directive") or seked_directive.get("decision")
-        if directive == "DENY" or directive == "DENIED":
+        if directive not in ("ALLOW", "ALLOW_WITH_AUDIT"):
             raise EIValidationError("directive does not permit execution")
 
         # 4. TTL not expired

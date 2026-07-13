@@ -65,14 +65,14 @@ def test_auth_invalid_returns_401(auth_entitlement_client: TestClient) -> None:
 def test_valid_key_reaches_exec(auth_entitlement_client: TestClient) -> None:
     resp = auth_entitlement_client.post(
         "/v1/exec",
-        json={"prompt": "hello"},
+        json={"prompt": "hello", "directive": "ALLOW"},
         headers={"X-API-Key": _KEY},
     )
     assert resp.status_code == 200
 
 
 def test_exec_open_when_auth_disabled(client: TestClient) -> None:
-    resp = client.post("/v1/exec", json={"prompt": "hello"})
+    resp = client.post("/v1/exec", json={"prompt": "hello", "directive": "ALLOW"})
     assert resp.status_code == 200
 
 

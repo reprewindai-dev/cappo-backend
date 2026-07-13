@@ -30,6 +30,19 @@ from cappo_backend.services.pgl_client import PGLClient, PostCertificateParams, 
 from cappo_backend.services.run_state import RunState, assert_transition
 
 
+class MissingGovernanceDecisionError(RuntimeError):
+    """Raised when a run reaches governance without an explicit decision."""
+
+
+class GovernanceDeniedError(RuntimeError):
+    """Raised when CAPPO explicitly vetoes a governed run."""
+
+
+_ALLOW_DIRECTIVES = {"ALLOW", "ALLOW_WITH_AUDIT"}
+_DENY_DIRECTIVES = {"DENY", "DENIED"}
+_VALID_DIRECTIVES = _ALLOW_DIRECTIVES | _DENY_DIRECTIVES
+
+
 class RunOrchestrator:
     """Governed execution orchestrator.
 
@@ -233,7 +246,7 @@ class RunOrchestrator:
     def govern_run(self, run: GovernedRun) -> None:
         """Governance decision. No post-hoc/status-derived defaults."""
         payload = run.request_payload or {}
-        directive = payload.get("directive") or "ALLOW"
+        directive = _normalize_directive(payload.get("directive"))
         risk_tier = payload.get("risk_tier") or "standard"
 
         run.governance_decision = directive
@@ -241,9 +254,12 @@ class RunOrchestrator:
         run.v4_decision = {"directive": directive, "risk_tier": risk_tier}
         run.seked_state = {"directive": directive}
         self._transition(run, RunState.GOVERNED)
+        if directive in _DENY_DIRECTIVES:
+            raise GovernanceDeniedError(f"governance directive {directive!r} vetoed execution")
 
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
+        governance_decision = _require_governance_decision(run)
         params = PreCertificateParams(
             run_id=run.run_id,
             workspace_id=run.workspace_id,
@@ -252,7 +268,7 @@ class RunOrchestrator:
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
-            governance_decision=run.governance_decision or "ALLOW",
+            governance_decision=governance_decision,
             risk_tier=run.risk_tier or "standard",
             approved_budget_cents=run.approved_budget_cents,
             reserve_cents=run.reserve_cents,
@@ -268,6 +284,7 @@ class RunOrchestrator:
 
     def mint_execution_identity(self, run: GovernedRun) -> None:
         """Mint ``ExecutionIdentityV1`` - strictly after commit, before route."""
+        governance_decision = _require_governance_decision(run)
         ei_inputs: dict[str, Any] = {
             "pgl_pre_certificate_id": run.pgl_identity.get("pre_execution_certificate_id", ""),
             "genome_hash": run.hashes.get("genome_hash", ""),
@@ -277,7 +294,7 @@ class RunOrchestrator:
             "delegation_chain_hash": run.hashes.get("delegation_chain_hash"),
             "input_hash": run.hashes.get("input_hash"),
             "seked_attestation_hash": sha256_json(run.seked_state),
-            "directive": (run.v4_decision or {}).get("directive", "ALLOW"),
+            "directive": governance_decision,
             "risk_tier": run.risk_tier or "standard",
             "budget_approved_cents": run.approved_budget_cents,
             "budget_reserve_cents": run.reserve_cents,
@@ -399,6 +416,7 @@ class RunOrchestrator:
         output_hash = sha256_json(result)
         outcome_hash = sha256_json({"state": RunState.EXECUTED.value, "result": result})
         pre_cert_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
+        governance_decision = _require_governance_decision(run)
 
         params = PostCertificateParams(
             pre_certificate_id=pre_cert_id,
@@ -409,7 +427,7 @@ class RunOrchestrator:
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
-            governance_decision=run.governance_decision or "ALLOW",
+            governance_decision=governance_decision,
             risk_tier=run.risk_tier or "standard",
             output_hash=output_hash,
             outcome_hash=outcome_hash,
@@ -460,3 +478,23 @@ def _default_action(scope: dict[str, Any] | None) -> str:
     """Derive the action to enforce from the run scope (first allowed tool)."""
     tools = (scope or {}).get("tools") or []
     return tools[0] if tools else ""
+
+
+def _normalize_directive(raw: Any) -> str:
+    if not isinstance(raw, str) or not raw.strip():
+        raise MissingGovernanceDecisionError(
+            "CAPPO governance directive is required; missing decisions never default to ALLOW."
+        )
+    directive = raw.strip().upper()
+    if directive not in _VALID_DIRECTIVES:
+        raise MissingGovernanceDecisionError(
+            f"Unsupported CAPPO governance directive {raw!r}; expected one of {sorted(_VALID_DIRECTIVES)}."
+        )
+    return directive
+
+
+def _require_governance_decision(run: GovernedRun) -> str:
+    directive = _normalize_directive(run.governance_decision)
+    if directive not in _ALLOW_DIRECTIVES:
+        raise GovernanceDeniedError(f"governance directive {directive!r} does not permit execution")
+    return directive
