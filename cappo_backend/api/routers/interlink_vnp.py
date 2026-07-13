@@ -64,7 +64,20 @@ async def authorize_slash(
     # TODO: In future phases, CAPPO could reach out to the PGL service to cryptographically verify 
     # the evidence hash matches the challenge snapshot.
     
-    auth_receipt = f"cappo_auth_slash_{hashlib.sha256((request.bond_id + request.pgl_evidence_id).encode()).hexdigest()[:16]}"
+    # CAPPO Ed25519 signing
+    settings = get_settings()
+    import base64
+    from nacl.signing import SigningKey
+    from nacl.encoding import HexEncoder
+    
+    key_hex = settings.ei_signing_key
+    if len(key_hex) != 64:
+        key_hex = hashlib.sha256(key_hex.encode()).hexdigest()
+    
+    signing_key = SigningKey(key_hex, encoder=HexEncoder)
+    payload_to_sign = f"cappo_slash|{request.bond_id}|{request.pgl_evidence_id}".encode()
+    signed = signing_key.sign(payload_to_sign)
+    auth_receipt = f"cappo_auth_slash_{base64.urlsafe_b64encode(signed.signature).decode().rstrip('=')}"
     
     return {
         "authorized": True,
@@ -87,7 +100,20 @@ async def authorize_release(
     if not request.pgl_evidence_id.startswith("pgl_"):
         raise HTTPException(status_code=400, detail="Invalid PGL evidence format")
 
-    auth_receipt = f"cappo_auth_rel_{hashlib.sha256((request.bond_id + request.pgl_evidence_id).encode()).hexdigest()[:16]}"
+    # CAPPO Ed25519 signing
+    settings = get_settings()
+    import base64
+    from nacl.signing import SigningKey
+    from nacl.encoding import HexEncoder
+    
+    key_hex = settings.ei_signing_key
+    if len(key_hex) != 64:
+        key_hex = hashlib.sha256(key_hex.encode()).hexdigest()
+        
+    signing_key = SigningKey(key_hex, encoder=HexEncoder)
+    payload_to_sign = f"cappo_release|{request.bond_id}|{request.pgl_evidence_id}".encode()
+    signed = signing_key.sign(payload_to_sign)
+    auth_receipt = f"cappo_auth_rel_{base64.urlsafe_b64encode(signed.signature).decode().rstrip('=')}"
     
     return {
         "authorized": True,
