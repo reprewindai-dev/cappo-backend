@@ -129,7 +129,7 @@ jobs:
 
             cd \$APP
             cp docker-compose.yaml docker-compose.yaml.pre-${{ github.sha }}
-            TAG=\$TAG python3 -c 'import os; from pathlib import Path; p=Path("docker-compose.yaml"); tag=os.environ["TAG"]; lines=p.read_text().splitlines(); matches=[i for i,l in enumerate(lines) if l.lstrip().startswith("image: ")]; assert matches, "image line not found"; i=matches[0]; indent=lines[i][:len(lines[i])-len(lines[i].lstrip())]; lines[i]="{}image: {!r}".format(indent, tag); p.write_text("\n".join(lines)+"\n")'
+            sed -i \"s#^\\([[:space:]]*\\)image: .*#\\1image: '\$TAG'#\" docker-compose.yaml
             docker compose -f docker-compose.yaml config >/tmp/cappo-compose-config.out
             docker compose -f docker-compose.yaml up -d --force-recreate
             echo 'Deployment complete for cappo-backend'
