@@ -42,9 +42,10 @@ jobs:
       - name: Validate imports inside container
         run: |
           docker run --rm \
-            -e DATABASE_URL="postgresql+asyncpg://test:test@localhost/test" \
+            -e DATABASE_URL="postgresql+psycopg2://test:test@localhost/test" \
             -e SECRET_KEY="ci-test-secret-key" \
             -e ENVIRONMENT="test" \
+            -e CAPPO_SKIP_MIGRATIONS="1" \
             cappo-backend-ci:${{ github.sha }} \
             python3 -c "
           import fastapi, uvicorn, sqlalchemy, pydantic, httpx, cryptography
@@ -73,7 +74,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: "postgresql+asyncpg://cappo:cappo_ci@localhost:5432/cappo_test"
+      DATABASE_URL: "postgresql+psycopg2://cappo:cappo_ci@localhost:5432/cappo_test"
       SECRET_KEY: "ci-test-secret-key"
       ENVIRONMENT: "test"
 
