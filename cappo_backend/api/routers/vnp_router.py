@@ -5,9 +5,9 @@ Exposes the VNP metrics, registry, proxy gateway, and leaderboard.
 
 from __future__ import annotations
 
-import uuid
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -38,8 +38,8 @@ VNP_VERIFICATION_STACK = [
     {"section": "Route beacons", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
     {"section": "Robust scoring", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
     {"section": "x402 settlement evidence", "status": "Live", "backend": "VEKLOM-BYOS-backend"},
-    {"section": "PGL audit trails", "status": "Live", "backend": "cappo-backend"},
-    {"section": "Agent/runtime enforcement", "status": "Live", "backend": "cappo-backend"},
+    {"section": "PGL audit trails", "status": "Connected", "backend": "cappo-backend"},
+    {"section": "Agent/runtime enforcement", "status": "Connected", "backend": "cappo-backend"},
 ]
 
 CANONICAL_VNP_REGIONS = ["us-east", "us-west", "eu-west", "ap-southeast", "ap-northeast"]
@@ -54,11 +54,12 @@ async def get_vnp_methodology() -> dict[str, Any]:
         "repo": "reprewindai-dev/cappo-backend",
         "verification_stack": VNP_VERIFICATION_STACK,
         "runtime": {
-            "status": "Live",
+            "status": "Connected",
+            "access": "Auth Required",
             "endpoint": "/v1/exec",
             "execution_identity": "ExecutionIdentityV1",
-            "pgl_certificates": "Live",
-            "law0_enforcement": "Live",
+            "pgl_certificates": "Connected",
+            "law0_enforcement": "Connected",
         },
     }
 

@@ -121,7 +121,7 @@ jobs:
             git pull origin main
             docker build -t yen2fecq8burtsgqrm2b988e:latest .
             sed -i \"s/image: .*/image: 'yen2fecq8burtsgqrm2b988e:latest'/\" docker-compose.yaml
-            docker compose -f docker-compose.yaml up -d
+            docker compose -f docker-compose.yaml up -d --force-recreate
             echo 'Deployment complete for cappo-backend'
           "
 

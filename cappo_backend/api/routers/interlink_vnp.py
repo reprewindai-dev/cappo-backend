@@ -1,8 +1,10 @@
-import hmac
 import hashlib
-from fastapi import APIRouter, Depends, HTTPException, Header
-from pydantic import BaseModel
+import hmac
 import logging
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 
 from cappo_backend.config import get_settings
 
@@ -19,7 +21,6 @@ class VnpAuthorizeReleaseRequest(BaseModel):
     bond_id: str
     pgl_evidence_id: str
 
-from typing import Optional
 
 def verify_vnp_signature(
     x_vnp_signature: Optional[str] = Header(None),

@@ -1,12 +1,10 @@
-import pytest
-import hmac
 import hashlib
-from httpx import AsyncClient
-from datetime import datetime, timezone
+import hmac
 import uuid
-import json
+from datetime import datetime, timezone
 
 from cappo_backend.config import get_settings
+
 
 def test_authorize_slash_missing_signature(client):
     response = client.post(

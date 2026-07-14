@@ -5,8 +5,10 @@ re-authorization, kill switch enforcement, and mid-flight aborts.
 """
 
 from typing import Any, Dict
+
 from cappo_backend.db.session import SessionLocal
-from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
+from cappo_backend.services.payment_gate import PaymentGate
+
 
 class InsideCAPPO:
     """Enforces runtime security policies dynamically mid-flight."""

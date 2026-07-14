@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel
-from typing import Any, Dict
 import uuid
+from typing import Any, Dict
+
+from fastapi import APIRouter, Header, HTTPException
+from pydantic import BaseModel
 
 from cappo_backend.security.mcp_gateway import MCPGateway
 

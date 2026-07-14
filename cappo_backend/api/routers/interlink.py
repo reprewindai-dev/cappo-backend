@@ -1,10 +1,11 @@
 import json
+from typing import Optional
+
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from typing import Optional
 
-from cappo_backend.security.mcp_gateway import MCPGateway, EIValidationError
+from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 
 router = APIRouter()
 runtime = MCPGateway()
