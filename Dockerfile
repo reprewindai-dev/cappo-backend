@@ -52,6 +52,8 @@ RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && chown 
 # Switch to non-root user
 USER cappo
 
+ENV PYTHONPATH=/app
+
 # Expose port
 EXPOSE 8000
 
