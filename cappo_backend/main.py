@@ -157,33 +157,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(root_discovery_router)
     app.include_router(interlink_router, prefix="/api/interlink")
 
-    @app.get("/health")
-    def healthcheck() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.get("/health/dependencies")
-    async def health_dependencies() -> dict:
-        from cappo_backend.db.session import async_session
-        from sqlalchemy import text
-        from datetime import datetime, timezone
-        
-        db_ok = False
-        try:
-            async with async_session() as session:
-                await session.execute(text("SELECT 1"))
-            db_ok = True
-        except Exception:
-            pass
-
-        return {
-            "status": "healthy" if db_ok else "unhealthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "dependencies": {
-                "postgres": "up" if db_ok else "down",
-                "redis": "unknown", # CAPI does not directly heavily use redis yet
-                "capi": "up",
-            }
-        }
+    from cappo_backend.api.routers.protocol import router as protocol_router
+    app.include_router(protocol_router)
 
     return app
 
