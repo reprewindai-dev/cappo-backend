@@ -368,17 +368,17 @@ class X402FreemiumASGI:
             except Exception:
                 pass
 
-    def _has_valid_internal_api_key(self, scope: Any) -> bool:
-        if scope.get("cappo_internal_api_key_valid") is True:
+    def _has_valid_internal_operator_credential(self, scope: Any) -> bool:
+        if scope.get("cappo_internal_operator_valid") is True:
             return True
-        api_key = ""
+        operator_key = ""
         for name, value in scope.get("headers", []):
             header_name = name.decode("latin1").lower() if isinstance(name, bytes) else str(name).lower()
-            if header_name == "x-api-key":
-                api_key = value.decode("utf-8") if isinstance(value, bytes) else str(value)
+            if header_name == "x-uacp-internal-key":
+                operator_key = value.decode("utf-8") if isinstance(value, bytes) else str(value)
                 break
         api_key_set = self.settings.api_key_set or get_settings().api_key_set
-        return bool(api_key and api_key in api_key_set)
+        return bool(operator_key and operator_key in api_key_set)
 
     async def _send_payment_plane_unavailable(self, send: Any) -> None:
         import json
@@ -400,7 +400,7 @@ class X402FreemiumASGI:
 
     async def _call_payment_app(self, scope: Any, receive: Any, send: Any) -> None:
         if self._payment_route_config_broken:
-            if self._has_valid_internal_api_key(scope):
+            if self._has_valid_internal_operator_credential(scope):
                 await self.app(scope, receive, send)
                 return
             await self._send_payment_plane_unavailable(send)
@@ -415,7 +415,7 @@ class X402FreemiumASGI:
                 "payment middleware degraded for authenticated internal traffic",
                 extra={"error": str(exc)},
             )
-            if self._has_valid_internal_api_key(scope):
+            if self._has_valid_internal_operator_credential(scope):
                 await self.app(scope, receive, send)
                 return
             await self._send_payment_plane_unavailable(send)
@@ -425,7 +425,7 @@ class X402FreemiumASGI:
             await self.app(scope, receive, send)
             return
 
-        if self._has_valid_internal_api_key(scope):
+        if self._has_valid_internal_operator_credential(scope):
             await self.app(scope, receive, send)
             return
 

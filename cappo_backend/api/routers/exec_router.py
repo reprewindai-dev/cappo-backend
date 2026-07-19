@@ -70,6 +70,7 @@ class ExecResponse(BaseModel):
     log_id: str | None = None
     run_id: str | None = None
     execution_id: str | None = None
+    links: dict[str, Any] | None = None
 
 
 # ---------- route ----------
@@ -235,4 +236,9 @@ async def governed_exec(
         cache_tier=result.get("cache_tier"),
         run_id=run.run_id if run else None,
         execution_id=(run.execution_identity or {}).get("execution_id") if run else None,
+        links={
+            "audit": {"href": f"/api/v1/gpc/audit/{run.run_id if run else 'unknown'}", "method": "GET"},
+            "stake": {"href": "/api/v1/vnp/stake", "method": "POST"},
+            "evidence": {"href": "/api/v1/evidence/verify", "method": "POST"}
+        }
     )

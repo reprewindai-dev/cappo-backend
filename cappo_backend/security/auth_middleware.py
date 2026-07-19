@@ -7,8 +7,8 @@ proves *who* is calling, never *permission to execute*. EI/LAW 0 authority is
 enforced separately inside the governed pipeline.
 
 Critically, ``/v1/exec`` is **not** on the public allowlist (the old backend's
-LAW 0 bypass), so every side-effecting route is authenticated here and then
-authority-checked downstream.
+LAW 0 bypass), so every side-effecting route is either paid via x402 or
+bypassed by an explicitly governed internal operator credential.
 """
 
 from __future__ import annotations
@@ -53,17 +53,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path in PUBLIC_PATHS or request.method == "OPTIONS":
             return await call_next(request)
 
-        api_key = request.headers.get("X-API-Key")
-        if not api_key:
-            return JSONResponse(
-                status_code=401,
-                content={"error": "AUTHENTICATION_REQUIRED", "detail": "missing X-API-Key"},
-            )
-        if api_key not in self._settings.api_key_set:
-            return JSONResponse(
-                status_code=401,
-                content={"error": "AUTHENTICATION_REQUIRED", "detail": "invalid X-API-Key"},
-            )
+        operator_key = request.headers.get("x-uacp-internal-key")
+        if operator_key and operator_key in self._settings.api_key_set:
+            request.scope["cappo_internal_operator_valid"] = True
 
-        request.scope["cappo_internal_api_key_valid"] = True
         return await call_next(request)
