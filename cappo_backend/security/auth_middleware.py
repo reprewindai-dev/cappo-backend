@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
 from cappo_backend.config import Settings
 

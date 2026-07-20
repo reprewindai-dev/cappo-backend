@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cappo_backend.models.vnp_models import APIState, ComplianceAuditLog, VNPTransaction
@@ -116,5 +116,3 @@ class VNPProxyService:
             "tenant_name": tenant_name,
             "proxied_response": response_data
         }
-
-from sqlalchemy import func

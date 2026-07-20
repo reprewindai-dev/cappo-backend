@@ -161,6 +161,7 @@ class RunOrchestrator:
             "mission_id": run.run_id,
             "target_protocol": "http",
             "action": request_payload.get("action") or "cappo.exec",
+            "execution_mode": getattr(run, "execution_mode", "live"),
             "payload": request_payload,
         }
         
@@ -231,6 +232,7 @@ class RunOrchestrator:
             },
             scope=request.get("scope") or {"tools": ["llm.exec"]},
             approved_budget_cents=int(request.get("budget_approved_cents", 0)),
+            execution_mode=request.get("execution_mode", "live"),
         )
         self._db.add(run)
         self._db.flush()

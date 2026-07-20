@@ -19,6 +19,7 @@ from cappo_backend.services.canonical import (
 
 # Fields that must be present (and non-empty) for an EI mint to succeed.
 REQUIRED_INPUTS: tuple[str, ...] = (
+
     "subject",
     "tenant_id",
     "run_id",
@@ -28,6 +29,7 @@ REQUIRED_INPUTS: tuple[str, ...] = (
     "pgl_certificate_id",
     "delegation",
     "budget",
+    "execution_mode",
 )
 
 
@@ -127,6 +129,7 @@ class ExecutionIdentityBuilder:
                 "pgl_certificate_id": inputs["pgl_certificate_id"],
                 "delegation": inputs["delegation"],
                 "budget": inputs["budget"],
+                "execution_mode": inputs.get("execution_mode", "live"),
             }
             if "agent" in inputs:
                 body["agent"] = inputs["agent"]
@@ -137,147 +140,28 @@ class ExecutionIdentityBuilder:
             if inputs.get("directive"):
                 identity["directive"] = inputs["directive"]
             identity["risk_tier"] = inputs.get("risk_tier") or "standard"
-            identity["scope"] = inputs.get("scope") or {"tools": [c["capability_id"] for c in body["capabilities"]]}
-            identity["budget_approved_cents"] = int(body["budget"]["max_spend"] * 100)
-            identity["budget_reserve_cents"] = int(inputs.get("budget_reserve_cents") or 0)
-            identity["delegation_depth"] = body["delegation"]["max_depth"]
-            identity["ttl_seconds"] = ttl_seconds
 
-        # Add JCS signatures and hashes
-        identity["signature"] = self.signer.sign(body)
-        from cappo_backend.services.canonical import sha256_json
-        identity["hash"] = sha256_json(body)
-
-        return identity
+        return self._finalize_and_sign(identity)
 
     def _validate(self, inputs: dict[str, Any]) -> None:
-        # Legacy/Backcompat: If inputs have legacy fields, require the legacy fields.
-        # Otherwise, require the new schema fields.
-        legacy_required = [
-            "pgl_pre_certificate_id",
-            "genome_hash",
-            "constitution_hash",
-            "plan_hash",
-            "directive",
-            "risk_tier",
-            "scope",
-            "issuer",
-        ]
+        missing = [k for k in REQUIRED_INPUTS if not inputs.get(k)]
+        if missing:
+            raise ValueError(f"Missing required ExecutionIdentity inputs: {missing}")
 
-        # Determine if we should enforce legacy list or new list
-        is_legacy = any(k in inputs for k in ("pgl_pre_certificate_id", "directive", "scope", "issuer"))
+    def _finalize_and_sign(self, identity: dict[str, Any]) -> dict[str, Any]:
+        """Convert fields to strings where necessary and apply JCS/Ed25519 signature."""
+        for k, v in identity.items():
+            if isinstance(v, uuid.UUID):
+                identity[k] = str(v)
+            elif isinstance(v, datetime):
+                identity[k] = _iso(v)
 
-        if is_legacy:
-            inputs["_is_legacy"] = True
-            # Enforce legacy list
-            missing = [k for k in legacy_required if inputs.get(k) in (None, "", [], {})]
-            if missing:
-                raise MissingEIInputError(
-                    f"missing required ExecutionIdentityV1 inputs: {', '.join(sorted(missing))}"
-                )
-
-            # Now bridge legacy fields to new fields for actual building
-            inputs["pgl_certificate_id"] = inputs["pgl_pre_certificate_id"]
-            inputs["tenant_id"] = inputs.get("workspace_id") or "default"
-            inputs["run_id"] = inputs.get("execution_id") or str(uuid.uuid4())
-            inputs["subject"] = {"type": "agent", "id": inputs.get("agent_id") or "agent-1"}
-            inputs["delegation"] = {"max_depth": int(inputs.get("delegation_depth") or 0), "parent_ei_id": None}
-            inputs["budget"] = {
-                "tokens": 100000,
-                "currency": "USD",
-                "max_spend": float((inputs.get("budget_approved_cents") or 10000) / 100.0),
-            }
-            inputs["authority_bundle_hash"] = inputs.get("authority_bundle_hash") or "sha256-" + "a" * 64
-            inputs["policy_hash"] = inputs.get("policy_hash") or "sha256-" + "p" * 64
-
-            tools = inputs["scope"].get("tools") or ["llm.exec"]
-            inputs["capabilities"] = [
-                {
-                    "capability_id": t,
-                    "resource_scope": {"type": "any", "id": "*"},
-                    "max_calls": 100,
-                    "max_cost": 10.0,
-                }
-                for t in tools
-            ]
-        else:
-            # Enforce new list
-            new_required = [
-                "subject",
-                "tenant_id",
-                "run_id",
-                "capabilities",
-                "authority_bundle_hash",
-                "policy_hash",
-                "pgl_certificate_id",
-                "delegation",
-                "budget",
-            ]
-            missing = [k for k in new_required if inputs.get(k) in (None, "", [], {})]
-            if missing:
-                raise MissingEIInputError(
-                    f"missing required ExecutionIdentityV1 inputs: {', '.join(sorted(missing))}"
-                )
-
-
-# Fields excluded from canonical bodies
-_UNSIGNED_FIELDS = ("hash", "signature", "revoked")
-
-
-def canonical_body(identity: dict[str, Any]) -> dict[str, Any]:
-    """Return the JCS hashable body of ExecutionIdentityV1 (excludes derived/mutable fields)."""
-    excluded = {"hash", "signature", "revoked", "_is_legacy"}
-
-    if "pgl_pre_certificate_id" in identity:
-        # Legacy fields
-        legacy_keys = {
-            "execution_id",
-            "pgl_pre_certificate_id",
-            "pgl_post_certificate_id",
-            "genome_hash",
-            "constitution_hash",
-            "plan_hash",
-            "tool_manifest_hash",
-            "delegation_chain_hash",
-            "input_hash",
-            "seked_attestation_hash",
-            "directive",
-            "risk_tier",
-            "budget_approved_cents",
-            "budget_reserve_cents",
-            "delegation_depth",
-            "ttl_seconds",
-            "expires_at",
-            "scope",
-            "human_attestation_hash",
-            "ai_attestation_hash",
-            "execution_attestation_hash",
-            "issuer",
-            "issued_at",
-        }
-        return {k: v for k, v in identity.items() if k in legacy_keys and k not in excluded}
-
-    # New core keys only
-    core_keys = [
-        "ei_id",
-        "subject",
-        "tenant_id",
-        "run_id",
-        "capabilities",
-        "issued_at",
-        "expires_at",
-        "authority_bundle_hash",
-        "policy_hash",
-        "pgl_certificate_id",
-        "delegation",
-        "budget",
-    ]
-    return {k: identity[k] for k in core_keys if k in identity}
-
+        identity["signature"] = self.signer.sign(identity)
+        return identity
 
 @dataclass
 class ExecutionSessionTokenBuilder:
-    hmac_key: str
+    signer: Signer
     default_ttl_seconds: int = 30
     _clock: Any = field(default=None, repr=False)
 

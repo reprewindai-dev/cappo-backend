@@ -56,6 +56,7 @@ class ExecRequest(BaseModel):
     directive: str | None = None
     risk_tier: str | None = None
     security: dict[str, Any] | None = None
+    execution_mode: str = "live"
 
 
 
