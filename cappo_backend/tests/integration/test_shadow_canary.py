@@ -1,17 +1,17 @@
-import pytest
 from datetime import datetime, timezone
 
 from cappo_backend.services.governance import (
-    PolicyCompositionEngine,
     Policy,
+    PolicyCompositionEngine,
     PolicyRule,
     effective_permissions,
 )
 from cappo_backend.services.promotion_compiler import (
-    PromotionCompiler,
     EvidenceEnvelope,
     MaturityState,
+    PromotionCompiler,
 )
+
 
 def test_shadow_canary_halt_on_insufficient_evidence():
     """

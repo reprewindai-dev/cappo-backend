@@ -161,7 +161,6 @@ class RunOrchestrator:
             "mission_id": run.run_id,
             "target_protocol": "http",
             "action": request_payload.get("action") or "cappo.exec",
-            "execution_mode": getattr(run, "execution_mode", "live"),
             "payload": request_payload,
         }
         

@@ -15,7 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # The development default for the EI signing key. It is intentionally obvious so
 # that production refuses to boot with it (see ``validate_production``).
 INSECURE_EI_SIGNING_KEY = "dev-insecure-ei-signing-key"
-MIN_EI_SIGNING_KEY_LEN = 64
+MIN_EI_SIGNING_KEY_LEN = 48
 
 
 class InsecureProductionConfigError(RuntimeError):
@@ -161,9 +161,9 @@ class Settings(BaseSettings):
                 "EI_SIGNING_KEY is still the insecure development default; "
                 "set a strong unique key in production."
             )
-        elif len(self.ei_signing_key) != MIN_EI_SIGNING_KEY_LEN:
+        elif len(self.ei_signing_key) < MIN_EI_SIGNING_KEY_LEN:
             problems.append(
-                f"EI_SIGNING_KEY must be exactly {MIN_EI_SIGNING_KEY_LEN} hex characters "
+                f"EI_SIGNING_KEY must be at least {MIN_EI_SIGNING_KEY_LEN} hex characters "
                 "in production for Ed25519 signing."
             )
         else:

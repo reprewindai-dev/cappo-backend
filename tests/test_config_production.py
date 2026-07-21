@@ -14,7 +14,7 @@ from cappo_backend.config import (
     Settings,
 )
 
-_SECURE_KEY = "x" * 48
+_SECURE_KEY = "ab" * 24
 _PG_URL = "postgresql+psycopg://u:p@db:5432/cappo"
 
 

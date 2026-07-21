@@ -1,7 +1,7 @@
 import pytest
 
 try:
-    import pytest_benchmark
+    import pytest_benchmark  # noqa: F401
 except ImportError:
     pytestmark = pytest.mark.skip(reason="pytest-benchmark not installed")
 

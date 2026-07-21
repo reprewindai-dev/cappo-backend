@@ -19,6 +19,10 @@ class PageIndexMCPClient:
         """
         if not self.api_key:
             raise ValueError("PAGEINDEX_API_KEY is not set.")
+        if not tool_name or len(tool_name) > 128:
+            raise ValueError("tool_name must be between 1 and 128 characters")
+        if len(arguments) > 64:
+            raise ValueError("arguments must contain at most 64 fields")
 
         payload = {
             "jsonrpc": "2.0",
@@ -34,5 +38,11 @@ class PageIndexMCPClient:
             response = await client.post(self.base_url, headers=self.headers, json=payload)
             response.raise_for_status()
             
-            # The MCP server returns a JSON-RPC response
-            return response.json()
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError("PageIndex MCP returned a non-object response")
+            if data.get("error") is not None:
+                raise RuntimeError(f"PageIndex MCP error: {data['error']}")
+            if not isinstance(data.get("result"), dict):
+                raise RuntimeError("PageIndex MCP response did not contain a result")
+            return data

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from cappo_backend.config import Settings
 
@@ -52,6 +52,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path in PUBLIC_PATHS or request.method == "OPTIONS":
             return await call_next(request)
+
+        api_key = request.headers.get("X-API-Key")
+        auth_header = request.headers.get("Authorization")
+        token = api_key or (auth_header.removeprefix("Bearer ").strip() if auth_header else None)
+        if not token:
+            return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
+        if token not in self._settings.api_key_set:
+            return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
 
         operator_key = request.headers.get("x-uacp-internal-key")
         if operator_key and operator_key in self._settings.api_key_set:

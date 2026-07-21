@@ -371,10 +371,12 @@ class X402FreemiumASGI:
     def _has_valid_internal_operator_credential(self, scope: Any) -> bool:
         if scope.get("cappo_internal_operator_valid") is True:
             return True
+        if scope.get("cappo_internal_api_key_valid") is True:
+            return True
         operator_key = ""
         for name, value in scope.get("headers", []):
             header_name = name.decode("latin1").lower() if isinstance(name, bytes) else str(name).lower()
-            if header_name == "x-uacp-internal-key":
+            if header_name in {"x-uacp-internal-key", "x-api-key"}:
                 operator_key = value.decode("utf-8") if isinstance(value, bytes) else str(value)
                 break
         api_key_set = self.settings.api_key_set or get_settings().api_key_set

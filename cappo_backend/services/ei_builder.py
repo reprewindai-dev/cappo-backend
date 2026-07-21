@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from cappo_backend.services.canonical import (
+    sha256_json,
     sign_payload_ed25519,
     verify_signature_ed25519,
 )
@@ -35,6 +36,11 @@ REQUIRED_INPUTS: tuple[str, ...] = (
 
 class MissingEIInputError(ValueError):
     """Raised when a required ExecutionIdentityV1 input is missing or empty."""
+
+
+def canonical_body(identity: dict[str, Any]) -> dict[str, Any]:
+    """Return the signed/hashable body, excluding derived integrity fields."""
+    return {key: value for key, value in identity.items() if key not in {"hash", "signature"}}
 
 
 class Signer(Protocol):
@@ -75,7 +81,8 @@ class ExecutionIdentityBuilder:
         ttl_seconds = int(inputs.get("ttl_seconds") or self.default_ttl_seconds)
         expires_at = inputs.get("expires_at") or (issued_at + timedelta(seconds=ttl_seconds))
 
-        is_legacy = inputs.get("_is_legacy", False)
+        legacy_fields = {"pgl_pre_certificate_id", "genome_hash", "constitution_hash", "plan_hash", "directive", "risk_tier", "scope", "issuer"}
+        is_legacy = bool(inputs.get("_is_legacy", False) or legacy_fields.intersection(inputs))
 
         if is_legacy:
             body: dict[str, Any] = {
@@ -106,15 +113,15 @@ class ExecutionIdentityBuilder:
             identity = dict(body)
             # Add forward-compat keys
             identity["ei_id"] = body["execution_id"]
-            identity["subject"] = inputs["subject"]
+            identity["subject"] = inputs.get("subject") or inputs["issuer"]
             identity["tenant_id"] = inputs.get("tenant_id") or "default"
             identity["run_id"] = body["execution_id"]
-            identity["capabilities"] = inputs["capabilities"]
+            identity["capabilities"] = inputs.get("capabilities") or []
             identity["pgl_certificate_id"] = body["pgl_pre_certificate_id"]
-            identity["delegation"] = inputs["delegation"]
-            identity["budget"] = inputs["budget"]
-            identity["authority_bundle_hash"] = inputs["authority_bundle_hash"]
-            identity["policy_hash"] = inputs["policy_hash"]
+            identity["delegation"] = inputs.get("delegation") or []
+            identity["budget"] = inputs.get("budget") or {"approved_cents": body["budget_approved_cents"]}
+            identity["authority_bundle_hash"] = inputs.get("authority_bundle_hash") or body["constitution_hash"]
+            identity["policy_hash"] = inputs.get("policy_hash") or body["plan_hash"]
         else:
             body = {
                 "ei_id": inputs.get("ei_id") or inputs.get("execution_id") or str(uuid.uuid4()),
@@ -144,9 +151,15 @@ class ExecutionIdentityBuilder:
         return self._finalize_and_sign(identity)
 
     def _validate(self, inputs: dict[str, Any]) -> None:
-        missing = [k for k in REQUIRED_INPUTS if not inputs.get(k)]
+        legacy_required = (
+            "pgl_pre_certificate_id", "genome_hash", "constitution_hash", "plan_hash",
+            "directive", "risk_tier", "scope", "issuer",
+        )
+        legacy_fields = set(legacy_required)
+        required = legacy_required if inputs.get("_is_legacy") or legacy_fields.intersection(inputs) else REQUIRED_INPUTS
+        missing = [k for k in required if not inputs.get(k)]
         if missing:
-            raise ValueError(f"Missing required ExecutionIdentity inputs: {missing}")
+            raise MissingEIInputError(f"Missing required ExecutionIdentity inputs: {missing}")
 
     def _finalize_and_sign(self, identity: dict[str, Any]) -> dict[str, Any]:
         """Convert fields to strings where necessary and apply JCS/Ed25519 signature."""
@@ -156,7 +169,8 @@ class ExecutionIdentityBuilder:
             elif isinstance(v, datetime):
                 identity[k] = _iso(v)
 
-        identity["signature"] = self.signer.sign(identity)
+        identity["hash"] = sha256_json(canonical_body(identity))
+        identity["signature"] = self.signer.sign(canonical_body(identity))
         return identity
 
 @dataclass

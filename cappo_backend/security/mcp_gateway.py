@@ -563,7 +563,14 @@ class MCPGateway:
         if depth > max_depth:
             raise EIValidationError("delegation depth exceeded")
 
-        # 8. Signature and hash verify
+        # 8. Revocation is checked before cryptographic details so a revoked
+        # identity is never treated as potentially usable, even when stale.
+        if execution_identity.get("revoked"):
+            raise EIValidationError("execution identity revoked")
+        if self.revocation_lookup and self.revocation_lookup(execution_identity.get("execution_id", "")):
+            raise EIValidationError("execution identity revoked")
+
+        # 9. Signature and hash verify
         from cappo_backend.services.canonical import sha256_json, verify_signature_ed25519
         from cappo_backend.services.ei_builder import canonical_body
 
@@ -576,11 +583,6 @@ class MCPGateway:
         if not verify_signature_ed25519(body, execution_identity.get("signature", ""), signing_key):
             raise EIValidationError("signature verification failed")
 
-        # 9. Revocation checks.
-        if execution_identity.get("revoked"):
-            raise EIValidationError("execution identity revoked")
-        if self.revocation_lookup and self.revocation_lookup(execution_identity.get("execution_id", "")):
-            raise EIValidationError("execution identity revoked")
 
     def _record_law0_violation(
         self,

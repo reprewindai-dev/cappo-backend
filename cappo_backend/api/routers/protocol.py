@@ -35,7 +35,7 @@ def introspect_protocol(payload: dict) -> dict:
 
 @router.get("/health")
 def healthcheck() -> dict:
-    return {"status": "healthy"}
+    return {"status": "ok"}
 
 @router.get("/health/dependencies")
 async def health_dependencies() -> dict:

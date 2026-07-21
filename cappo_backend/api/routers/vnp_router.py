@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -30,6 +31,28 @@ from cappo_backend.services.vnp_proxy_service import VNPProxyService
 from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
 router = APIRouter(prefix="/v1/vnp", tags=["VNP Protocol"])
+
+
+class VNPProxyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, Any] = Field(default_factory=dict, max_length=64)
+
+    @field_validator("payload")
+    @classmethod
+    def bound_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(str(value).encode("utf-8")) > 64 * 1024:
+            raise ValueError("VNP proxy payload exceeds the 64 KiB limit")
+        return value
+
+
+class VNPApiRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    endpoint: str = Field(min_length=1, max_length=2048)
+    version: str = Field(default="v1.0.0", min_length=1, max_length=50)
+    x402Ready: bool = False
 
 
 VNP_VERIFICATION_STACK = [
@@ -179,17 +202,14 @@ async def get_vnp_metrics(db: Session = Depends(get_session)) -> dict[str, Any]:
 
 @router.post("/apis")
 async def register_vnp_api(
-    request: dict[str, Any],
+    request: VNPApiRegistrationRequest,
     db: Session = Depends(get_session)
 ) -> dict[str, Any]:
     """Register a new live monitored API node."""
-    name = request.get("name")
-    endpoint = request.get("endpoint")
-    version = request.get("version", "v1.0.0")
-    x402_compliant = request.get("x402Ready", False)
-
-    if not name or not endpoint:
-        raise HTTPException(status_code=400, detail="Missing required properties 'name' or 'endpoint'.")
+    name = request.name
+    endpoint = request.endpoint
+    version = request.version
+    x402_compliant = request.x402Ready
 
     api_did = f"did:vnp:api:{name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}"
 
@@ -205,44 +225,41 @@ async def register_vnp_api(
     db.add(api)
     db.flush()
 
-    # Initial telemetry seeding
-    telemetry_service = VNPTelemetryService(db)
-    telemetry_service.ingest_probe(api_did, "us-east", 100, 200)
-
     return {
         "id": api_did,
         "name": api.name,
         "endpoint": api.endpoint,
         "version": api.version,
-        "compositeScore": float(api.composite_score)
+        "compositeScore": float(api.composite_score),
+        "proofState": "unmeasured",
+        "proofSignal": "No signed telemetry has been received for this API",
     }
 
 
 @router.post("/proxy/{api_did}")
 async def vnp_proxy_gateway(
     api_did: str,
-    request: dict[str, Any],
-    x_vnp_tenant: str | None = Header(None),
+    request: VNPProxyRequest,
+    x_vnp_tenant: str = Header(..., min_length=1, max_length=100),
     db: Session = Depends(get_session)
 ) -> dict[str, Any]:
     """Secure tunnel proxy gateway entry point."""
     telemetry_service = VNPTelemetryService(db)
     proxy_service = VNPProxyService(db, telemetry_service)
 
-    payload = request.get("payload", {})
-    tenant_name = x_vnp_tenant or "Global Public Tenant"
+    tenant_name = x_vnp_tenant
 
     try:
         result = await proxy_service.proxy_request(
             api_did=api_did,
-            payload=payload,
+            payload=request.payload,
             tenant_name=tenant_name
         )
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=502, detail="VNP proxy dependency failed")
 
 
 @router.get("/leaderboard")

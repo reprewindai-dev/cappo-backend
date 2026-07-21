@@ -255,6 +255,8 @@ class TemporalPolicyResolver:
             trust_required=trust_required,
             requires_approval=requires_approval,
             immutable=base.immutable,
+            verification_tier=base.verification_tier,
+            maturity_required=base.maturity_required,
         )
 
     @staticmethod

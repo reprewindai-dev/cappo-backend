@@ -25,8 +25,8 @@ jobs:
       - name: Install dev deps
         run: pip install ruff
 
-      - name: Ruff lint (exclude vendored dirs)
-        run: ruff check . --exclude tmp_x402,migrations/versions --ignore E402,E701,F401,F841,F811
+      - name: Ruff lint (exclude generated migrations and vendored code)
+        run: ruff check . --exclude tmp_x402,migrations/versions
 
   # ── 2. Build Docker image ───────────────────────────────────────────────────
   build:
@@ -92,7 +92,7 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest -q --tb=short
+        run: pytest -q --tb=short --maxfail=1
 
   # ── 4. Deploy ───────────────────────────────────────────────────────────────
   deploy-prod:

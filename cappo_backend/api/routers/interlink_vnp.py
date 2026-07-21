@@ -68,8 +68,9 @@ async def authorize_slash(
     # CAPPO Ed25519 signing
     settings = get_settings()
     import base64
-    from nacl.signing import SigningKey
+
     from nacl.encoding import HexEncoder
+    from nacl.signing import SigningKey
     
     key_hex = settings.ei_signing_key
     if len(key_hex) != 64:
@@ -104,8 +105,9 @@ async def authorize_release(
     # CAPPO Ed25519 signing
     settings = get_settings()
     import base64
-    from nacl.signing import SigningKey
+
     from nacl.encoding import HexEncoder
+    from nacl.signing import SigningKey
     
     key_hex = settings.ei_signing_key
     if len(key_hex) != 64:
