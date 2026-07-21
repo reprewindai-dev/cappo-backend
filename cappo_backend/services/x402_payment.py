@@ -160,9 +160,13 @@ class X402PaymentConfig:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self.evm_address    = "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
+        self.evm_address = self._settings.veklom_evm_address.strip()
         self.facilitator_url = self._settings.x402_facilitator_url
-        self.enabled_networks = ["base"]
+        self.enabled_networks = [
+            network
+            for network in (n.strip() for n in self._settings.x402_networks.split(","))
+            if network in NETWORKS
+        ] or ["base"]
 
     @property
     def is_configured(self) -> bool:
@@ -184,8 +188,8 @@ def create_x402_server(config: X402PaymentConfig | None = None) -> x402ResourceS
     facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=config.facilitator_url))
     server = x402ResourceServer(facilitator)
 
-    # Always register Base (primary revenue network)
-    server.register(NETWORKS["base"], ExactEvmServerScheme())
+    for network_key in config.enabled_networks:
+        server.register(NETWORKS[network_key], ExactEvmServerScheme())
 
     return server
 

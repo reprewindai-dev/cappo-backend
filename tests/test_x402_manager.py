@@ -7,6 +7,7 @@ from x402.http.types import RouteConfigurationError, RouteValidationError
 from cappo_backend.config import Settings
 from cappo_backend.services.x402_payment import (
     X402FreemiumASGI,
+    X402PaymentConfig,
     X402PaymentManager,
     get_x402_manager,
 )
@@ -21,6 +22,20 @@ class TestX402ManagerSingleton:
         assert manager1 is not None
         assert isinstance(manager1, X402PaymentManager)
         assert manager1 is manager2
+
+
+class TestX402ConfigWiring:
+    def test_settings_drive_treasury_and_networks(self) -> None:
+        settings = Settings(
+            environment="production",
+            veklom_evm_address="0x1234567890abcdef1234567890abcdef12345678",
+            x402_networks="base,monad,invalid,base-sepolia",
+        )
+
+        config = X402PaymentConfig(settings)
+
+        assert config.evm_address == settings.veklom_evm_address
+        assert config.enabled_networks == ["base", "monad", "base-sepolia"]
 
 
 async def _empty_receive() -> dict[str, object]:
