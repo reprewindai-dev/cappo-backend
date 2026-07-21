@@ -41,10 +41,12 @@ POST /v1/exec  ──►  RunOrchestrator (single governed entry path, no bypass
 pip install -e ".[dev]"
 alembic upgrade head          # create schema
 pytest                        # run the test suite
-uvicorn cappo_backend.main:app --reload
+uvicorn cappo_backend.main:app --reload --ws none
 ```
 
 Production must set `CAPPO_REQUIRE_PERSISTENT_PGL=true` and a real `EI_SIGNING_KEY`.
+
+Install `.[evm]` only if you need the optional EVM signing / settlement stack.
 
 ## Coolify Provider Wiring
 

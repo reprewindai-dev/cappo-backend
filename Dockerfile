@@ -62,4 +62,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD curl -f http://127.0.0.1:${PORT:-8093}/health || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["sh", "-c", "uvicorn cappo_backend.main:app --host 0.0.0.0 --port ${PORT:-8093}"]
+CMD ["sh", "-c", "uvicorn cappo_backend.main:app --host 0.0.0.0 --port ${PORT:-8093} --ws none"]
