@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     # --- Veklom BYOS Backend (Real PGL) ---
     veklom_byos_backend_url: str | None = None  # https://api.veklom.com/v1
     veklom_api_key: str | None = None  # API key for veklom-byos-backend
+    
+    # --- Universal USB (cAPI) Integration ---
+    capi_backend_url: str | None = "http://capi-container:3003"
+    capi_api_key: str | None = None
+    
     capi_external_validation_enabled: bool = False
     # Public verification key used by the local cAPI gatekeeper for signed
     # request envelopes. Production /v1/exec requests must be signed.
