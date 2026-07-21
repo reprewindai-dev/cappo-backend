@@ -15,7 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # The development default for the EI signing key. It is intentionally obvious so
 # that production refuses to boot with it (see ``validate_production``).
 INSECURE_EI_SIGNING_KEY = "dev-insecure-ei-signing-key"
-MIN_EI_SIGNING_KEY_LEN = 16
+MIN_EI_SIGNING_KEY_LEN = 64
 
 
 class InsecureProductionConfigError(RuntimeError):
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # Signing key for ExecutionIdentityV1. Must be overridden in production.
     ei_signing_key: str = INSECURE_EI_SIGNING_KEY
-    ei_signing_provider: str = "hmac"
+    ei_signing_provider: str = "ed25519"
 
     # --- PGL ledger (gnomledger) forwarding ---
     # When PGL_LEDGER_URL is set, every governance event is mirrored into
@@ -161,11 +161,16 @@ class Settings(BaseSettings):
                 "EI_SIGNING_KEY is still the insecure development default; "
                 "set a strong unique key in production."
             )
-        elif len(self.ei_signing_key) < MIN_EI_SIGNING_KEY_LEN:
+        elif len(self.ei_signing_key) != MIN_EI_SIGNING_KEY_LEN:
             problems.append(
-                f"EI_SIGNING_KEY must be at least {MIN_EI_SIGNING_KEY_LEN} characters "
-                "in production."
+                f"EI_SIGNING_KEY must be exactly {MIN_EI_SIGNING_KEY_LEN} hex characters "
+                "in production for Ed25519 signing."
             )
+        else:
+            try:
+                bytes.fromhex(self.ei_signing_key)
+            except ValueError:
+                problems.append("EI_SIGNING_KEY must be a valid hex string.")
         if not self.cappo_require_persistent_pgl:
             problems.append(
                 "CAPPO_REQUIRE_PERSISTENT_PGL must be true in production "
