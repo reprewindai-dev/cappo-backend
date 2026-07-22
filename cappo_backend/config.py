@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     veklom_api_key: str | None = None  # API key for veklom-byos-backend
     
     # --- Universal USB (cAPI) Integration ---
-    capi_backend_url: str | None = "http://capi-container:3003"
+    capi_backend_url: str | None = "http://capi-container:3002"
     capi_api_key: str | None = None
     
     capi_external_validation_enabled: bool = False
