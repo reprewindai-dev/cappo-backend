@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # --- Environment ---
     environment: str = "development"
 
+    # Gnomledger Canonical PGL
+    gnomledger_url: str | None = None
+    gnomledger_api_key: str | None = None
+    cappo_allow_noncanonical_pgl_fallback: bool = False
+
     # --- Database ---
     database_url: str = "sqlite+pysqlite:///./cappo.db"
 
