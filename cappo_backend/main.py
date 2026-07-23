@@ -78,9 +78,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings.validate_production()
 
     prober_task: asyncio.Task[None] | None = None
-    if os.environ.get("ENABLE_VNP_PROBER") == "1":
-    prober_task = None
-    if os.getenv("CAPPO_ENABLE_INTERNAL_VNP_PROBER", "").lower() in {"1", "true", "yes"}:
+    if os.environ.get("ENABLE_VNP_PROBER") == "1" or os.getenv("CAPPO_ENABLE_INTERNAL_VNP_PROBER", "").lower() in {"1", "true", "yes"}:
         prober_task = asyncio.create_task(vnp_prober_loop())
 
     from cappo_backend.services.capi_registration import register_with_capi
