@@ -436,6 +436,7 @@ class X402FreemiumASGI:
             return
 
         settings = get_settings()
+        if settings.is_production and not os.environ.get("ENABLE_FREEMIUM"):
         # 2. Skip condition check
         # Explicit bypass for local development unless freemium is disabled
         if settings.environment == "production" and not os.environ.get("ENABLE_FREEMIUM"):
