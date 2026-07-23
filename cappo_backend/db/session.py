@@ -12,11 +12,23 @@ from cappo_backend.config import get_settings
 _settings = get_settings()
 
 _connect_args = {}
+_engine_kwargs = {"future": True}
+
 if _settings.database_url.startswith("sqlite"):
     _connect_args = {"check_same_thread": False}
+else:
+    # Production DB pooling settings for PostgreSQL
+    _engine_kwargs.update({
+        "pool_size": 10,
+        "max_overflow": 15,
+        "pool_timeout": 10,
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+    })
 
-engine = create_engine(_settings.database_url, connect_args=_connect_args, future=True)
+engine = create_engine(_settings.database_url, connect_args=_connect_args, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
+
 
 
 def get_session() -> Iterator[Session]:

@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cappo_backend.models.vnp_models import APIState, ComplianceAuditLog, VNPTransaction
@@ -32,7 +32,7 @@ class VNPProxyService:
         self,
         api_did: str,
         payload: dict[str, Any],
-        tenant_name: str = "Global Public Tenant",
+        tenant_name: str,
         user_id: uuid.UUID | None = None
     ) -> dict[str, Any]:
         """Execute a secure tunnel proxy request."""
@@ -44,7 +44,7 @@ class VNPProxyService:
             raise ValueError(f"API Target node '{api_did}' not found in registry.")
 
         start_time = time.perf_counter()
-        status_code = 504
+        status_code = 599
         response_data = {}
         proxy_success = False
 
@@ -64,7 +64,7 @@ class VNPProxyService:
                 )
 
                 status_code = response.status_code
-                proxy_success = True
+                proxy_success = 200 <= response.status_code < 300
                 try:
                     response_data = response.json()
                 except Exception:
@@ -91,7 +91,7 @@ class VNPProxyService:
             target_api_id=api.id,
             microtransaction_id=tx_id,
             amount_usd=Decimal("0.003190"), # Mock MPP fraction
-            payment_status="Settled" if proxy_success else "Pending",
+            payment_status="Settled" if proxy_success else "Failed",
             settled_at=func.now() if proxy_success else None
         )
         self._db.add(transaction)
@@ -109,6 +109,9 @@ class VNPProxyService:
         self._db.flush()
 
         return {
+            "status": "success" if proxy_success else "downstream_failure",
+            "proxy_state": "success" if proxy_success else "downstream_failure",
+            "success": proxy_success,
             "vnp_transaction_id": tx_id,
             "gateway_latency_ms": latency_ms,
             "downstream_http_status": status_code,
@@ -116,5 +119,3 @@ class VNPProxyService:
             "tenant_name": tenant_name,
             "proxied_response": response_data
         }
-
-from sqlalchemy import func

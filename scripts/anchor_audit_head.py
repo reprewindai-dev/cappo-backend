@@ -1,9 +1,10 @@
-import os
-import redis
-import json
-import time
 import hashlib
+import json
 import logging
+import os
+import time
+
+import redis
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cappo.audit_anchor")

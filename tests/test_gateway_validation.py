@@ -100,6 +100,13 @@ class TestRule3Directive:
         with pytest.raises(EIValidationError, match="does not permit"):
             gateway.require_execution_identity(ei)
 
+    def test_missing_directive_rejected(self, db: Session, gateway: MCPGateway) -> None:
+        _make_cert(db)
+        ei = _valid_ei()
+        ei.pop("directive")
+        with pytest.raises(EIValidationError, match="does not permit"):
+            gateway.require_execution_identity(ei)
+
     def test_allow_with_audit_ok(self, db: Session, gateway: MCPGateway) -> None:
         _make_cert(db)
         ei = _valid_ei(directive="ALLOW_WITH_AUDIT")

@@ -15,7 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # The development default for the EI signing key. It is intentionally obvious so
 # that production refuses to boot with it (see ``validate_production``).
 INSECURE_EI_SIGNING_KEY = "dev-insecure-ei-signing-key"
-MIN_EI_SIGNING_KEY_LEN = 16
+MIN_EI_SIGNING_KEY_LEN = 48
 
 
 class InsecureProductionConfigError(RuntimeError):
@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # --- Environment ---
     environment: str = "development"
 
+    # Gnomledger Canonical PGL
+    gnomledger_url: str | None = None
+    gnomledger_api_key: str | None = None
+    cappo_allow_noncanonical_pgl_fallback: bool = False
+
     # --- Database ---
     database_url: str = "sqlite+pysqlite:///./cappo.db"
 
@@ -38,7 +43,7 @@ class Settings(BaseSettings):
 
     # Signing key for ExecutionIdentityV1. Must be overridden in production.
     ei_signing_key: str = INSECURE_EI_SIGNING_KEY
-    ei_signing_provider: str = "hmac"
+    ei_signing_provider: str = "ed25519"
 
     # --- PGL ledger (gnomledger) forwarding ---
     # When PGL_LEDGER_URL is set, every governance event is mirrored into
@@ -76,6 +81,18 @@ class Settings(BaseSettings):
     # --- Veklom BYOS Backend (Real PGL) ---
     veklom_byos_backend_url: str | None = None  # https://api.veklom.com/v1
     veklom_api_key: str | None = None  # API key for veklom-byos-backend
+    
+    # --- Universal USB (cAPI) Integration ---
+    capi_backend_url: str | None = "http://capi-container:3002"
+    capi_api_key: str | None = None
+    
+    capi_external_validation_enabled: bool = False
+    # Public verification key used by the local cAPI gatekeeper for signed
+    # request envelopes. Production /v1/exec requests must be signed.
+    capi_gatekeeper_public_key: str = ""
+    # HMAC verification key for bound human-approval resume tokens. Production
+    # approval-gated execution must never accept placeholder signatures.
+    approval_token_signing_key: str = ""
 
     # --- Execution layer (real provider + circuit breaker) ---
     # "echo" uses the deterministic stub (default; tests/local dev). "openai"
@@ -156,9 +173,14 @@ class Settings(BaseSettings):
             )
         elif len(self.ei_signing_key) < MIN_EI_SIGNING_KEY_LEN:
             problems.append(
-                f"EI_SIGNING_KEY must be at least {MIN_EI_SIGNING_KEY_LEN} characters "
-                "in production."
+                f"EI_SIGNING_KEY must be at least {MIN_EI_SIGNING_KEY_LEN} hex characters "
+                "in production for Ed25519 signing."
             )
+        else:
+            try:
+                bytes.fromhex(self.ei_signing_key)
+            except ValueError:
+                problems.append("EI_SIGNING_KEY must be a valid hex string.")
         if not self.cappo_require_persistent_pgl:
             problems.append(
                 "CAPPO_REQUIRE_PERSISTENT_PGL must be true in production "
@@ -181,6 +203,14 @@ class Settings(BaseSettings):
         if not self.license_admin_key:
             problems.append(
                 "LICENSE_ADMIN_KEY must be set in production to secure admin endpoints."
+            )
+        if not self.capi_gatekeeper_public_key:
+            problems.append(
+                "CAPI_GATEKEEPER_PUBLIC_KEY must be set in production to verify signed cAPI envelopes."
+            )
+        if not self.approval_token_signing_key:
+            problems.append(
+                "APPROVAL_TOKEN_SIGNING_KEY must be set in production for approval-token verification."
             )
 
         if problems:

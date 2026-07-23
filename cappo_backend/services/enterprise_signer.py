@@ -370,7 +370,7 @@ def create_enterprise_signer(
         return AzureKeyVaultSigner(**kwargs)
     elif provider == "vault":
         return HashiCorpVaultSigner(**kwargs)
-    elif provider == "hmac":
+    elif provider in {"hmac", "ed25519"}:
         from cappo_backend.services.ei_builder import Ed25519Signer
         return Ed25519Signer(**kwargs)
     else:
@@ -419,7 +419,7 @@ def create_enterprise_signer_from_settings(settings: Any) -> Any:
             key_name=settings.vault_transit_key_name,
             token=settings.vault_token,
         )
-    elif provider == "hmac":
+    elif provider in {"hmac", "ed25519"}:
         from cappo_backend.services.ei_builder import Ed25519Signer
         return Ed25519Signer(signing_key=settings.ei_signing_key)
     else:

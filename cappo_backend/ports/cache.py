@@ -7,7 +7,7 @@ from typing import Any
 
 
 class CachePort(ABC):
-    """Port defining the cache operations for Project Genome Ledger (PGL)."""
+    """Port defining cache operations for Gnomledger (PGL)."""
 
     @abstractmethod
     def get(self, key: str) -> Any | None:

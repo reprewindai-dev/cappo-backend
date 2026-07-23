@@ -13,7 +13,7 @@ COPY pyproject.toml .
 COPY README.md .
 
 # Create dummy package directory to install dependencies first
-RUN mkdir cappo_backend && touch cappo_backend/__init__.py
+COPY cappo_backend/ /app/cappo_backend/
 
 # Install dependencies and PostgreSQL adapter
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -45,17 +45,21 @@ COPY --chown=cappo:cappo agents/ /app/agents/
 COPY --chown=cappo:cappo alembic.ini /app/alembic.ini
 COPY --chown=cappo:cappo entrypoint.sh /app/entrypoint.sh
 
-# Ensure entrypoint script is executable and own everything in /app
-RUN chmod +x /app/entrypoint.sh && chown -R cappo:cappo /app
+# Ensure entrypoint script is executable on Linux even when built from a
+# Windows checkout, and own everything in /app.
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && chown -R cappo:cappo /app
 
 # Switch to non-root user
 USER cappo
 
+ENV PYTHONPATH=/app
+
 # Expose port
-EXPOSE 8000
+EXPOSE 8093
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://127.0.0.1:8000/health || exit 1
+  CMD curl -f http://127.0.0.1:${PORT:-8093}/health || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]
+CMD ["sh", "-c", "uvicorn cappo_backend.main:app --host 0.0.0.0 --port ${PORT:-8093} --ws none"]

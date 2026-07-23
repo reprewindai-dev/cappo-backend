@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from cappo_backend.config import Settings
+from cappo_backend.config import get_settings as _get_settings
 from cappo_backend.db.session import get_session
 from cappo_backend.main import app, create_app
 from cappo_backend.models.governed_run import GovernedRun
@@ -25,6 +26,7 @@ def auth_entitlement_client(db: Session) -> Iterator[TestClient]:
         environment="test",
         auth_enabled=True,
         api_keys=_KEY,
+        executor_mode="echo",
     )
     test_app = create_app(settings=settings)
 
@@ -32,7 +34,7 @@ def auth_entitlement_client(db: Session) -> Iterator[TestClient]:
         yield db
 
     test_app.dependency_overrides[get_session] = _override_session
-    test_app.dependency_overrides[Settings] = lambda: settings
+    test_app.dependency_overrides[_get_settings] = lambda: settings
     yield TestClient(test_app)
     test_app.dependency_overrides.clear()
 
@@ -63,14 +65,14 @@ def test_auth_invalid_returns_401(auth_entitlement_client: TestClient) -> None:
 def test_valid_key_reaches_exec(auth_entitlement_client: TestClient) -> None:
     resp = auth_entitlement_client.post(
         "/v1/exec",
-        json={"prompt": "hello"},
+        json={"prompt": "hello", "directive": "ALLOW"},
         headers={"X-API-Key": _KEY},
     )
     assert resp.status_code == 200
 
 
 def test_exec_open_when_auth_disabled(client: TestClient) -> None:
-    resp = client.post("/v1/exec", json={"prompt": "hello"})
+    resp = client.post("/v1/exec", json={"prompt": "hello", "directive": "ALLOW"})
     assert resp.status_code == 200
 
 

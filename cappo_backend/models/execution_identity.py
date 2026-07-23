@@ -38,7 +38,7 @@ class ExecutionIdentity(Base):
 
     @property
     def directive(self) -> str:
-        return self.identity_json.get("directive", "ALLOW")
+        return self.identity_json.get("directive", "")
 
     @property
     def pgl_pre_certificate_id(self) -> str:

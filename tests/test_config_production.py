@@ -14,7 +14,7 @@ from cappo_backend.config import (
     Settings,
 )
 
-_SECURE_KEY = "x" * 48
+_SECURE_KEY = "ab" * 24
 _PG_URL = "postgresql+psycopg://u:p@db:5432/cappo"
 
 
@@ -27,6 +27,8 @@ def _prod(**overrides) -> Settings:
         auth_enabled=True,
         api_keys="prod-key-1",
         license_admin_key="prod-license-key",
+        capi_gatekeeper_public_key="test-capi-public-key",
+        approval_token_signing_key="test-approval-token-key",
     )
     base.update(overrides)
     return Settings(**base)
@@ -70,6 +72,14 @@ class TestProductionFailClosed:
     def test_auth_enabled_without_keys_rejected(self) -> None:
         with pytest.raises(InsecureProductionConfigError, match="API_KEYS"):
             _prod(api_keys="").validate_production()
+
+    def test_missing_capi_gatekeeper_key_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="CAPI_GATEKEEPER_PUBLIC_KEY"):
+            _prod(capi_gatekeeper_public_key="").validate_production()
+
+    def test_missing_approval_token_signing_key_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="APPROVAL_TOKEN_SIGNING_KEY"):
+            _prod(approval_token_signing_key="").validate_production()
 
     def test_multiple_problems_aggregated(self) -> None:
         with pytest.raises(InsecureProductionConfigError) as exc:
