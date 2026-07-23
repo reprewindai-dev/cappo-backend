@@ -55,11 +55,12 @@ USER cappo
 ENV PYTHONPATH=/app
 
 # Expose port
-EXPOSE 8093
+EXPOSE 8002
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://127.0.0.1:${PORT:-8093}/health || exit 1
+  CMD curl -f http://127.0.0.1:${PORT:-8002}/health || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["sh", "-c", "uvicorn cappo_backend.main:app --host 0.0.0.0 --port ${PORT:-8093} --ws none"]
+# Start application
+CMD ["sh", "-c", "uvicorn cappo_backend.main:app --host 0.0.0.0 --port ${PORT:-8002} --ws none"]
