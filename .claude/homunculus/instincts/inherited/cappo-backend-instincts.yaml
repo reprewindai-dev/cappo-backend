@@ -1,0 +1,581 @@
+# Instincts generated from https://github.com/reprewindai-dev/cappo-backend
+# Generated: 2026-07-23T18:13:21.327Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: cappo-backend-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Commit Length
+
+## Action
+
+Write moderate-length commit messages (~65 characters)
+
+## Evidence
+
+- Average commit message length: 65 chars
+- Based on 6 commits
+
+---
+id: cappo-backend-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: cappo-backend-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: cappo-backend-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: cappo-backend-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: cappo-backend-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: cappo-backend-test-types
+trigger: "when planning tests for a feature"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Test Types
+
+## Action
+
+Write unit, integration tests to match project standards
+
+## Evidence
+
+- Test types detected: unit, integration
+- Coverage config: no
+
+---
+id: cappo-backend-workflow-api-endpoint-extension
+trigger: "when doing api endpoint extension"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Workflow Api Endpoint Extension
+
+## Action
+
+Follow the api-endpoint-extension workflow:
+1. Edit or create files in cappo_backend/api/routers/ (e.g., exec_router.py, interlink.py, mcp.py, vnp_router.py, etc.)
+2. Update or create related service files in cappo_backend/services/ as needed
+3. Update cappo_backend/main.py if new routers are registered or main logic changes
+4. Add or update integration/unit tests in tests/ or cappo_backend/tests/integration/
+5. Update documentation if required
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: cappo_backend/api/routers/*.py, cappo_backend/services/*.py, cappo_backend/main.py
+
+---
+id: cappo-backend-workflow-service-logic-update
+trigger: "when doing service logic update"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Workflow Service Logic Update
+
+## Action
+
+Follow the service-logic-update workflow:
+1. Edit or create files in cappo_backend/services/
+2. Update related models or config files if needed
+3. Add or update tests for the service logic
+4. Update documentation if required
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: cappo_backend/services/*.py, cappo_backend/models/*.py, cappo_backend/config.py
+
+---
+id: cappo-backend-workflow-security-or-middleware-fix
+trigger: "when doing security or middleware fix"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Workflow Security Or Middleware Fix
+
+## Action
+
+Follow the security-or-middleware-fix workflow:
+1. Edit or restore files in cappo_backend/security/ or cappo_backend/security/middleware.py
+2. Update imports in dependent modules (e.g., routers, orchestrator, main.py)
+3. Add or update relevant tests (e.g., tests/test_middleware.py, tests/test_auth_middleware.py)
+4. Verify application startup and test pass
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: cappo_backend/security/*.py, cappo_backend/security/middleware.py, cappo_backend/api/routers/*.py
+
+---
+id: cappo-backend-workflow-integration-test-extension
+trigger: "when doing integration test extension"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Workflow Integration Test Extension
+
+## Action
+
+Follow the integration-test-extension workflow:
+1. Edit or create test files in cappo_backend/tests/integration/ or tests/
+2. Update or create fixtures in tests/conftest.py if needed
+3. Run tests to ensure coverage and passing status
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: cappo_backend/tests/integration/*.py, tests/*.py, tests/conftest.py
+
+---
+id: cappo-backend-workflow-ci-pipeline-update
+trigger: "when doing ci pipeline update"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Workflow Ci Pipeline Update
+
+## Action
+
+Follow the ci-pipeline-update workflow:
+1. Edit files in .github/workflows/ (e.g., ci.yml, ci-cache.yml, self-hosted-ci.yml)
+2. Update Dockerfile or docker-compose.yml if build/deploy process changes
+3. Update documentation if CI/CD process changes
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: .github/workflows/*.yml, Dockerfile, docker-compose.yml
+
+---
+id: cappo-backend-instinct-file-naming
+trigger: "When creating or renaming a Python file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct File Naming
+
+## Action
+
+Use snake_case for file names
+
+## Evidence
+
+- Pattern in files: cappo_backend/api/routers/*.py, cappo_backend/services/*.py
+
+---
+id: cappo-backend-instinct-function-naming
+trigger: "When defining a function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Naming convention in analysis: functions = camelCase
+
+---
+id: cappo-backend-instinct-class-naming
+trigger: "When defining a class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Class Naming
+
+## Action
+
+Use PascalCase for class names
+
+## Evidence
+
+- Naming convention in analysis: classes = PascalCase
+
+---
+id: cappo-backend-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constants
+
+## Evidence
+
+- Naming convention in analysis: constants = SCREAMING_SNAKE_CASE
+
+---
+id: cappo-backend-instinct-relative-imports
+trigger: "When importing modules within the project"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Relative Imports
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Import style in analysis: relative
+
+---
+id: cappo-backend-instinct-named-exports
+trigger: "When exporting functions, classes, or variables from a module"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Named Exports
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Export style in analysis: named
+
+---
+id: cappo-backend-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Test Location
+
+## Action
+
+Place tests in the separate 'tests/' or 'cappo_backend/tests/integration/' directories
+
+## Evidence
+
+- Pattern in files: tests/*.py, cappo_backend/tests/integration/*.py
+
+---
+id: cappo-backend-instinct-test-types
+trigger: "When writing tests for new or changed functionality"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Test Types
+
+## Action
+
+Write both unit and integration tests as appropriate
+
+## Evidence
+
+- Test types in analysis: unit, integration
+
+---
+id: cappo-backend-instinct-test-fixtures
+trigger: "When tests require shared setup or fixtures"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Test Fixtures
+
+## Action
+
+Add or update fixtures in tests/conftest.py
+
+## Evidence
+
+- Pattern in files: tests/conftest.py
+- integration-test-extension workflow
+
+---
+id: cappo-backend-instinct-git-commit-prefix
+trigger: "When making a commit that fixes a bug or regression"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Git Commit Prefix
+
+## Action
+
+Prefix the commit message with 'fix(<scope>): <description>'
+
+## Evidence
+
+- Seen in commit: fix(security): restore MCPGateway + EIValidationError (LAW 0 gateway)
+- Pattern in commit prefixes: fix
+
+---
+id: cappo-backend-instinct-git-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Git Commit Length
+
+## Action
+
+Keep the commit message concise, around 65 characters on average
+
+## Evidence
+
+- Average commit length: 65
+
+---
+id: cappo-backend-instinct-api-endpoint-extension
+trigger: "When someone wants to add a new API route or modify API behavior"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Api Endpoint Extension
+
+## Action
+
+Edit or create router files in cappo_backend/api/routers/, update related services, register routers in main.py, add or update tests, and update documentation if required
+
+## Evidence
+
+- Workflow: api-endpoint-extension
+- Pattern in files: cappo_backend/api/routers/*.py, cappo_backend/services/*.py, cappo_backend/main.py, tests/*.py, cappo_backend/tests/integration/*.py
+
+---
+id: cappo-backend-instinct-service-logic-update
+trigger: "When someone wants to add new backend features or fix bugs in service logic"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Service Logic Update
+
+## Action
+
+Edit or create files in cappo_backend/services/, update related models or config files, add or update tests, and update documentation if required
+
+## Evidence
+
+- Workflow: service-logic-update
+- Pattern in files: cappo_backend/services/*.py, cappo_backend/models/*.py, cappo_backend/config.py, tests/*.py
+
+---
+id: cappo-backend-instinct-security-middleware-fix
+trigger: "When a security or middleware bug is found or a refactor causes regressions"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Security Middleware Fix
+
+## Action
+
+Edit or restore files in cappo_backend/security/ or cappo_backend/security/middleware.py, update imports in dependent modules, add or update relevant tests, and verify application startup and test pass
+
+## Evidence
+
+- Workflow: security-or-middleware-fix
+- Pattern in files: cappo_backend/security/*.py, cappo_backend/security/middleware.py, cappo_backend/api/routers/*.py, cappo_backend/services/orchestrator.py, cappo_backend/main.py, tests/test_middleware.py, tests/test_auth_middleware.py
+
+---
+id: cappo-backend-instinct-integration-test-extension
+trigger: "When new features are added or existing ones are modified, requiring integration-level validation"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Integration Test Extension
+
+## Action
+
+Edit or create test files in cappo_backend/tests/integration/ or tests/, update or create fixtures in tests/conftest.py if needed, and run tests to ensure coverage and passing status
+
+## Evidence
+
+- Workflow: integration-test-extension
+- Pattern in files: cappo_backend/tests/integration/*.py, tests/*.py, tests/conftest.py
+
+---
+id: cappo-backend-instinct-ci-pipeline-update
+trigger: "When CI/CD needs to be adjusted for new requirements, bugfixes, or optimizations"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: reprewindai-dev/cappo-backend
+---
+
+# Cappo Backend Instinct Ci Pipeline Update
+
+## Action
+
+Edit files in .github/workflows/, update Dockerfile or docker-compose.yml if build/deploy process changes, and update documentation if CI/CD process changes
+
+## Evidence
+
+- Workflow: ci-pipeline-update
+- Pattern in files: .github/workflows/*.yml, Dockerfile, docker-compose.yml
+
