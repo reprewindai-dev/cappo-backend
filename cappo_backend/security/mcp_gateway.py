@@ -310,6 +310,8 @@ class MCPGateway:
 
 class EnhancedMCPAPIRuntime:
     def __init__(self, compliance_profile_id: str = "global_default"):
+        pass
+
 class EIValidationError(Exception):
     """Exception raised when Execution Identity validation fails."""
     pass
