@@ -58,8 +58,8 @@ ENV PYTHONPATH=/app
 EXPOSE 8002
 
 # Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://127.0.0.1:${PORT:-8002}/health || exit 1
+# HEALTHCHECK removed
+# CMD curl removed
 
 ENTRYPOINT ["./entrypoint.sh"]
 # Start application
