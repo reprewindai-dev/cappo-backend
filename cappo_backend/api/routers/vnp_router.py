@@ -170,18 +170,7 @@ async def get_vnp_metrics(db: Session = Depends(get_session)) -> dict[str, Any]:
         if telemetry_rows
         else "No VNP regional telemetry rows recorded"
     )
-    evidence_payload = {
-        "apis": api_list,
-        "nodesDistribution": nodes_distribution,
-        "probeCount": probe_count,
-    }
-    trust_beacon = (
-        "sha256:" + hashlib.sha256(
-            json.dumps(evidence_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-        if api_list or telemetry_rows or probe_count
-        else None
-    )
+    trust_beacon = None
 
     return {
         "timestamp": timestamp,

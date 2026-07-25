@@ -448,17 +448,6 @@ def get_logs(db: Session = Depends(get_session)):
             "message": f"Audit {e.operation_type} recorded under block hash {e.log_hash[:16]}...",
         })
 
-    # If no logs exist, return high-quality seed consensus logging telemetry
-    if not logs:
-        now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
-        logs = [
-            {"id": "log_1", "timestamp": now_str, "source": "PROBE", "type": "success", "message": "Synthesized probe request sent to Gemini 2.5 Flash: Success (85.2ms)"},
-            {"id": "log_2", "timestamp": now_str, "source": "AUDITOR", "type": "info", "message": "Re-verifying PGL hash chains... Integrity confirmed (block 140228)"},
-            {"id": "log_3", "timestamp": now_str, "source": "ORACLE", "type": "success", "message": "SLA performance indices validated for Claude 3.5 Sonnet"},
-            {"id": "log_4", "timestamp": now_str, "source": "PROBE", "type": "success", "message": "Stateless x402 payment validated for GPT-4o execution context"},
-            {"id": "log_5", "timestamp": now_str, "source": "ENCLAVE", "type": "info", "message": "Muted execution identity check passed for Local Ollama"},
-        ]
-
     return logs
 
 
