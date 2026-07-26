@@ -13,6 +13,7 @@ structured, deterministic evidence dict suitable for audit persistence.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.governance import (
@@ -68,6 +69,7 @@ class MCPv2Stack:
         system_policy: Policy | None = None,
         owner_policy: Policy | None = None,
         runtime_policy: Policy | None = None,
+        at: datetime | None = None,
     ) -> dict:
         """Run Safety → Intelligence → Governance phases for one request.
 
@@ -113,7 +115,10 @@ class MCPv2Stack:
             owner_policy=owner_policy,
             runtime_policy=runtime_policy,
         )
-        effective: EffectivePolicy = self.temporal.resolve(composition.effective_policy)
+        effective: EffectivePolicy = self.temporal.resolve(
+            composition.effective_policy,
+            at=at or datetime.now(timezone.utc),
+        )
         perms = effective_permissions(
             composition,
             trust_current=self.delegation.effective_trust(capability_id, trust_score),

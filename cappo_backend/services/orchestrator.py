@@ -239,8 +239,11 @@ class RunOrchestrator:
     def govern_run(self, run: GovernedRun) -> None:
         """Governance decision. No post-hoc/status-derived defaults."""
         payload = run.request_payload or {}
-        directive = payload.get("directive") or "ALLOW"
-        risk_tier = payload.get("risk_tier") or "standard"
+        from cappo_backend.services.authorization import normalize_directive
+
+        normalized = normalize_directive(payload, strict=False)
+        directive = normalized.directive
+        risk_tier = normalized.risk_tier
 
         run.governance_decision = directive
         run.risk_tier = risk_tier
