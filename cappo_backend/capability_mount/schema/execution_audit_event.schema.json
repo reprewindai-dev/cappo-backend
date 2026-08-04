@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Execution Audit Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "execution_id", "action", "decision", "reason", "ts", "prev_hash", "event_hash"],
+  "properties": {
+    "event_id": {"type": "string", "minLength": 1},
+    "execution_id": {"type": "string", "minLength": 1},
+    "action": {"type": "string", "minLength": 1},
+    "decision": {"enum": ["allow", "deny"]},
+    "reason": {"type": "string", "minLength": 1},
+    "ts": {"type": "string", "format": "date-time"},
+    "prev_hash": {"type": ["string", "null"]},
+    "event_hash": {"type": "string", "minLength": 1}
+  }
+}
