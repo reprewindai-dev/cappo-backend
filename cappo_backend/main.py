@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from cappo_backend.api.routers.admin_router import router as admin_router
 from cappo_backend.api.routers.agents_router import router as agents_router
 from cappo_backend.api.routers.audit_router import router as audit_router
+from cappo_backend.api.routers.authorization_router import router as authorization_router
 from cappo_backend.api.routers.benchmarks_router import router as benchmarks_router
 from cappo_backend.api.routers.exec_router import router as exec_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
@@ -148,6 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vnp_admin_router)
     app.include_router(agents_router)
     app.include_router(exec_router)
+    app.include_router(authorization_router)
     app.include_router(mcp_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
