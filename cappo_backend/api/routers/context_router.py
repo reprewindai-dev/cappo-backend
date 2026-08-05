@@ -62,5 +62,5 @@ def shape_context(request: ShapeContextRequest):
     return {
         "shaped_payload": shaped_payload,
         "audit": audit,
-        "audit_evidence_hash": resp_data.get("hash")
+        "audit_evidence_hash": resp_data.get("event_hash")
     }
