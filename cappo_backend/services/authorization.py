@@ -31,7 +31,9 @@ def normalize_directive(payload: dict[str, Any], *, strict: bool) -> DirectiveDe
     if not directive:
         directive = "NEEDS_APPROVAL" if strict else "ALLOW"
     raw_risk = payload.get("risk_tier")
-    risk_tier = str(raw_risk).strip().lower() if raw_risk is not None else "standard"
+    risk_tier = str(raw_risk).strip().lower() if raw_risk is not None else ""
+    if not risk_tier:
+        risk_tier = "standard"
     if risk_tier not in _RISK_TIERS:
         raise ValueError("risk_tier is not a supported governance lane")
     return DirectiveDecision(directive=directive, risk_tier=risk_tier)
@@ -89,14 +91,17 @@ def evaluate_authorization(payload: dict[str, Any]) -> dict[str, Any]:
                     capability_id=str(decision_frame["capability_id"]),
                     runtime_policy=policy,
                     at=datetime.now(timezone.utc).replace(
-                        hour=int(decision_frame.get("time_of_day") or 12),
+                        hour=int(decision_frame["time_of_day"]),
                         minute=0,
                         second=0,
                         microsecond=0,
                     ),
                 )
                 governance = evidence["governance"]
-                if not governance["is_valid"] or not governance["policy_allows"]:
+                if not evidence["allow"]:
+                    decision = "REJECTED"
+                    reason = "safety assessment denied the request"
+                elif not governance["is_valid"] or not governance["policy_allows"]:
                     decision = "REJECTED"
                     reason = "governance policy denied the request"
                 elif governance["requires_approval"]:
