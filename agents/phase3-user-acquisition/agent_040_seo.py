@@ -132,7 +132,7 @@ def audit_page(page_info: dict) -> dict:
 # ── SEO Recommendations ───────────────────────────────────────────────────────
 def generate_keyword_recommendations() -> str:
     response = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",

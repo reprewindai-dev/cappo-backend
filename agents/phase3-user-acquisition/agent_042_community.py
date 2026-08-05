@@ -146,7 +146,7 @@ def post_is_relevant(title: str, body: str) -> bool:
 
 def generate_reply(thread_title: str, thread_body: str) -> str:
     response = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",
@@ -172,7 +172,7 @@ def generate_reply(thread_title: str, thread_body: str) -> str:
 
 def generate_weekly_post() -> dict:
     response = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",

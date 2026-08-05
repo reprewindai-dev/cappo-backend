@@ -159,7 +159,7 @@ async def run_agent(goal: str) -> str:
         print(f"\n[AGENT] — Iteration {iteration} — THINKING...")
 
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama3.2:1b",
             messages=messages,
             tools=TOOL_SCHEMAS,
             tool_choice="auto",

@@ -74,7 +74,7 @@ def log_activity(event_type: str, data: dict):
 
 def generate_google_ads_keywords() -> dict:
     response = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",
@@ -103,7 +103,7 @@ def generate_google_ads_keywords() -> dict:
 
 def generate_ad_copy_variations() -> dict:
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",
@@ -138,7 +138,7 @@ def generate_ad_copy_variations() -> dict:
 
 def generate_budget_strategy() -> str:
     response = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",

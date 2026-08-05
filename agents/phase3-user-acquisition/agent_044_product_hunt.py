@@ -66,7 +66,7 @@ def log_activity(event_type: str, data: dict):
 
 def generate_launch_copy() -> dict:
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",
@@ -100,7 +100,7 @@ def generate_launch_copy() -> dict:
 
 def generate_hunter_outreach() -> list:
     response = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",

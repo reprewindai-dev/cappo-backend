@@ -126,7 +126,7 @@ def get_next_topic() -> dict | None:
 # ── Content Generation ────────────────────────────────────────────────────────
 def generate_blog_post(topic: dict) -> str:
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="llama3.2:1b",
         messages=[
             {
                 "role": "system",
