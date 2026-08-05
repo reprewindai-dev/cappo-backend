@@ -31,7 +31,7 @@ class ContextShaper:
             
         fields_requested = list(payload.keys())
         fields_granted = []
-        fields_removed = []
+        field_decisions = []
         
         shaped_payload = {}
         
@@ -43,7 +43,14 @@ class ContextShaper:
         # 1. PII Minimization
         for key, value in payload.items():
             if key in effective_denies:
-                fields_removed.append(key)
+                policy_reason = "Global Jurisdiction Policy" if key in global_denies else "Capability Contract"
+                field_decisions.append({
+                    "field": key,
+                    "action": "Denied",
+                    "policy": ", ".join(policy_bundle.applicable_policies) if policy_bundle else policy_reason,
+                    "jurisdiction": policy_bundle.jurisdiction if policy_bundle else "Unknown",
+                    "contract_version": "1.0"
+                })
             else:
                 shaped_payload[key] = value
                 fields_granted.append(key)
@@ -65,7 +72,7 @@ class ContextShaper:
             "policy_version": policy_bundle.policy_version if policy_bundle else "0.0",
             "fields_requested": fields_requested,
             "fields_granted": fields_granted,
-            "fields_removed": fields_removed,
+            "field_decisions": field_decisions,
             "secret_injections": injected_secrets,
             "shaping_reason": f"Applied governance contract for {capability_id} and jurisdiction {policy_bundle.jurisdiction if policy_bundle else 'Unknown'}"
         }
