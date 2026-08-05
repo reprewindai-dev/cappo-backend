@@ -17,11 +17,21 @@ from cappo_backend.db.session import engine
 router = APIRouter(tags=["health"])
 _PROBE_TIMEOUT_SECONDS = 2.0
 _WORST_STATE = {"healthy": 0, "degraded": 1, "unconfigured": 1, "unavailable": 2}
+_DATABASE_PROBE_LOCK = asyncio.Lock()
 
 
 def _host(url: str) -> str:
     parsed = urlparse(url)
     return parsed.hostname or "unknown"
+
+
+def _result(name: str, host: str, state: str, started: float) -> dict[str, Any]:
+    return {
+        "name": name,
+        "host": host,
+        "state": state,
+        "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+    }
 
 
 async def _probe_http(name: str, base_url: str) -> dict[str, Any]:
@@ -33,19 +43,9 @@ async def _probe_http(name: str, base_url: str) -> dict[str, Any]:
             if response.status_code == 404:
                 response = await client.get(f"{base_url.rstrip('/')}/protocol.json")
             state = "healthy" if 200 <= response.status_code < 300 else "degraded"
-        return {
-            "name": name,
-            "host": _host(base_url),
-            "state": state,
-            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
-        }
     except Exception:
-        return {
-            "name": name,
-            "host": _host(base_url),
-            "state": "unavailable",
-            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
-        }
+        state = "unavailable"
+    return _result(name, _host(base_url), state, started)
 
 
 async def _probe_database() -> dict[str, Any]:
@@ -55,26 +55,28 @@ async def _probe_database() -> dict[str, Any]:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
 
+    if _DATABASE_PROBE_LOCK.locked():
+        return _result("database", "configured", "unavailable", started)
+
     try:
-        await asyncio.wait_for(asyncio.to_thread(check), timeout=_PROBE_TIMEOUT_SECONDS)
+        async with _DATABASE_PROBE_LOCK:
+            await asyncio.wait_for(asyncio.to_thread(check), timeout=_PROBE_TIMEOUT_SECONDS)
         state = "healthy"
     except Exception:
         state = "unavailable"
-    return {
-        "name": "database",
-        "host": "configured",
-        "state": state,
-        "latency_ms": round((time.perf_counter() - started) * 1000, 2),
-    }
+    return _result("database", "configured", state, started)
 
 
 def _unconfigured(name: str) -> dict[str, Any]:
     return {"name": name, "host": "unconfigured", "state": "unconfigured", "latency_ms": 0.0}
 
 
+async def _completed(result: dict[str, Any]) -> dict[str, Any]:
+    return result
+
+
 @router.get("/health/dependencies")
 async def health_dependencies(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
-    checks: list[dict[str, Any]] = [await _probe_database()]
     configured = [
         ("pgl", settings.pgl_ledger_url),
         ("byos", settings.veklom_byos_backend_url),
@@ -83,7 +85,13 @@ async def health_dependencies(settings: Settings = Depends(get_settings)) -> dic
         configured.append(("executor", settings.llm_base_url))
     if settings.cache_warm_backend.lower() == "redis":
         configured.append(("redis", settings.redis_url or None))
-    for name, url in configured:
-        checks.append(await _probe_http(name, url) if url else _unconfigured(name))
+
+    probes = [_probe_database()]
+    probes.extend(
+        _probe_http(name, url) if url else _completed(_unconfigured(name))
+        for name, url in configured
+    )
+    checks = list(await asyncio.gather(*probes))
+
     overall = max(checks, key=lambda check: _WORST_STATE[check["state"]])["state"]
     return {"status": overall, "dependencies": checks}
