@@ -166,6 +166,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_x402_router, prefix="/api")
     app.include_router(root_discovery_router)
     app.include_router(well_known_router)
+    from cappo_backend.api.routers.context_router import router as context_router
+    app.include_router(context_router, prefix="/api")
     from cappo_backend.api.routers.protocol import router as protocol_router
     from cappo_backend.api.routers.retrieval_governance_router import (
         router as retrieval_governance_router,
