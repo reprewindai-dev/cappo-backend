@@ -1,13 +1,13 @@
 from typing import Dict, Any, List, Tuple
-import json
 from cappo_backend.core.governance.jurisdiction import PolicyBundle
+from cappo_backend.core.governance.execution_policy_engine import ExecutionPolicyEngine
+from cappo_backend.core.governance.enforcement_engine import EnforcementEngine
 
 class ContextShaper:
     """
-    The Context Shaper is a first-class primitive in the Trust Spine.
-    It sits between the reasoning engine and execution as the Execution Policy Resolution engine.
-    It reads capability contracts, evaluates the Policy Matrix (Capability x Jurisdiction),
-    and makes decisions: PROCEED, STRIP, FAIL_CLOSED, or ESCALATE.
+    The Context Shaper orchestrates the Execution Policy Resolution flow.
+    It passes the capability and jurisdiction to the ExecutionPolicyEngine (the Constitutional Court),
+    and hands the resulting PolicyDecision to the EnforcementEngine.
     """
     
     def __init__(self):
@@ -30,109 +30,60 @@ class ContextShaper:
                 "allows_pii": ["ssn"],
                 "denies_pii": ["email", "phone", "address"],
                 "secret_injections": []
+            },
+            "github.issue.create": {
+                "requires": ["tenant", "issue_title", "issue_body"],
+                "allows_pii": ["github_username"],
+                "denies_pii": ["email", "phone", "address", "ssn"],
+                "secret_injections": ["github_pat"]
             }
         }
-        
-        # Policy Matrix: (Capability, Jurisdiction) -> Enforcement Decision
-        self.policy_matrix = {
-            ("blueprint.generate", "Canada"): "STRIP",
-            ("financial.transfer", "Canada"): "FAIL_CLOSED",
-            ("healthcare.access", "Canada"): "FAIL_CLOSED",
-            ("public.search", "EU"): "STRIP",
-            ("identity.verify", "*"): "FAIL_CLOSED"
-        }
-        
-    def _resolve_decision(self, capability_id: str, jurisdiction: str) -> str:
-        """
-        Resolves the enforcement decision from the Policy Matrix.
-        Defaults to FAIL_CLOSED for safety if undefined.
-        """
-        # Specific match
-        decision = self.policy_matrix.get((capability_id, jurisdiction))
-        if decision:
-            return decision
-            
-        # Wildcard jurisdiction match
-        decision = self.policy_matrix.get((capability_id, "*"))
-        if decision:
-            return decision
-            
-        # Default safety fallback
-        return "FAIL_CLOSED"
+        self.resolver = ExecutionPolicyEngine()
+        self.enforcer = EnforcementEngine()
         
     def shape_context(self, capability_id: str, payload: Dict[str, Any], tenant_jwt: str, policy_bundle: PolicyBundle = None) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
         """
-        Shapes the context for a capability request.
-        Returns (shaped_payload, audit_record, enforcement_decision)
+        Orchestrates Execution Policy Resolution and Enforcement.
+        Returns (shaped_payload, audit_record, enforcement_decision_action)
         """
         contract = self.capability_contracts.get(capability_id)
         if not contract:
             raise ValueError(f"Unknown capability: {capability_id}")
             
         jurisdiction = policy_bundle.jurisdiction if policy_bundle else "Unknown"
-        enforcement_decision = self._resolve_decision(capability_id, jurisdiction)
-            
-        fields_requested = list(payload.keys())
-        fields_granted = []
-        field_decisions = []
         
-        shaped_payload = {}
+        # 1. Execution Policy Resolution
+        decision = self.resolver.resolve(capability_id, jurisdiction)
         
-        # Merge capability-level denies with jurisdiction-level strict denies
-        contract_denies = set(contract.get("denies_pii", []))
-        global_denies = set(policy_bundle.global_denies_pii if policy_bundle else [])
-        effective_denies = contract_denies.union(global_denies)
-        
-        # Track if we found any violations that trigger the enforcement decision
-        violation_found = False
-        
-        # 1. PII Minimization & Policy Evaluation
-        for key, value in payload.items():
-            if key in effective_denies:
-                violation_found = True
-                policy_reason = "Global Jurisdiction Policy" if key in global_denies else "Capability Contract prohibits exposure"
-                
-                # Determine classification (naive mock for now, in reality this would use an ML classifier or static map)
-                classification = "PII"
-                
-                field_decisions.append({
-                    "field": key,
-                    "classification": classification,
-                    "jurisdiction": jurisdiction,
-                    "policy": ", ".join(policy_bundle.applicable_policies) if policy_bundle else policy_reason,
-                    "decision": enforcement_decision,
-                    "reason": policy_reason,
-                    "actor": "ContextShaper"
-                })
-            else:
-                shaped_payload[key] = value
-                fields_granted.append(key)
-                
-        # 2. Secret Injection (Mocked - would call Lockerphycer with tenant_jwt)
-        injected_secrets = []
-        for secret in contract.get("secret_injections", []):
-            # The reasoning brain never sees this value
-            injected_key = f"_injected_{secret}"
-            shaped_payload[injected_key] = f"vault_secret_{secret}_{tenant_jwt[:10]}"
-            injected_secrets.append(secret)
+        # 2. Enforcement
+        shaped_payload, enforcement_details = self.enforcer.apply(
+            decision=decision,
+            payload=payload,
+            contract=contract,
+            policy_bundle=policy_bundle,
+            tenant_jwt=tenant_jwt,
+            capability_id=capability_id
+        )
             
         # 3. Audit Record Generation
+        fields_requested = list(payload.keys())
+        fields_granted = list(shaped_payload.keys())
+        
         audit_record = {
             "capability_id": capability_id,
             "contract_version": "1.0",
-            "jurisdiction": jurisdiction,
+            "jurisdiction": decision.jurisdiction,
+            "classification": decision.classification,
             "applicable_policies": policy_bundle.applicable_policies if policy_bundle else [],
-            "policy_version": policy_bundle.policy_version if policy_bundle else "0.0",
-            "enforcement_decision": enforcement_decision,
+            "policy_version": decision.policy_version,
+            "decision_id": decision.decision_id,
+            "enforcement_decision": decision.action,
+            "rule_applied": decision.rule_applied,
             "fields_requested": fields_requested,
-            "fields_granted": fields_granted if (not violation_found or enforcement_decision == "STRIP") else [],
-            "field_decisions": field_decisions,
-            "secret_injections": injected_secrets if (not violation_found or enforcement_decision == "STRIP") else [],
-            "shaping_reason": f"Applied Execution Policy Resolution for {capability_id} and jurisdiction {jurisdiction}. Decision: {enforcement_decision}"
+            "fields_granted": fields_granted,
+            "field_decisions": enforcement_details.get("field_decisions", []),
+            "secret_injections": enforcement_details.get("secret_injections", []),
+            "shaping_reason": f"Applied Execution Policy Resolution for {capability_id} and jurisdiction {jurisdiction}. Decision: {decision.action}"
         }
         
-        # If a violation was found and the decision is NOT STRIP, the payload is completely cleared
-        if violation_found and enforcement_decision != "STRIP":
-            shaped_payload = {}
-        
-        return shaped_payload, audit_record, enforcement_decision
+        return shaped_payload, audit_record, decision.action
