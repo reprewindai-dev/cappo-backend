@@ -29,7 +29,10 @@ def test_governance_pipeline_canadian_tenant():
     assert "health_card" in policy_bundle.global_denies_pii
     
     # 4. Shape the Context
-    shaped_payload, audit = shaper.shape_context(capability_id, payload, tenant_jwt, policy_bundle)
+    shaped_payload, audit, decision = shaper.shape_context(capability_id, payload, tenant_jwt, policy_bundle)
+    
+    # Assert enforcement decision based on the Policy Matrix (blueprint.generate in Canada is STRIP)
+    assert decision == "STRIP"
     
     # 5. Assert shaping logic (Capability rules + Jurisdiction rules)
     # Email and SSN are removed by capability contract
@@ -48,8 +51,18 @@ def test_governance_pipeline_canadian_tenant():
     # 6. Assert Audit Schema explicitly tracks jurisdiction
     assert audit["jurisdiction"] == "Canada"
     assert audit["applicable_policies"] == ["PIPEDA", "Law25"]
-    assert "health_card" in audit["fields_removed"]
-    assert "email" in audit["fields_removed"]
+    assert audit["enforcement_decision"] == "STRIP"
+    
+    # Verify the rich field_decisions schema
+    decisions_by_field = {d["field"]: d for d in audit["field_decisions"]}
+    
+    assert "health_card" in decisions_by_field
+    assert decisions_by_field["health_card"]["decision"] == "STRIP"
+    assert "Global Jurisdiction Policy" in decisions_by_field["health_card"]["reason"]
+    
+    assert "email" in decisions_by_field
+    assert decisions_by_field["email"]["decision"] == "STRIP"
+    
     assert "github_pat" in audit["secret_injections"]
 
 if __name__ == "__main__":

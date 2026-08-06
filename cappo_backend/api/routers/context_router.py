@@ -31,7 +31,7 @@ def shape_context(request: ShapeContextRequest):
     # override jurisdiction for testing purposes
     policy_bundle.jurisdiction = request.jurisdiction
     
-    shaped_payload, audit = shaper.shape_context(
+    shaped_payload, audit, decision = shaper.shape_context(
         capability_id=request.capability,
         payload=request.context,
         tenant_jwt=request.tenant_jwt,
@@ -58,6 +58,12 @@ def shape_context(request: ShapeContextRequest):
         resp_data = resp.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to log to PGL: {str(e)}")
+        
+    # Enforce policy decision
+    if decision == "FAIL_CLOSED":
+        raise HTTPException(status_code=403, detail="Context Shaping Failed: Blocked by Policy")
+    elif decision == "ESCALATE":
+        raise HTTPException(status_code=403, detail="Context Shaping Escalated: Requires Human Approval")
         
     return {
         "shaped_payload": shaped_payload,
