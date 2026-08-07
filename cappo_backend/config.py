@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     veklom_api_key: str | None = None  # API key for veklom-byos-backend
     
     # --- Universal USB (cAPI) Integration ---
-    capi_backend_url: str | None = "http://capi-container:3002"
+    capi_backend_url: str | None = "http://capi-container:3003"
     capi_api_key: str | None = None
     
     capi_external_validation_enabled: bool = False
@@ -190,6 +190,11 @@ class Settings(BaseSettings):
             problems.append(
                 "DATABASE_URL must point to a production-grade database "
                 "(SQLite is not permitted in production)."
+            )
+        if self.cors_allow_origins == "*" or not self.cors_allow_origins:
+            problems.append(
+                "CORS_ALLOW_ORIGINS must not be '*' in production. "
+                "Pin explicit origins (e.g., https://veklom.com,https://api.veklom.com)."
             )
         if not self.auth_enabled:
             problems.append(

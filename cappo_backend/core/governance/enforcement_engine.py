@@ -37,33 +37,36 @@ class EnforcementEngine:
                 })
             return {}, {"field_decisions": field_decisions, "decision_id": decision.decision_id}
             
-        # PII Minimization & Policy Evaluation for ALLOW*
-        for key, value in payload.items():
-            if key in effective_denies:
-                policy_reason = "Global Jurisdiction Policy" if key in global_denies else "Capability Contract prohibits exposure"
-                
-                # Determine classification (naive mock for now)
-                classification = "PII"
-                
-                action = decision.action
-                if action == "ALLOW_WITH_REDACTION":
-                    action = "STRIP"
-                    
-                field_decisions.append({
-                    "field": key,
-                    "classification": classification,
-                    "requested_by": capability_id,
-                    "policy": ", ".join(policy_bundle.applicable_policies) if policy_bundle else policy_reason,
-                    "rule": decision.rule_applied,
-                    "decision_id": decision.decision_id,
-                    "decision": action,
-                    "reason": policy_reason,
-                    "resolver_version": decision.policy_version,
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
-                })
-            else:
-                shaped_payload[key] = value
-                
+        def _process_payload(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                shaped = {}
+                for k, v in obj.items():
+                    if k in effective_denies:
+                        policy_reason = "Global Jurisdiction Policy" if k in global_denies else "Capability Contract prohibits exposure"
+                        action = decision.action
+                        if action == "ALLOW_WITH_REDACTION":
+                            action = "STRIP"
+                        field_decisions.append({
+                            "field": k,
+                            "classification": "PII",
+                            "requested_by": capability_id,
+                            "policy": ", ".join(policy_bundle.applicable_policies) if policy_bundle else policy_reason,
+                            "rule": decision.rule_applied,
+                            "decision_id": decision.decision_id,
+                            "decision": action,
+                            "reason": policy_reason,
+                            "resolver_version": decision.policy_version,
+                            "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+                        })
+                    else:
+                        shaped[k] = _process_payload(v)
+                return shaped
+            elif isinstance(obj, list):
+                return [_process_payload(item) for item in obj]
+            return obj
+            
+        shaped_payload = _process_payload(payload)
+        
         # Secret Injection
         injected_secrets = []
         if decision.action == "ALLOW_WITH_SECRET_INJECTION" or decision.action == "ALLOW_WITH_REDACTION":
