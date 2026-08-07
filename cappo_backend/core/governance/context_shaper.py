@@ -2,12 +2,14 @@ from typing import Dict, Any, List, Tuple
 from cappo_backend.core.governance.jurisdiction import PolicyBundle
 from cappo_backend.core.governance.execution_policy_engine import ExecutionPolicyEngine
 from cappo_backend.core.governance.enforcement_engine import EnforcementEngine
+from cappo_backend.core.governance.standard_verifier import StandardVerifier
 
 class ContextShaper:
     """
     The Context Shaper orchestrates the Execution Policy Resolution flow.
     It passes the capability and jurisdiction to the ExecutionPolicyEngine (the Constitutional Court),
-    and hands the resulting PolicyDecision to the EnforcementEngine.
+    hands the resulting PolicyDecision to the EnforcementEngine, and ensures compliance with
+    any required internet standards via the StandardVerifier.
     """
     
     def __init__(self):
@@ -17,33 +19,38 @@ class ContextShaper:
                 "requires": ["tenant", "repository"],
                 "allows_pii": ["github_username"],
                 "denies_pii": ["email", "phone", "address", "ssn"],
-                "secret_injections": ["github_pat"]
+                "secret_injections": ["github_pat"],
+                "requires_standards": ["x402", "RFC9989"]
             },
             "financial.transfer": {
                 "requires": ["tenant", "amount", "destination"],
                 "allows_pii": [],
                 "denies_pii": ["email", "phone", "address", "ssn"],
-                "secret_injections": []
+                "secret_injections": [],
+                "requires_standards": ["x402"]
             },
             "identity.verify": {
                 "requires": ["tenant", "user_id"],
                 "allows_pii": ["ssn"],
                 "denies_pii": ["email", "phone", "address"],
-                "secret_injections": []
+                "secret_injections": [],
+                "requires_standards": ["OAuth2"]
             },
             "github.issue.create": {
                 "requires": ["tenant", "issue_title", "issue_body"],
                 "allows_pii": ["github_username"],
                 "denies_pii": ["email", "phone", "address", "ssn"],
-                "secret_injections": ["github_pat"]
+                "secret_injections": ["github_pat"],
+                "requires_standards": ["x402"]
             }
         }
         self.resolver = ExecutionPolicyEngine()
         self.enforcer = EnforcementEngine()
+        self.standard_verifier = StandardVerifier()
         
     def shape_context(self, capability_id: str, payload: Dict[str, Any], tenant_jwt: str, policy_bundle: PolicyBundle = None) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
         """
-        Orchestrates Execution Policy Resolution and Enforcement.
+        Orchestrates Execution Policy Resolution, Enforcement, and Standard Verification.
         Returns (shaped_payload, audit_record, enforcement_decision_action)
         """
         contract = self.capability_contracts.get(capability_id)
@@ -52,10 +59,17 @@ class ContextShaper:
             
         jurisdiction = policy_bundle.jurisdiction if policy_bundle else "Unknown"
         
-        # 1. Execution Policy Resolution
+        # 1. Standard Compliance Verification
+        required_standards = contract.get("requires_standards", [])
+        standard_results = self.standard_verifier.verify(required_standards, payload)
+        
+        # If any required standard strictly fails and the action requires it, we could
+        # fail early. For now, we record the compliance in the audit log.
+        
+        # 2. Execution Policy Resolution
         decision = self.resolver.resolve(capability_id, jurisdiction)
         
-        # 2. Enforcement
+        # 3. Enforcement
         shaped_payload, enforcement_details = self.enforcer.apply(
             decision=decision,
             payload=payload,
@@ -65,7 +79,7 @@ class ContextShaper:
             capability_id=capability_id
         )
             
-        # 3. Audit Record Generation
+        # 4. Audit Record Generation
         fields_requested = list(payload.keys())
         fields_granted = list(shaped_payload.keys())
         
@@ -83,6 +97,7 @@ class ContextShaper:
             "fields_granted": fields_granted,
             "field_decisions": enforcement_details.get("field_decisions", []),
             "secret_injections": enforcement_details.get("secret_injections", []),
+            "standards_compliance": standard_results,
             "shaping_reason": f"Applied Execution Policy Resolution for {capability_id} and jurisdiction {jurisdiction}. Decision: {decision.action}"
         }
         

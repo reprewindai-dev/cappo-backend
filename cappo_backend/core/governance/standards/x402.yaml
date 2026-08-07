@@ -1,0 +1,23 @@
+standard: x402
+name: Veklom Micropayment Settlement Protocol
+version: "1.0"
+description: "Defines the cryptographic settlement and 402 Payment Required semantics for autonomous compute."
+
+requirements:
+  - id: x402-must-402
+    type: MUST
+    description: "The system MUST respond with an HTTP 402 status code if the required payment evidence is missing or insufficient."
+    field_check: "http_status_code == 402"
+
+  - id: x402-must-settle
+    type: MUST
+    description: "The request MUST contain a cryptographically verifiable X-Veklom-Receipt-ID header or equivalent payload token."
+    field_check: "has_receipt_id == true"
+    
+  - id: x402-should-yield
+    type: SHOULD
+    description: "The provider SHOULD expose dynamic yield/micro-stakes limits prior to task execution."
+
+verification:
+  method: "header_inspection"
+  evidence_required: true
