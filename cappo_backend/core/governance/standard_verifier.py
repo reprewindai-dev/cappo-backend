@@ -1,6 +1,7 @@
 import os
 import yaml
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
+
 
 class StandardVerifier:
     def __init__(self, standards_dir: str = None):
@@ -9,7 +10,7 @@ class StandardVerifier:
             self.standards_dir = os.path.join(os.path.dirname(__file__), "standards")
         else:
             self.standards_dir = standards_dir
-            
+
         self.standards = self._load_standards()
 
     def _load_standards(self) -> Dict[str, Any]:
@@ -22,7 +23,7 @@ class StandardVerifier:
             if filename.endswith((".yaml", ".yml")):
                 filepath = os.path.join(self.standards_dir, filename)
                 try:
-                    with open(filepath, 'r') as f:
+                    with open(filepath, "r") as f:
                         data = yaml.safe_load(f)
                         if data and "standard" in data:
                             standards[data["standard"]] = data
@@ -32,8 +33,12 @@ class StandardVerifier:
 
     def verify(self, required_standards: List[str], execution_context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Verifies the execution context against the required standards.
-        Returns a list of compliance results.
+        Verifies the execution context against the required standards by evaluating
+        the field_check requirements defined in each standard's YAML definition.
+
+        Returns a list of compliance results. Results use only PASS, FAIL, NOT_FOUND,
+        or NOT_EVALUATED — never a mock default. Missing or failing mandatory fields
+        produce a FAIL result.
         """
         results = []
         for std_id in required_standards:
@@ -44,25 +49,54 @@ class StandardVerifier:
                     "reason": f"Standard '{std_id}' is not defined in the trust spine."
                 })
                 continue
-                
+
             std_def = self.standards[std_id]
-            
-            # Here we would actually evaluate the requirements against the context.
-            # For this MVP framework, we'll simulate a PASS if the context contains
-            # the standard as a key with a truthy value, or just default to PASS 
-            # if we are in a testing scenario that explicitly allows it.
-            # In a real implementation, we would iterate over std_def["requirements"]
-            # and evaluate the `field_check` logic.
-            
-            # Simple mock evaluation for now:
-            is_compliant = execution_context.get(f"mock_compliance_{std_id}", True)
-            
-            result = "PASS" if is_compliant else "FAIL"
-            
-            results.append({
-                "id": std_id,
-                "version": str(std_def.get("version", "unknown")),
-                "result": result
-            })
-            
+            requirements = std_def.get("requirements", [])
+
+            if not requirements:
+                results.append({
+                    "id": std_id,
+                    "version": str(std_def.get("version", "unknown")),
+                    "result": "NOT_EVALUATED",
+                    "reason": "No requirements defined for this standard in the trust spine."
+                })
+                continue
+
+            failed_requirements = []
+            for req in requirements:
+                field = req.get("field_check")
+                expected_value = req.get("expected_value")
+                required = req.get("required", True)
+
+                if not field:
+                    continue
+
+                actual = execution_context.get(field)
+
+                if actual is None:
+                    if required:
+                        failed_requirements.append(
+                            f"Required field '{field}' is absent from the execution context."
+                        )
+                    # Optional and absent — not a failure.
+                elif expected_value is not None and actual != expected_value:
+                    failed_requirements.append(
+                        f"Field '{field}' = '{actual}'; expected '{expected_value}'."
+                    )
+                # expected_value is None and field is present → presence-only check passes.
+
+            if failed_requirements:
+                results.append({
+                    "id": std_id,
+                    "version": str(std_def.get("version", "unknown")),
+                    "result": "FAIL",
+                    "failures": failed_requirements
+                })
+            else:
+                results.append({
+                    "id": std_id,
+                    "version": str(std_def.get("version", "unknown")),
+                    "result": "PASS"
+                })
+
         return results

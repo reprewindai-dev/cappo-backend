@@ -46,27 +46,3 @@ async def toggle_modbus() -> Dict[str, Any]:
         modbus_adapter.connect()
     return {"status": "success", "adapter_status": modbus_adapter.get_status()}
 
-@router.post("/simulate")
-async def simulate_event(adapter_type: str) -> Dict[str, Any]:
-    """Simulate receiving an event from a legacy adapter."""
-    if adapter_type == "snmp":
-        if not snmp_adapter.active:
-            raise HTTPException(status_code=400, detail="SNMP Adapter is not active")
-        raw_data = {"bindings": {"1.3.6.1.2.1.1.3.0": 123456, "1.3.6.1.2.1.2.2.1.8": 1}, "source_ip": "192.168.1.100"}
-        normalized = snmp_adapter.normalize_trap(raw_data)
-        return {"adapter": "snmp", "raw": raw_data, "normalized": normalized}
-        
-    elif adapter_type == "modbus":
-        if not modbus_adapter.active:
-            raise HTTPException(status_code=400, detail="Modbus Adapter is not active")
-        raw_data = {40001: 22, 40002: 45, 40003: 120}
-        normalized = modbus_adapter.normalize_reading(raw_data)
-        return {"adapter": "modbus", "raw": raw_data, "normalized": normalized}
-        
-    elif adapter_type == "webhook":
-        raw_data = {"invoice_id": "INV-5502", "amount": 1500.00, "status": "PAID", "customer": "ACME Corp"}
-        normalized = webhook_adapter.normalize_payload("SAP", raw_data)
-        return {"adapter": "webhook", "raw": raw_data, "normalized": normalized}
-        
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown adapter type: {adapter_type}")
