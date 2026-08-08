@@ -39,7 +39,7 @@ The entire suite runs on Hetzner Server 1 (`5.78.135.11`) via Coolify:
 1. **`veklom-byos-backend`** (Live on Port `8088`)
    - Domains: `veklom.com`, `api.veklom.com`
    - **Important:** The frontend IS the backend here. The Next.js control plane is pre-built and served directly by FastAPI. Do not attempt to spin up a separate frontend server on Coolify.
-2. **`cappo-backend`** (Live on Port `8000`)
+2. **`cappo-backend`** (Live on Port `8002`)
    - Domain: `cappo.veklom.com`
    - This database (`cappodb`) is completely isolated from the main Veklom backend database.
 

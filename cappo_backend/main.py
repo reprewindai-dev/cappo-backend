@@ -27,11 +27,11 @@ from cappo_backend.api.routers.benchmarks_router import router as benchmarks_rou
 from cappo_backend.api.routers.exec_router import router as exec_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
-from cappo_backend.api.routers.interlink import router as interlink_router
-from cappo_backend.api.routers.interlink_vnp import router as interlink_vnp_router
+from cappo_backend.api.routers.health_router import router as health_router
 from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.api.routers.mcp import router as mcp_router
 from cappo_backend.api.routers.platform_router import router as platform_router
+from cappo_backend.api.routers.protocol_router import router as protocol_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
@@ -149,9 +149,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vnp_router)
     app.include_router(vnp_admin_router)
     app.include_router(agents_router)
-    app.include_router(exec_router)
     app.include_router(authorization_router)
-    app.include_router(mcp_router)
+    app.include_router(exec_router)
+    app.include_router(health_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
     app.include_router(governance_v2_router)
@@ -165,15 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(gpc_router)
     app.include_router(api_x402_router, prefix="/api")
     app.include_router(root_discovery_router)
-    app.include_router(well_known_router)
-    from cappo_backend.api.routers.context_router import router as context_router
-    app.include_router(context_router, prefix="/api")
-    from cappo_backend.api.routers.protocol import router as protocol_router
-    from cappo_backend.api.routers.retrieval_governance_router import (
-        router as retrieval_governance_router,
-    )
     app.include_router(protocol_router)
-    app.include_router(retrieval_governance_router)
 
     from fastapi import Request
     from fastapi.responses import JSONResponse

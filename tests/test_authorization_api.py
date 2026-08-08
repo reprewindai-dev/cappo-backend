@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from cappo_backend.services.authorization import normalize_directive
 
-def test_authorize_allow_directive_passes_governance_gate(client: TestClient) -> None:
+
+def test_authorize_approved_path(client: TestClient) -> None:
     response = client.post(
         "/api/v1/execution/authorize",
         json={"agent_id": "agent-1", "capability_id": "exec", "directive": "ALLOW"},
@@ -13,9 +15,7 @@ def test_authorize_allow_directive_passes_governance_gate(client: TestClient) ->
 
     assert response.status_code == 200
     body = response.json()
-    # Temporal policy is resolved internally by the current MCP v2 stack.
-    assert body["decision"] in {"APPROVED", "NEEDS_APPROVAL"}
-    assert body["decision"] != "REJECTED"
+    assert body["decision"] == "APPROVED"
     assert body["lane"] == "standard"
     assert body["authorization_id"].startswith("auth_")
     assert len(body["decision_hash"]) == 64
@@ -44,4 +44,66 @@ def test_authorize_does_not_execute(client: TestClient, monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["decision"] in {"APPROVED", "NEEDS_APPROVAL"}
+    assert response.json()["decision"] == "APPROVED"
+
+
+def test_authorize_rejects_safety_denial(client: TestClient, monkeypatch) -> None:
+    class DenyingStack:
+        def pre_execution_assessment(self, *_args, **_kwargs):
+            return {
+                "allow": False,
+                "governance": {
+                    "is_valid": True,
+                    "policy_allows": True,
+                    "requires_approval": False,
+                },
+            }
+
+    monkeypatch.setattr(
+        "cappo_backend.services.authorization.get_mcp_v2_stack",
+        lambda: DenyingStack(),
+    )
+    response = client.post(
+        "/api/v1/execution/authorize",
+        json={"agent_id": "agent-1", "directive": "ALLOW"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"] == "REJECTED"
+    assert body["reason"] == "safety assessment denied the request"
+
+
+def test_blank_risk_tier_preserves_standard_default() -> None:
+    normalized = normalize_directive({"directive": "ALLOW", "risk_tier": ""}, strict=False)
+
+    assert normalized.risk_tier == "standard"
+
+
+def test_midnight_policy_time_is_preserved(client: TestClient, monkeypatch) -> None:
+    observed = {}
+
+    class CapturingStack:
+        def pre_execution_assessment(self, *_args, **kwargs):
+            observed["hour"] = kwargs["at"].hour
+            return {
+                "allow": True,
+                "governance": {
+                    "is_valid": True,
+                    "policy_allows": True,
+                    "requires_approval": False,
+                },
+            }
+
+    monkeypatch.setattr(
+        "cappo_backend.services.authorization.get_mcp_v2_stack",
+        lambda: CapturingStack(),
+    )
+    response = client.post(
+        "/api/v1/execution/authorize",
+        json={"agent_id": "agent-1", "directive": "ALLOW", "time_of_day": 0},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["decision"] == "APPROVED"
+    assert observed["hour"] == 0

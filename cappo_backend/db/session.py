@@ -10,23 +10,26 @@ from sqlalchemy.orm import Session, sessionmaker
 from cappo_backend.config import get_settings
 
 _settings = get_settings()
+_DATABASE_TIMEOUT_SECONDS = 2
 
-_connect_args = {}
-_engine_kwargs = {"future": True}
-
+_connect_args: dict[str, object] = {}
+_engine_args: dict[str, object] = {"future": True}
 if _settings.database_url.startswith("sqlite"):
-    _connect_args = {"check_same_thread": False}
+    _connect_args = {
+        "check_same_thread": False,
+        "timeout": _DATABASE_TIMEOUT_SECONDS,
+    }
 else:
-    # Production DB pooling settings for PostgreSQL
-    _engine_kwargs.update({
-        "pool_size": 10,
-        "max_overflow": 15,
-        "pool_timeout": 10,
-        "pool_pre_ping": True,
-        "pool_recycle": 1800,
-    })
+    # Bound both initial driver connection attempts and pool acquisition so a
+    # stalled database cannot accumulate unbounded health-check workers.
+    _connect_args = {"connect_timeout": _DATABASE_TIMEOUT_SECONDS}
+    _engine_args["pool_timeout"] = _DATABASE_TIMEOUT_SECONDS
 
-engine = create_engine(_settings.database_url, connect_args=_connect_args, **_engine_kwargs)
+engine = create_engine(
+    _settings.database_url,
+    connect_args=_connect_args,
+    **_engine_args,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 
