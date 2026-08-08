@@ -71,8 +71,9 @@ class Settings(BaseSettings):
     # authentication only; it never substitutes for EI authority (auth != authority).
     # Disabled by default for local dev; production must enable it.
     auth_enabled: bool = False
-    # Comma-separated set of accepted API keys.
-    api_keys: str = "cappo_internal_exec_key_veklom_2026"
+    # Comma-separated set of accepted API keys. Deployment must inject values;
+    # repository defaults intentionally contain no credential material.
+    api_keys: str = ""
 
     # --- License Server (this service acts as license authority) ---
     license_admin_key: str = ""  # Shared secret for /v1/license admin endpoints
@@ -228,4 +229,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

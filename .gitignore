@@ -16,3 +16,6 @@ dist/
 venv/
 server.log
 async_block_test_heavy.py
+
+# Runtime diagnostics may contain deployment metadata or secrets
+cappo_inspect.json
