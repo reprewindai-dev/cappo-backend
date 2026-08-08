@@ -15,6 +15,11 @@ from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import engine
 
 router = APIRouter(tags=["health"])
+
+@router.get("/health")
+def healthcheck() -> dict[str, str]:
+    return {"status": "ok"}
+
 _PROBE_TIMEOUT_SECONDS = 2.0
 _WORST_STATE = {"healthy": 0, "degraded": 1, "unconfigured": 1, "unavailable": 2}
 _DATABASE_PROBE_LOCK = asyncio.Lock()

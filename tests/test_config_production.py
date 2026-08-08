@@ -29,6 +29,7 @@ def _prod(**overrides) -> Settings:
         license_admin_key="prod-license-key",
         capi_gatekeeper_public_key="test-capi-public-key",
         approval_token_signing_key="test-approval-token-key",
+        cors_allow_origins="https://api.veklom.com",
     )
     base.update(overrides)
     return Settings(**base)

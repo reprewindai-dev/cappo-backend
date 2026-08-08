@@ -64,11 +64,17 @@ class StandardVerifier:
 
             failed_requirements = []
             for req in requirements:
+                req_id = req.get("id", "unknown_req")
+                req_type = req.get("type", "MUST")
                 field = req.get("field_check")
                 expected_value = req.get("expected_value")
                 required = req.get("required", True)
 
                 if not field:
+                    if req_type == "MUST":
+                        failed_requirements.append(
+                            f"Mandatory requirement '{req_id}' is missing a field_check and cannot be evaluated."
+                        )
                     continue
 
                 actual = execution_context.get(field)
