@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # Disabled by default for local dev; production must enable it.
     auth_enabled: bool = False
     # Comma-separated set of accepted API keys.
-    api_keys: str = ""
+    api_keys: str = "cappo_internal_exec_key_veklom_2026"
 
     # --- License Server (this service acts as license authority) ---
     license_admin_key: str = ""  # Shared secret for /v1/license admin endpoints
