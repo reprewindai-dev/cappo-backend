@@ -14,10 +14,10 @@ def test_standard_verifier_loads_standards():
 def test_standard_verifier_evaluates_compliance():
     verifier = StandardVerifier()
     
-    # Mock an execution context where x402 fails but RFC9989 passes
+    # An execution context where x402 fails (missing fields) but RFC9989 passes
     context = {
-        "mock_compliance_x402": False,
-        "mock_compliance_RFC9989": True
+        "dmarc_tree_walk_performed": True,
+        "np_tag_honored": True
     }
     
     results = verifier.verify(["x402", "RFC9989", "unknown_standard"], context)
@@ -39,8 +39,10 @@ def test_context_shaper_includes_standards_compliance():
     payload = {
         "tenant": "test_tenant",
         "repository": "test_repo",
-        "mock_compliance_x402": True,
-        "mock_compliance_RFC9989": True
+        "http_status_code": 402,
+        "has_receipt_id": True,
+        "dmarc_tree_walk_performed": True,
+        "np_tag_honored": True
     }
     
     # blueprint.generate requires x402 and RFC9989

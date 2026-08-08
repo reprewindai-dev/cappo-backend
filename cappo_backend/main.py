@@ -157,8 +157,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(governance_v2_router)
     app.include_router(license_router)
     app.include_router(legacy_adapter_router)
-    app.include_router(interlink_router, prefix="/api/interlink")
-    app.include_router(interlink_vnp_router, prefix="/api/internal/interlink/vnp", tags=["interlink_vnp"])
+    # app.include_router(interlink_router, prefix="/api/interlink")
+    # app.include_router(interlink_vnp_router, prefix="/api/internal/interlink/vnp", tags=["interlink_vnp"])
     app.include_router(platform_router)
     app.include_router(benchmarks_router)
 

@@ -10,6 +10,7 @@ from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json, verify_signature_ed25519
 from cappo_backend.services.ei_builder import ExecutionSessionTokenVerifier, canonical_body
 from cappo_backend.services.governance_layer import PermissionsCalculator, PolicyCompositionEngine
+from cappo_backend.core.governance.compliance_profiles import get_compliance_profile
 from cappo_backend.services.intelligence_layer import CostAttributionService, RiskScoringService
 from cappo_backend.services.safety_layer import (
     AnomalyDetectionService,
