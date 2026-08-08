@@ -127,7 +127,7 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
             detail={
                 "error": "EXECUTION_IDENTITY_REQUIRED",
                 "code": getattr(exc, "code", "LAW0_EI_INVALID"),
-                "detail": exc.detail,
+                "detail": str(exc),
                 "law0": True,
                 "incident_logged": True,
             },
