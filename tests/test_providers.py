@@ -122,11 +122,12 @@ def test_malformed_response_raises_provider_error():
 
 
 def test_build_executor_defaults_to_echo():
-    assert isinstance(build_executor(Settings()), EchoExecutor)
+    assert isinstance(build_executor(Settings(_env_file=None)), EchoExecutor)
 
 
 def test_build_executor_single_provider():
     settings = Settings(
+        _env_file=None,
         executor_mode="openai",
         llm_provider_name="groq",
         llm_base_url="https://api.groq.com/openai/v1",
@@ -138,8 +139,23 @@ def test_build_executor_single_provider():
     assert [p.name for p in ex._providers] == ["groq"]
 
 
+def test_build_executor_uses_ollama_base_url_env(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://10.42.0.12:11434")
+    settings = Settings(
+        _env_file=None,
+        executor_mode="openai",
+        llm_provider_name="ollama",
+        llm_model="qwen2.5:3b",
+    )
+
+    ex = build_executor(settings)
+
+    assert ex._providers[0].executor._base_url == "http://10.42.0.12:11434/v1"
+
+
 def test_build_executor_with_fallback():
     settings = Settings(
+        _env_file=None,
         executor_mode="openai",
         llm_provider_name="openai",
         llm_base_url="https://api.openai.com/v1",
@@ -162,6 +178,7 @@ def test_factory_executor_fails_over_across_real_clients():
         return httpx.Response(200, json=_ok_response(content="from-fallback"))
 
     settings = Settings(
+        _env_file=None,
         executor_mode="openai",
         llm_provider_name="primary",
         llm_base_url="https://primary.test/v1",
@@ -183,6 +200,7 @@ def test_factory_executor_halts_when_all_real_clients_down():
         return httpx.Response(500, json={"error": "down"})
 
     settings = Settings(
+        _env_file=None,
         executor_mode="openai",
         llm_base_url="https://primary.test/v1",
         llm_fallback_base_url="https://fallback.test/v1",

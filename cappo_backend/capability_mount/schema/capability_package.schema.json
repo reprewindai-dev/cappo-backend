@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Capability Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "family", "title", "purpose", "reads", "writes", "blocked", "outputs", "policy_defaults", "external_send_actions", "suppression_required_actions"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+@v[0-9]+$"},
+    "family": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "purpose": {"type": "string", "minLength": 1},
+    "reads": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "writes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "blocked": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "outputs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "policy_defaults": {"type": "object"},
+    "external_send_actions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "suppression_required_actions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

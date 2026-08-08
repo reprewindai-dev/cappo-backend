@@ -51,7 +51,7 @@ def query_audit_trail(
         },
         "records": [
             {
-                "id": e.event_id,
+                "id": e.log_id,
                 "operation_type": e.operation_type,
                 "workspace_id": e.workspace_id,
                 "run_id": e.run_id,

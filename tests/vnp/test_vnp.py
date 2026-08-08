@@ -77,7 +77,7 @@ def test_vnp_incidents(client: TestClient, db: Session):
     service = VNPIncidentService(db)
 
     # Open Incident
-    incident = service.open_incident(
+    service.open_incident(
         api_id=api.id,
         region="us-east",
         incident_type="Latency Spike",

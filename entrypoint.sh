@@ -1,9 +1,12 @@
 #!/bin/sh
 set -e
 
-# Run database migrations
-echo "Running database migrations..."
-alembic upgrade head
+if [ "${CAPPO_SKIP_MIGRATIONS:-0}" != "1" ]; then
+  echo "Running database migrations..."
+  PYTHONPATH=/app alembic upgrade head
+else
+  echo "Skipping database migrations."
+fi
 
 # Start application
 echo "Starting FastAPI server..."

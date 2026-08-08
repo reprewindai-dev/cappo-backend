@@ -38,7 +38,7 @@ _ALLOWED: dict[RunState, set[RunState]] = {
     RunState.CONTEXTUALIZED: {RunState.GOVERNED, RunState.FAILED},
     RunState.GOVERNED: {RunState.COMMITTED, RunState.FAILED},
     RunState.COMMITTED: {RunState.EI_MINTED, RunState.FAILED},
-    RunState.EI_MINTED: {RunState.EAT_MINTED, RunState.FAILED},
+    RunState.EI_MINTED: {RunState.EAT_MINTED, RunState.ROUTED, RunState.FAILED},
     RunState.EAT_MINTED: {RunState.ROUTED, RunState.FAILED},
     RunState.ROUTED: {RunState.EXECUTING, RunState.FAILED},
     RunState.EXECUTING: {RunState.EXECUTED, RunState.FAILED},

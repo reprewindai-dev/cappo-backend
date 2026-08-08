@@ -1,0 +1,25 @@
+standard: RFC9989
+name: DMARC Core Protocol
+version: "9989"
+description: "Domain-based Message Authentication, Reporting, and Conformance (DMARC)."
+
+requirements:
+  - id: rfc9989-must-tree-walk
+    type: MUST
+    description: "A receiver MUST walk up the DNS hierarchy from the From: address, querying for _dmarc records at each level."
+    field_check: "dmarc_tree_walk_performed"
+    expected_value: true
+    
+  - id: rfc9989-must-honor-np
+    type: MUST
+    description: "The receiver MUST respect the 'np' tag for non-existent subdomains."
+    field_check: "np_tag_honored"
+    expected_value: true
+    
+  - id: rfc9989-should-use-psd
+    type: SHOULD
+    description: "The domain owner SHOULD explicitly declare its role in the hierarchy using the 'psd' tag."
+
+verification:
+  method: "dns_resolution_audit"
+  evidence_required: true

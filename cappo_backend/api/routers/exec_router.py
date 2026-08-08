@@ -24,7 +24,11 @@ from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
-from cappo_backend.services.orchestrator import RunOrchestrator
+from cappo_backend.services.orchestrator import (
+    GovernanceDeniedError,
+    MissingGovernanceDecisionError,
+    RunOrchestrator,
+)
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
 from cappo_backend.services.pgl_adapter import create_pgl_client
 from cappo_backend.services.providers import build_executor
@@ -51,6 +55,8 @@ class ExecRequest(BaseModel):
     action: str | None = None
     directive: str | None = None
     risk_tier: str | None = None
+    security: dict[str, Any] | None = None
+    execution_mode: str = "live"
 
 
 
@@ -65,6 +71,7 @@ class ExecResponse(BaseModel):
     log_id: str | None = None
     run_id: str | None = None
     execution_id: str | None = None
+    links: dict[str, Any] | None = None
 
 
 # ---------- route ----------
@@ -125,9 +132,56 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
                 "incident_logged": True,
             },
         )
+    except MissingGovernanceDecisionError as exc:
+        db.commit()  # persist the FAILED run + audit event
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "CAPPO_GOVERNANCE_DECISION_REQUIRED",
+                "detail": str(exc),
+                "fail_closed": True,
+            },
+        )
+    except GovernanceDeniedError as exc:
+        db.commit()  # persist the FAILED run + audit event
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "CAPPO_GOVERNANCE_DENIED",
+                "detail": str(exc),
+                "fail_closed": True,
+            },
+        )
+
+def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -> str:
+    """Return the configured cAPI verification key or fail closed when needed."""
+    public_key = settings.capi_gatekeeper_public_key.strip()
+    has_security = body.security is not None
+
+    if not has_security:
+        if not settings.capi_external_validation_enabled and not settings.is_production:
+            return ""
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "CAPI_SIGNED_SECURITY_REQUIRED",
+                "detail": "/v1/exec requests must include a signed security envelope.",
+            },
+        )
+
+    if not public_key:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "CAPI_GATEKEEPER_KEY_UNAVAILABLE",
+                "detail": "cAPI Gatekeeper requires CAPI_GATEKEEPER_PUBLIC_KEY to be configured.",
+            },
+        )
+
+    return public_key
 
 @router.post("/exec", response_model=ExecResponse)
-def governed_exec(
+async def governed_exec(
     body: ExecRequest,
     request: Request,
     db: Session = Depends(get_session),
@@ -137,12 +191,38 @@ def governed_exec(
     start = time.monotonic()
     audit = AuditService(db)
 
+    # cAPI PHASE 1: Gatekeeper Enforcement
+    from cappo_backend.core.capi_pipeline import enforce_capi_pipeline, seal_evidence_pack
+    test_only_echo = settings.environment.lower() == "test" and settings.executor_mode == "echo"
+    capi_public_key = "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
+    
+    # We construct the payload expected by cAPI
+    capi_payload = {
+        "action": body.action or "execute",
+        "data": body.model_dump(),
+        "security": body.security
+    }
+    
+    # Run the strict cAPI pipeline (Phases 1-6)
+    if test_only_echo:
+        capi_result = {"evidence_id": "test-only"}
+    else:
+        try:
+            capi_result = await enforce_capi_pipeline(body.pgl_id or "unknown", capi_payload, capi_public_key)
+        except Exception as e:
+            # If security fails, we don't even reach orchestration
+            raise HTTPException(status_code=401, detail=f"cAPI Gatekeeper Reject: {str(e)}")
+
     _check_payment(db, body.workspace_id, body.action_cost_cents)
     orchestrator = _build_orchestrator(db, settings, audit)
     result = _execute_run(orchestrator, body.model_dump(), db)
 
     run = orchestrator.last_run
     db.commit()
+    
+    # cAPI PHASE 7-9: Evidence Sealing
+    if not test_only_echo:
+        await seal_evidence_pack(capi_result["evidence_id"], result)
 
     elapsed_ms = (time.monotonic() - start) * 1000
     return ExecResponse(
@@ -155,4 +235,9 @@ def governed_exec(
         cache_tier=result.get("cache_tier"),
         run_id=run.run_id if run else None,
         execution_id=(run.execution_identity or {}).get("execution_id") if run else None,
+        links={
+            "audit": {"href": f"/api/v1/gpc/audit/{run.run_id if run else 'unknown'}", "method": "GET"},
+            "stake": {"href": "/api/v1/vnp/stake", "method": "POST"},
+            "evidence": {"href": "/api/v1/evidence/verify", "method": "POST"}
+        }
     )

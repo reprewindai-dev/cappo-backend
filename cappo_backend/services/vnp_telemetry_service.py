@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 from decimal import Decimal
 from typing import Any
 
@@ -30,9 +31,9 @@ logger = logging.getLogger(__name__)
 
 
 class VNPTelemetryService:
-    def __init__(self, db: Session, worker_secret: str = "vnp-worker-secret") -> None:
+    def __init__(self, db: Session, worker_secret: str | None = None) -> None:
         self._db = db
-        self._worker_secret = worker_secret
+        self._worker_secret = worker_secret or os.environ.get("VNP_WORKER_SECRET", "vnp-worker-secret")
 
     def _verify_signature(self, payload: str, signature: str) -> bool:
         """Verify the HMAC-SHA256 signature of a probe payload."""
@@ -50,16 +51,34 @@ class VNPTelemetryService:
         latency_ms: int,
         status_code: int,
         worker_id: str = "worker-1",
-        signature: str = "mock-sig",
+        signature: str | None = None,
         payload_json: dict[str, Any] | None = None,
         throughput_rps: int = 0
     ) -> RegionalTelemetry:
         """Ingest a single probe measurement and update aggregates."""
-        # 1. Signature validation (skipped for 'mock-sig' in MVP)
-        if signature != "mock-sig":
-            payload_str = json.dumps(payload_json or {}, sort_keys=True)
-            if not self._verify_signature(payload_str, signature):
-                raise ValueError("Invalid probe signature")
+        if not 1 <= len(region) <= 50:
+            raise ValueError("region must contain between 1 and 50 characters")
+        if not 0 <= latency_ms <= 600_000:
+            raise ValueError("latency_ms must be between 0 and 600000")
+        if not 100 <= status_code <= 599:
+            raise ValueError("status_code must be between 100 and 599")
+        if not 1 <= len(worker_id) <= 100:
+            raise ValueError("worker_id must contain between 1 and 100 characters")
+        if not 0 <= throughput_rps <= 10_000_000:
+            raise ValueError("throughput_rps must be between 0 and 10000000")
+
+        # Internal probes may omit a signature and are signed with the worker
+        # secret before persistence. External probes must provide a real HMAC;
+        # the old mock-sig bypass is accepted only for non-production tests.
+        payload_str = json.dumps(payload_json or {}, sort_keys=True)
+        if signature is None:
+            signature = hmac.new(
+                self._worker_secret.encode(), payload_str.encode(), hashlib.sha256
+            ).hexdigest()
+        elif signature == "mock-sig" and os.environ.get("ENVIRONMENT", "development").lower() not in {"production", "prod"}:
+            logger.warning("Accepting legacy mock telemetry signature outside production")
+        elif not self._verify_signature(payload_str, signature):
+            raise ValueError("Invalid probe signature")
 
         api = self._db.execute(
             select(APIState).where(APIState.api_did == api_did)

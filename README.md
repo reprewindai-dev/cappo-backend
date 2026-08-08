@@ -41,10 +41,38 @@ POST /v1/exec  ──►  RunOrchestrator (single governed entry path, no bypass
 pip install -e ".[dev]"
 alembic upgrade head          # create schema
 pytest                        # run the test suite
-uvicorn cappo_backend.main:app --reload
+uvicorn cappo_backend.main:app --reload --ws none
 ```
 
 Production must set `CAPPO_REQUIRE_PERSISTENT_PGL=true` and a real `EI_SIGNING_KEY`.
+
+Install `.[evm]` only if you need the optional EVM signing / settlement stack.
+
+## Coolify Provider Wiring
+
+CAPPO governed execution uses `/v1/exec` and the OpenAI-compatible provider
+adapter in `cappo_backend/services/providers.py`.
+
+For production Ollama on its own server, set these Coolify variables:
+
+```env
+EXECUTOR_MODE=provider
+LLM_PROVIDER_NAME=ollama
+LLM_MODEL=qwen2.5:3b
+LLM_TIMEOUT_SECONDS=60
+OLLAMA_BASE_URL=http://YOUR_OLLAMA_SERVER_PRIVATE_IP:11434
+```
+
+CAPPO will normalize `OLLAMA_BASE_URL` to the OpenAI-compatible
+`/v1/chat/completions` surface. You can also set the explicit CAPPO URL:
+
+```env
+LLM_BASE_URL=http://YOUR_OLLAMA_SERVER_PRIVATE_IP:11434/v1
+```
+
+Do not use `localhost` in Coolify unless Ollama runs in the same container.
+Inside Docker, `localhost` is the CAPPO container itself, not the host or a
+separate Ollama server.
 
 ## Documentation
 

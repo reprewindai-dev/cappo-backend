@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from cappo_backend.services.canonical import sha256_json
+from cappo_backend.services.promotion_compiler import MaturityState
 
 Effect = Literal["allow", "deny"]
 ConflictSeverity = Literal["low", "medium", "high", "critical"]
@@ -45,6 +46,8 @@ class Policy:
     rate_limit: int | None = None
     trust_required: float | None = None
     requires_approval: bool = False
+    verification_tier: str | None = None
+    maturity_required: MaturityState | None = None
 
     @property
     def allows(self) -> bool:
@@ -74,6 +77,8 @@ class EffectivePolicy:
     trust_required: float
     requires_approval: bool
     immutable: bool
+    verification_tier: str | None
+    maturity_required: MaturityState | None
 
 
 @dataclass
@@ -120,6 +125,8 @@ class PolicyCompositionEngine:
                     "rate_limit": effective.rate_limit,
                     "trust_required": effective.trust_required,
                     "requires_approval": effective.requires_approval,
+                    "verification_tier": effective.verification_tier,
+                    "maturity_required": effective.maturity_required.name if effective.maturity_required else None,
                 }
             ),
         )
@@ -184,6 +191,7 @@ class PolicyCompositionEngine:
         # Most-restrictive numeric obligations.
         rate_limits = [p.rate_limit for p in layers if p.rate_limit is not None]
         trust_required = [p.trust_required for p in layers if p.trust_required is not None]
+        verification_tiers = [p.verification_tier for p in layers if p.verification_tier is not None]
 
         return EffectivePolicy(
             allow=allow,
@@ -191,6 +199,13 @@ class PolicyCompositionEngine:
             trust_required=max(trust_required) if trust_required else 0.0,
             requires_approval=any(p.requires_approval for p in layers),
             immutable=system_policy is not None,
+            verification_tier=max(verification_tiers) if verification_tiers else None,
+            maturity_required=(
+                system_policy.maturity_required if system_policy and system_policy.maturity_required else
+                owner_policy.maturity_required if owner_policy and owner_policy.maturity_required else
+                runtime_policy.maturity_required if runtime_policy and runtime_policy.maturity_required else
+                None
+            ),
         )
 
 
@@ -240,6 +255,8 @@ class TemporalPolicyResolver:
             trust_required=trust_required,
             requires_approval=requires_approval,
             immutable=base.immutable,
+            verification_tier=base.verification_tier,
+            maturity_required=base.maturity_required,
         )
 
     @staticmethod
@@ -338,6 +355,10 @@ class EffectivePermissions:
     trust_current: float
     delegation_depth: int
     evidence_hash: str
+    verification_tier_required: str | None
+    verification_tier_current: str | None
+    maturity_required: MaturityState | None
+    maturity_current: MaturityState | None
 
 
 def effective_permissions(
@@ -345,11 +366,24 @@ def effective_permissions(
     *,
     trust_current: float,
     delegation_depth: int = 0,
+    verification_tier_current: str | None = None,
+    maturity_current: MaturityState | None = None,
 ) -> EffectivePermissions:
     """Resolve the final allow/deny decision for an agent + capability."""
     eff = composition.effective_policy
     meets_trust = trust_current >= eff.trust_required
-    can_execute = composition.is_valid and eff.allow and meets_trust
+    meets_tier = True
+    if eff.verification_tier and verification_tier_current:
+        # String comparison works for Tier0 to Tier5 since lengths match
+        meets_tier = verification_tier_current >= eff.verification_tier
+
+    meets_maturity = True
+    if eff.maturity_required and maturity_current:
+        meets_maturity = maturity_current.value >= eff.maturity_required.value
+    elif eff.maturity_required and not maturity_current:
+        meets_maturity = False
+
+    can_execute = composition.is_valid and eff.allow and meets_trust and meets_tier and meets_maturity
 
     return EffectivePermissions(
         agent_id=composition.agent_id,
@@ -360,12 +394,18 @@ def effective_permissions(
         trust_required=eff.trust_required,
         trust_current=trust_current,
         delegation_depth=delegation_depth,
+        verification_tier_required=eff.verification_tier,
+        verification_tier_current=verification_tier_current,
+        maturity_required=eff.maturity_required,
+        maturity_current=maturity_current,
         evidence_hash=sha256_json(
             {
                 "agent": composition.agent_id,
                 "cap": composition.capability_id,
                 "can_execute": can_execute,
                 "trust": trust_current,
+                "tier": verification_tier_current,
+                "maturity": maturity_current.name if maturity_current else None,
             }
         ),
     )

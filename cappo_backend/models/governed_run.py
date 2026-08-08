@@ -35,6 +35,7 @@ class GovernedRun(Base):
     delegation_depth: Mapped[int] = mapped_column(Integer, default=0)
 
     state: Mapped[str] = mapped_column(String)
+    execution_mode: Mapped[str] = mapped_column(String, default="live")
 
     # Governance context (set by govern_run, never status-derived).
     governance_decision: Mapped[str | None] = mapped_column(String, nullable=True)

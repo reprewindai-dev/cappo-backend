@@ -1,125 +1,25 @@
-services:
-  db:
-    image: postgres:15-alpine
-    container_name: cappo-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
-      POSTGRES_DB: ${POSTGRES_DB:-cappodb}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - cappo-network
+version: '3.8'
 
-  web:
-    build:
+services:
+  cappo-backend:
+    build: 
       context: .
       dockerfile: Dockerfile
-    container_name: cappo-web
-    env_file:
-      - .env
+    image: cappo-backend:latest
+    container_name: cappo-backend-node
+    restart: unless-stopped
     ports:
       - "8002:8002"
       - "162:162/udp" # SNMP Traps
       - "502:502/tcp" # Modbus TCP
     environment:
-      - ENVIRONMENT=production
-      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@db:5432/${POSTGRES_DB:-cappodb}
-      - REDIS_URL=redis://redis:6379/0
-      - CACHE_ENABLED=true
-      - CACHE_WARM_BACKEND=redis
-      - EXECUTOR_MODE=openai
-      - LLM_BASE_URL=http://ollama:11434/v1
-      - LLM_MODEL=qwen2.5:0.5b
-      - LLM_API_KEY=not-needed-for-ollama
-      - CAPPO_REQUIRE_PERSISTENT_PGL=true
-      - EI_SIGNING_KEY=${EI_SIGNING_KEY:-change-me-to-something-secure-in-production-1234}
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      ollama:
-        condition: service_healthy
-    # TCP optimization: reduce MSS for tunneled/cloud environments
-    # Prevents fragmentation when behind VPNs, WireGuard, or cloud VPCs
-    sysctls:
-      - net.ipv4.tcp_mtu_probing=1
-      - net.ipv4.tcp_base_mss=1024
-      - net.ipv4.tcp_timestamps=1
-      - net.ipv4.tcp_tw_reuse=1
+      # Using the real DB
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@llwfyzhnft87bz6brddiax1z:5432/veklom
+      - HOST=0.0.0.0
+      - PORT=8000
     networks:
-      - cappo-network
+      - coolify
 
-  redis:
-    image: redis:7-alpine
-    container_name: cappo-redis
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - cappo-network
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: cappo-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    # Pre-pull the model on startup (creates the volume mount if needed)
-    entrypoint: >
-      sh -c "ollama serve &
-             sleep 5 &&
-             ollama pull qwen2.5:0.5b || true &&
-             wait"
-    healthcheck:
-      test: ["CMD-SHELL", "ollama --version || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    # GPU support (uncomment if nvidia-docker is available)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    networks:
-      - cappo-network
-
-  facilitator:
-    image: node:20-alpine
-    container_name: cappo-facilitator
-    command: sh -c "npm install -g local-x402-facilitator && local-x402-facilitator -p 3005"
-    ports:
-      - "3005:3005"
-    networks:
-      - cappo-network
-
-volumes:
-  postgres_data:
-  redis_data:
-  ollama_data:
-
-# Explicit network with MTU setting for MSS compatibility
-# 1450 MTU = 1410 MSS (allows for cloud VPC/WG overhead without fragmentation)
 networks:
-  cappo-network:
-    driver: bridge
-    driver_opts:
-      com.docker.network.driver.mtu: 1450
+  coolify:
+    external: True

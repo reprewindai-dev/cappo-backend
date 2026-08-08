@@ -25,8 +25,8 @@ jobs:
       - name: Install dev deps
         run: pip install ruff
 
-      - name: Ruff lint (exclude vendored dirs)
-        run: ruff check . --exclude tmp_x402,migrations/versions --ignore E402,E701,F401,F841,F811
+      - name: Ruff lint (exclude generated migrations and vendored code)
+        run: ruff check . --exclude tmp_x402,migrations/versions
 
   # ── 2. Build Docker image ───────────────────────────────────────────────────
   build:
@@ -42,9 +42,10 @@ jobs:
       - name: Validate imports inside container
         run: |
           docker run --rm \
-            -e DATABASE_URL="postgresql+asyncpg://test:test@localhost/test" \
+            -e DATABASE_URL="postgresql+psycopg2://test:test@localhost/test" \
             -e SECRET_KEY="ci-test-secret-key" \
             -e ENVIRONMENT="test" \
+            -e CAPPO_SKIP_MIGRATIONS="1" \
             cappo-backend-ci:${{ github.sha }} \
             python3 -c "
           import fastapi, uvicorn, sqlalchemy, pydantic, httpx, cryptography
@@ -73,7 +74,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: "postgresql+asyncpg://cappo:cappo_ci@localhost:5432/cappo_test"
+      DATABASE_URL: "postgresql+psycopg2://cappo:cappo_ci@localhost:5432/cappo_test"
       SECRET_KEY: "ci-test-secret-key"
       ENVIRONMENT: "test"
 
@@ -91,7 +92,7 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest -q --tb=short
+        run: pytest -q --tb=short --maxfail=1
 
   # ── 4. Deploy ───────────────────────────────────────────────────────────────
   deploy-prod:
@@ -116,12 +117,21 @@ jobs:
         run: |
           ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 "
             set -e
+            SRC=/data/coolify/applications/cappo-backend
             APP=/data/coolify/applications/yen2fecq8burtsgqrm2b988e
+            TAG=yen2fecq8burtsgqrm2b988e:${{ github.sha }}
+
+            cd \$SRC
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+            docker build -t \$TAG .
+
             cd \$APP
-            git pull origin main
-            docker build -t yen2fecq8burtsgqrm2b988e:latest .
-            sed -i \"s/image: .*/image: 'yen2fecq8burtsgqrm2b988e:latest'/\" docker-compose.yaml
-            docker compose -f docker-compose.yaml up -d
+            cp docker-compose.yaml docker-compose.yaml.pre-${{ github.sha }}
+            sed -i \"s#^\\([[:space:]]*\\)image: .*#\\1image: '\$TAG'#\" docker-compose.yaml
+            docker compose -f docker-compose.yaml config >/tmp/cappo-compose-config.out
+            docker compose -f docker-compose.yaml up -d --force-recreate
             echo 'Deployment complete for cappo-backend'
           "
 

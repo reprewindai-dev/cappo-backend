@@ -1,9 +1,9 @@
-"""RunOrchestrator — the governed execution pipeline.
+"""RunOrchestrator - the governed execution pipeline.
 
-Forward-constructed from the orchestrator lineage seeds (migration note §3). Owns
+Forward-constructed from the orchestrator lineage seeds (migration note -3). Owns
 the run **before** any side effect: no post-hoc derivation, no implicit ALLOW.
 
-Method sequence (EI Plan §Mint point):
+Method sequence (EI Plan -Mint point):
     create_run → compile_run → contextualize_run → govern_run → commit_run
         → mint_execution_identity → route_run → execute_run → attest_run
 
@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.governed_run import GovernedRun
-from cappo_backend.security.mcp_gateway import MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
@@ -29,6 +28,19 @@ from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.executor import Executor
 from cappo_backend.services.pgl_client import PGLClient, PostCertificateParams, PreCertificateParams
 from cappo_backend.services.run_state import RunState, assert_transition
+
+
+class MissingGovernanceDecisionError(RuntimeError):
+    """Raised when a run reaches governance without an explicit decision."""
+
+
+class GovernanceDeniedError(RuntimeError):
+    """Raised when CAPPO explicitly vetoes a governed run."""
+
+
+_ALLOW_DIRECTIVES = {"ALLOW", "ALLOW_WITH_AUDIT"}
+_DENY_DIRECTIVES = {"DENY", "DENIED"}
+_VALID_DIRECTIVES = _ALLOW_DIRECTIVES | _DENY_DIRECTIVES
 
 
 class RunOrchestrator:
@@ -46,9 +58,8 @@ class RunOrchestrator:
         Execution-layer adapter (real provider or echo stub).
     audit : AuditService
         Hash-chained audit service.
-    gateway : MCPGateway
-        LAW 0 enforcement boundary. Validated *before* any side effect; a missing
-        gateway means enforcement is skipped (tests/dev only).
+    audit : AuditService
+        Hash-chained audit service.
     eat_builder : EATBuilder | None
         EAT builder for minting Execution Authorization Tokens. When present, the
         orchestrator mints an EAT after the EI and stores it on the run.
@@ -63,20 +74,20 @@ class RunOrchestrator:
         builder: ExecutionIdentityBuilder,
         executor: Executor,
         audit: AuditService,
-        gateway: MCPGateway | None = None,
         eat_builder: EATBuilder | None = None,
         issuer: str = "cappo-orchestrator",
         genome_service: Any | None = None,
+        gateway: Any | None = None,
     ) -> None:
         self._db = db
         self._pgl = pgl
         self._builder = builder
         self._executor = executor
         self._audit = audit
-        self._gateway = gateway
         self._eat_builder = eat_builder
         self._issuer = issuer
         self._genome_service = genome_service
+        self._gateway = gateway
         self._last_run: GovernedRun | None = None
 
     @property
@@ -120,19 +131,15 @@ class RunOrchestrator:
 
     def validate_with_capi(self, run: GovernedRun) -> None:
         """Query the central cAPI execution endpoint to validate the run."""
-        import os
-        import sys
-
         import httpx
 
         from cappo_backend.config import get_settings
         
         settings = get_settings()
-        
-        # Skip validation during pytest
-        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+
+        if not settings.capi_external_validation_enabled:
             return
-            
+
         base_url = settings.veklom_byos_backend_url
         if not base_url:
             return
@@ -224,6 +231,7 @@ class RunOrchestrator:
             },
             scope=request.get("scope") or {"tools": ["llm.exec"]},
             approved_budget_cents=int(request.get("budget_approved_cents", 0)),
+            execution_mode=request.get("execution_mode", "live"),
         )
         self._db.add(run)
         self._db.flush()
@@ -250,9 +258,12 @@ class RunOrchestrator:
         run.v4_decision = {"directive": directive, "risk_tier": risk_tier}
         run.seked_state = {"directive": directive}
         self._transition(run, RunState.GOVERNED)
+        if directive in _DENY_DIRECTIVES:
+            raise GovernanceDeniedError(f"governance directive {directive!r} vetoed execution")
 
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
+        governance_decision = _require_governance_decision(run)
         params = PreCertificateParams(
             run_id=run.run_id,
             workspace_id=run.workspace_id,
@@ -261,7 +272,7 @@ class RunOrchestrator:
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
-            governance_decision=run.governance_decision or "ALLOW",
+            governance_decision=governance_decision,
             risk_tier=run.risk_tier or "standard",
             approved_budget_cents=run.approved_budget_cents,
             reserve_cents=run.reserve_cents,
@@ -276,7 +287,8 @@ class RunOrchestrator:
         self._transition(run, RunState.COMMITTED)
 
     def mint_execution_identity(self, run: GovernedRun) -> None:
-        """Mint ``ExecutionIdentityV1`` — strictly after commit, before route."""
+        """Mint ``ExecutionIdentityV1`` - strictly after commit, before route."""
+        governance_decision = _require_governance_decision(run)
         ei_inputs: dict[str, Any] = {
             "pgl_pre_certificate_id": run.pgl_identity.get("pre_execution_certificate_id", ""),
             "genome_hash": run.hashes.get("genome_hash", ""),
@@ -286,7 +298,7 @@ class RunOrchestrator:
             "delegation_chain_hash": run.hashes.get("delegation_chain_hash"),
             "input_hash": run.hashes.get("input_hash"),
             "seked_attestation_hash": sha256_json(run.seked_state),
-            "directive": (run.v4_decision or {}).get("directive", "ALLOW"),
+            "directive": governance_decision,
             "risk_tier": run.risk_tier or "standard",
             "budget_approved_cents": run.approved_budget_cents,
             "budget_reserve_cents": run.reserve_cents,
@@ -322,31 +334,34 @@ class RunOrchestrator:
         self._transition(run, RunState.ROUTED)
 
     def mint_eat(self, run: GovernedRun) -> None:
-        """Mint Execution Authorization Token — strictly after EI, before route.
-
-        The EAT is an authorization envelope around the already-minted EI. It grants
-        the Edge MCP permission to execute exactly one governed operation. When no
-        ``eat_builder`` is configured, this step is a no-op (dev/test shortcut).
-        """
-        if self._eat_builder is None:
-            self._transition(run, RunState.EAT_MINTED)
+        """Mint Execution Authorization Token - strictly after EI, before route."""
+        if self._gateway is None and self._eat_builder is None:
             return
-
-        ei = run.execution_identity
-        if ei is None:
-            raise ValueError("Cannot mint EAT without a minted ExecutionIdentityV1")
-
+            
         request = run.request_payload or {}
-        agent_id = request.get("agent_id", run.run_id)
-        certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
+        ei = run.execution_identity
+        if not ei:
+            raise ValueError("Cannot mint EAT without an Execution Identity.")
+            
+        agent_id = request.get("agent", {}).get("id", "unknown")
+        certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "unknown")
 
-        eat = self._eat_builder.build(
-            execution_identity=ei,
-            agent_id=agent_id,
-            certificate_id=certificate_id,
-            trust_score=float(request.get("trust_score", 75.0)),
-            risk_tier=run.risk_tier or "standard",
-        )
+        if self._eat_builder is not None:
+            eat = self._eat_builder.build(
+                execution_identity=ei,
+                agent_id=agent_id,
+                certificate_id=certificate_id,
+                trust_score=float(request.get("trust_score", 75.0)),
+                risk_tier=run.risk_tier or "standard",
+            )
+        else:
+            eat = self._gateway.mint_eat(
+                execution_identity=ei,
+                agent_id=agent_id,
+                certificate_id=certificate_id,
+                trust_score=float(request.get("trust_score", 75.0)),
+                risk_tier=run.risk_tier or "standard",
+            )
         run.eat = eat
         self._db.flush()
 
@@ -370,7 +385,7 @@ class RunOrchestrator:
         The gateway check fires *before* the side effect (the executor call):
         an invalid/missing EI raises ``EIValidationError`` while the run is still
         ROUTED, so ``run_governed`` transitions it to FAILED and no side effect
-        occurs. This is the enforcement contract from the EI Plan §Enforcement
+        occurs. This is the enforcement contract from the EI Plan -Enforcement
         scope ("before any side-effecting tool call").
         """
         self._enforce_law0(run)
@@ -398,13 +413,14 @@ class RunOrchestrator:
 
         The minted ``ExecutionIdentityV1`` is signed *before* execution, so it
         cannot itself carry the post-certificate id. The forward link is recorded
-        on the ``execution_identities`` row and on ``run.pgl_identity`` instead —
+        on the ``execution_identities`` row and on ``run.pgl_identity`` instead -
         the signed identity object is never mutated post-issuance.
         """
         result = run.result_payload or {}
         output_hash = sha256_json(result)
         outcome_hash = sha256_json({"state": RunState.EXECUTED.value, "result": result})
         pre_cert_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
+        governance_decision = _require_governance_decision(run)
 
         params = PostCertificateParams(
             pre_certificate_id=pre_cert_id,
@@ -415,7 +431,7 @@ class RunOrchestrator:
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
-            governance_decision=run.governance_decision or "ALLOW",
+            governance_decision=governance_decision,
             risk_tier=run.risk_tier or "standard",
             output_hash=output_hash,
             outcome_hash=outcome_hash,
@@ -466,3 +482,23 @@ def _default_action(scope: dict[str, Any] | None) -> str:
     """Derive the action to enforce from the run scope (first allowed tool)."""
     tools = (scope or {}).get("tools") or []
     return tools[0] if tools else ""
+
+
+def _normalize_directive(raw: Any) -> str:
+    if not isinstance(raw, str) or not raw.strip():
+        raise MissingGovernanceDecisionError(
+            "CAPPO governance directive is required; missing decisions never default to ALLOW."
+        )
+    directive = raw.strip().upper()
+    if directive not in _VALID_DIRECTIVES:
+        raise MissingGovernanceDecisionError(
+            f"Unsupported CAPPO governance directive {raw!r}; expected one of {sorted(_VALID_DIRECTIVES)}."
+        )
+    return directive
+
+
+def _require_governance_decision(run: GovernedRun) -> str:
+    directive = _normalize_directive(run.governance_decision)
+    if directive not in _ALLOW_DIRECTIVES:
+        raise GovernanceDeniedError(f"governance directive {directive!r} does not permit execution")
+    return directive

@@ -33,6 +33,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 
+
 def get_session() -> Iterator[Session]:
     """FastAPI dependency that yields a database session."""
     session = SessionLocal()

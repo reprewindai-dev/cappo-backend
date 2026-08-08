@@ -28,6 +28,7 @@ def auth_settings() -> Settings:
         environment="test",
         auth_enabled=True,
         api_keys=_KEY,
+        executor_mode="echo",
     )
 
 
@@ -58,7 +59,9 @@ class TestAuthEnabled:
 
     def test_exec_allowed_with_valid_key(self, auth_client: TestClient) -> None:
         resp = auth_client.post(
-            "/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id"}, headers={"X-API-Key": _KEY}
+            "/v1/exec",
+            json={"prompt": "hi", "pgl_id": "test-user-id", "directive": "ALLOW"},
+            headers={"X-API-Key": _KEY},
         )
         assert resp.status_code == 200
         assert resp.json()["response"] == "echo: hi"
@@ -74,5 +77,5 @@ class TestAuthEnabled:
 class TestAuthDisabledByDefault:
     def test_exec_open_when_auth_disabled(self, client: TestClient) -> None:
         # Default client fixture uses auth_enabled=False.
-        resp = client.post("/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id"})
+        resp = client.post("/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id", "directive": "ALLOW"})
         assert resp.status_code == 200

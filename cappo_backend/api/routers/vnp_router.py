@@ -5,18 +5,23 @@ Exposes the VNP metrics, registry, proxy gateway, and leaderboard.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import get_session
 from cappo_backend.models.vnp_models import (
     APIState,
     PerformanceLeaderboard,
+    ProbeEvent,
     RegionalTelemetry,
     RouteSnapshot,
     VNPIncident,
@@ -28,16 +33,101 @@ from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 router = APIRouter(prefix="/v1/vnp", tags=["VNP Protocol"])
 
 
+class VNPProxyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, Any] = Field(default_factory=dict, max_length=64)
+
+    @field_validator("payload")
+    @classmethod
+    def bound_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(str(value).encode("utf-8")) > 64 * 1024:
+            raise ValueError("VNP proxy payload exceeds the 64 KiB limit")
+        return value
+
+
+class VNPApiRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    endpoint: str = Field(min_length=1, max_length=2048)
+    version: str = Field(default="v1.0.0", min_length=1, max_length=50)
+    x402Ready: bool = False
+
+
+VNP_VERIFICATION_STACK = [
+    {"section": "Physical measurements", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
+    {"section": "Signed telemetry", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
+    {"section": "Route beacons", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
+    {"section": "Robust scoring", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
+    {"section": "x402 settlement evidence", "status": "Live", "backend": "VEKLOM-BYOS-backend"},
+    {"section": "PGL audit trails", "status": "Connected", "backend": "cappo-backend"},
+    {"section": "Agent/runtime enforcement", "status": "Connected", "backend": "cappo-backend"},
+]
+
+CANONICAL_VNP_REGIONS = ["us-east", "us-west", "eu-west", "ap-southeast", "ap-northeast"]
+
+
+@router.get("/methodology")
+async def get_vnp_methodology() -> dict[str, Any]:
+    """CAPPO-backed VNP v1.0 runtime enforcement manifest."""
+    return {
+        "methodology": "VNP Methodology v1.0",
+        "tagline": "Cryptographic API telemetry for the machine-to-machine economy",
+        "repo": "reprewindai-dev/cappo-backend",
+        "verification_stack": VNP_VERIFICATION_STACK,
+        "runtime": {
+            "status": "Connected",
+            "access": "Auth Required",
+            "endpoint": "/v1/exec",
+            "execution_identity": "ExecutionIdentityV1",
+            "pgl_certificates": "Connected",
+            "law0_enforcement": "Connected",
+        },
+    }
+
+
 @router.get("/metrics")
 async def get_vnp_metrics(db: Session = Depends(get_session)) -> dict[str, Any]:
-    """Unified Real-Time Live metrics query."""
-    apis = db.execute(select(APIState)).scalars().all()
+    """Unified live metrics query backed by stored VNP registry and telemetry."""
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    try:
+        apis = db.execute(select(APIState).order_by(APIState.api_did.asc())).scalars().all()
+        telemetry_rows = db.execute(
+            select(RegionalTelemetry).order_by(
+                RegionalTelemetry.region.asc(),
+                RegionalTelemetry.measured_at.desc(),
+            )
+        ).scalars().all()
+        probe_count = len(db.execute(select(ProbeEvent.id)).scalars().all())
+    except SQLAlchemyError:
+        db.rollback()
+        return {
+            "timestamp": timestamp,
+            "protocolVersion": "VNP Methodology v1.0",
+            "proofState": "degraded",
+            "proofSignal": "VNP telemetry store unavailable",
+            "trustBeaconMerkle": None,
+            "apis": [],
+            "activeNodesCount": 0,
+            "expectedNodesCount": len(CANONICAL_VNP_REGIONS),
+            "nodesDistribution": {region: 0 for region in CANONICAL_VNP_REGIONS},
+            "total_probes_recorded": 0,
+            "total_slashed_minor": 0,
+            "active_validators": 0,
+            "avg_composite_score": 0,
+        }
+
+    telemetry_by_api: dict[uuid.UUID, list[RegionalTelemetry]] = {}
+    region_api_ids: dict[str, set[uuid.UUID]] = {}
+    for row in telemetry_rows:
+        telemetry_by_api.setdefault(row.api_id, []).append(row)
+        region_api_ids.setdefault(row.region, set()).add(row.api_id)
 
     api_list = []
     for api in apis:
-        regions = db.execute(
-            select(RegionalTelemetry).where(RegionalTelemetry.api_id == api.id)
-        ).scalars().all()
+        regions = telemetry_by_api.get(api.id, [])
 
         region_map = {
             r.region: {
@@ -46,8 +136,10 @@ async def get_vnp_metrics(db: Session = Depends(get_session)) -> dict[str, Any]:
                 "p99": r.p99_latency_ms,
                 "errorRate": float(r.error_rate_percent),
                 "uptime": float(r.uptime_percent),
-                "throughput": r.throughput_rps
-            } for r in regions
+                "throughput": r.throughput_rps,
+                "measuredAt": r.measured_at.isoformat(),
+            }
+            for r in regions
         }
 
         api_list.append({
@@ -58,38 +150,55 @@ async def get_vnp_metrics(db: Session = Depends(get_session)) -> dict[str, Any]:
             "compositeScore": float(api.composite_score),
             "x402Ready": api.x402_compliant,
             "stabilityRating": api.stability_rating,
-            "regions": region_map
+            "lastMeasured": api.last_measured.isoformat(),
+            "regions": region_map,
         })
 
+    nodes_distribution = {
+        region: len(region_api_ids.get(region, set()))
+        for region in CANONICAL_VNP_REGIONS
+    }
+    active_node_count = sum(1 for count in nodes_distribution.values() if count > 0)
+    avg_composite_score = (
+        round(sum(float(api.composite_score) for api in apis) / len(apis), 2)
+        if apis
+        else 0
+    )
+    proof_state = "verified" if telemetry_rows else "needs_proof"
+    proof_signal = (
+        f"{len(telemetry_rows)} regional telemetry rows and {probe_count} probe events recorded"
+        if telemetry_rows
+        else "No VNP regional telemetry rows recorded"
+    )
+    trust_beacon = None
+
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "protocolVersion": "VNP v0.1.0-Locked",
-        "trustBeaconMerkle": "0x" + uuid.uuid4().hex, # Mock Merkle anchor
+        "timestamp": timestamp,
+        "protocolVersion": "VNP Methodology v1.0",
+        "proofState": proof_state,
+        "proofSignal": proof_signal,
+        "trustBeaconMerkle": trust_beacon,
         "apis": api_list,
-        "activeNodesCount": len(apis) + 16, # Mocking additional nodes
-        "nodesDistribution": {
-            "us-east": 4,
-            "us-west": 3,
-            "eu-west": 4,
-            "ap-southeast": 2,
-            "ap-northeast": 3
-        }
+        "activeNodesCount": active_node_count,
+        "expectedNodesCount": len(CANONICAL_VNP_REGIONS),
+        "nodesDistribution": nodes_distribution,
+        "total_probes_recorded": probe_count,
+        "total_slashed_minor": 0,
+        "active_validators": 0,
+        "avg_composite_score": avg_composite_score,
     }
 
 
 @router.post("/apis")
 async def register_vnp_api(
-    request: dict[str, Any],
+    request: VNPApiRegistrationRequest,
     db: Session = Depends(get_session)
 ) -> dict[str, Any]:
     """Register a new live monitored API node."""
-    name = request.get("name")
-    endpoint = request.get("endpoint")
-    version = request.get("version", "v1.0.0")
-    x402_compliant = request.get("x402Ready", False)
-
-    if not name or not endpoint:
-        raise HTTPException(status_code=400, detail="Missing required properties 'name' or 'endpoint'.")
+    name = request.name
+    endpoint = request.endpoint
+    version = request.version
+    x402_compliant = request.x402Ready
 
     api_did = f"did:vnp:api:{name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}"
 
@@ -105,44 +214,41 @@ async def register_vnp_api(
     db.add(api)
     db.flush()
 
-    # Initial telemetry seeding
-    telemetry_service = VNPTelemetryService(db)
-    telemetry_service.ingest_probe(api_did, "us-east", 100, 200)
-
     return {
         "id": api_did,
         "name": api.name,
         "endpoint": api.endpoint,
         "version": api.version,
-        "compositeScore": float(api.composite_score)
+        "compositeScore": float(api.composite_score),
+        "proofState": "unmeasured",
+        "proofSignal": "No signed telemetry has been received for this API",
     }
 
 
 @router.post("/proxy/{api_did}")
 async def vnp_proxy_gateway(
     api_did: str,
-    request: dict[str, Any],
-    x_vnp_tenant: str | None = Header(None),
+    request: VNPProxyRequest,
+    x_vnp_tenant: str = Header(..., min_length=1, max_length=100),
     db: Session = Depends(get_session)
 ) -> dict[str, Any]:
     """Secure tunnel proxy gateway entry point."""
     telemetry_service = VNPTelemetryService(db)
     proxy_service = VNPProxyService(db, telemetry_service)
 
-    payload = request.get("payload", {})
-    tenant_name = x_vnp_tenant or "Global Public Tenant"
+    tenant_name = x_vnp_tenant
 
     try:
         result = await proxy_service.proxy_request(
             api_did=api_did,
-            payload=payload,
+            payload=request.payload,
             tenant_name=tenant_name
         )
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=502, detail="VNP proxy dependency failed")
 
 
 @router.get("/leaderboard")
