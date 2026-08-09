@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   cappo-backend:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     image: cappo-backend:latest
@@ -13,13 +13,14 @@ services:
       - "162:162/udp" # SNMP Traps
       - "502:502/tcp" # Modbus TCP
     environment:
-      # Using the real DB
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@llwfyzhnft87bz6brddiax1z:5432/veklom
-      - HOST=0.0.0.0
-      - PORT=8000
+      # Deployment must inject the database DSN. Never commit credentials or
+      # concrete private database topology into the repository.
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set by deployment}
+      HOST: 0.0.0.0
+      PORT: "8002"
     networks:
       - coolify
 
 networks:
   coolify:
-    external: True
+    external: true
