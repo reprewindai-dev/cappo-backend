@@ -67,7 +67,6 @@ class MountRegistry:
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
         self.mounter = Mounter()
-        self._records: dict[str, MountRecord] = {}
 
     def register_package(self, package: CapabilityPackage) -> None:
         self.packages[package.id] = package
@@ -157,19 +156,30 @@ class MountRegistry:
             )
         )
         db.commit()
-        record = MountRecord(mount, token, ExecutionBinding(token, InMemoryAuditSink()))
-        self._records[mount.id] = record
-        return record, anchor, "mounted"
+        return (
+            MountRecord(mount, token, ExecutionBinding(token, InMemoryAuditSink())),
+            anchor,
+            "mounted",
+        )
 
     def get(self, mount_id: str) -> MountRecord | None:
-        if mount_id in self._records:
-            return self._records[mount_id]
         row = self._row(mount_id)
         if row is None:
             return None
-        record = self._records.get(mount_id) or self._record(row)
-        self._records[mount_id] = record
-        return record
+        return self._record(row)
+
+    def status(self, mount_id: str) -> tuple[MountRecord | None, str]:
+        row = self._row(mount_id)
+        if row is None:
+            return None, "unknown_mount"
+        record = self._record(row)
+        if row.terminated:
+            state = "terminated"
+        elif _utc(row.expires_at) <= utc_now():
+            state = "expired"
+        else:
+            state = "mounted"
+        return record, state
 
     def evaluate(
         self,
@@ -194,7 +204,7 @@ class MountRegistry:
             )
             db.commit()
             return Decision.DENY, "unknown_mount", anchor, None
-        record = self._records.get(mount_id) or self._record(row)
+        record = self._record(row)
         if row.terminated:
             reason = "terminated"
         elif row.nonce_consumed or token_id != row.token_id or nonce != row.token_nonce:
@@ -332,3 +342,7 @@ def load_packages_from_json(raw: str | None) -> list[CapabilityPackage]:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)

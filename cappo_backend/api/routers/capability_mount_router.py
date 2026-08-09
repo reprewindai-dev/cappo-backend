@@ -12,6 +12,7 @@ from cappo_backend.capability_mount.models import (
     CapabilityPackage,
     Decision,
     EphemeralScopedToken,
+    LifecycleState,
     Mount,
     MountPolicy,
     MountScope,
@@ -100,7 +101,6 @@ def get_registry(request: Request, db: Session = Depends(get_session)) -> MountR
         anchor = AuditPGLAnchor(db, request.app.state.settings)
     registry = MountRegistry(db=db, anchor=anchor)
     registry.packages.update(shared.packages)
-    registry._records = shared._records  # noqa: SLF001
     return registry
 
 
@@ -120,7 +120,6 @@ def list_packages(registry: MountRegistry = Depends(get_registry)) -> list[Capab
 @router.post("/mounts", response_model=MountResponse)
 def request_mount(
     body: MountRequest,
-    request: Request,
     registry: MountRegistry = Depends(get_registry),
 ) -> MountResponse:
     scope = body.execution_scope.model_copy(
@@ -144,7 +143,6 @@ def request_mount(
             reason=reason,
             anchoring=anchor_payload(anchor),
         )
-    request.app.state.mount_registry._records[record.mount.id] = record  # noqa: SLF001
     return MountResponse(
         decision=Decision.ALLOW,
         reason=reason,
@@ -159,16 +157,29 @@ def mount_status(
     mount_id: str,
     registry: MountRegistry = Depends(get_registry),
 ) -> MountResponse:
-    record = registry.get(mount_id)
+    record, state = registry.status(mount_id)
     if record is None:
         return MountResponse(
             decision=Decision.DENY,
             reason="unknown_mount",
             anchoring={"status": "not_applicable"},
         )
+    if state != "mounted":
+        return MountResponse(
+            decision=Decision.DENY,
+            reason=state,
+            anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
+            mount=record.mount.model_copy(
+                update={
+                    "lifecycle": record.mount.lifecycle.model_copy(
+                        update={"state": LifecycleState(state)}
+                    )
+                }
+            ),
+        )
     return MountResponse(
         decision=Decision.ALLOW,
-        reason="mounted",
+        reason=state,
         anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
         mount=record.mount,
         token=record.token,

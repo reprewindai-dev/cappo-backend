@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import time
 
 from fastapi.testclient import TestClient
 
@@ -39,7 +39,6 @@ def prepare(client: TestClient, anchor: ConfirmedAnchor | None = None) -> Confir
     registry = client.app.state.mount_registry
     registry.register_package(package())
     registry.anchor = selected
-    registry._anchor_bound = True
     return selected
 
 
@@ -98,6 +97,10 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
         json={"reason": "explicit_terminate"},
     )
     assert terminated.json()["decision"] == "allow"
+    status_after_terminate = client.get(f"/v1/capability/mounts/{mount_id}")
+    assert status_after_terminate.json()["decision"] == "deny"
+    assert status_after_terminate.json()["reason"] == "terminated"
+    assert status_after_terminate.json()["token"] is None
     after = client.post(
         f"/v1/capability/mounts/{mount_id}/actions",
         json={
@@ -151,25 +154,12 @@ def test_sequential_mounts_use_live_sessions(client: TestClient) -> None:
     assert [event["event_type"] for event in anchor.events] == ["mount", "mount"]
 
 
-def test_expired_mount_denies(client: TestClient) -> None:
-    anchor = prepare(client)
+def test_expired_mount_status_is_not_live(client: TestClient) -> None:
+    prepare(client)
     response = client.post("/v1/capability/mounts", json=mount_payload(1))
     body = response.json()
-    record = client.app.state.mount_registry.get(body["mount"]["id"])
-    assert record is not None
-    now = datetime.now(timezone.utc)
-    record.token = record.token.model_copy(
-        update={"issued_at": now - timedelta(seconds=2), "expires_at": now - timedelta(seconds=1)}
-    )
-    record.binding.token = record.token
-    denied = client.post(
-        f"/v1/capability/mounts/{body['mount']['id']}/actions",
-        json={
-            "token_id": body["token"]["token_id"],
-            "nonce": body["token"]["nonce"],
-            "action": "contact.read",
-        },
-    )
-    assert denied.json()["decision"] == "deny"
-    assert denied.json()["reason"] == "token_expired"
-    assert anchor.events[-1]["decision"] == "deny"
+    time.sleep(1.1)
+    status = client.get(f"/v1/capability/mounts/{body['mount']['id']}")
+    assert status.json()["decision"] == "deny"
+    assert status.json()["reason"] == "expired"
+    assert status.json()["token"] is None

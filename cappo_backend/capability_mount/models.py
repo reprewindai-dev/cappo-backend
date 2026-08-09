@@ -24,6 +24,7 @@ class TokenType(str, Enum):
 
 class LifecycleState(str, Enum):
     MOUNTED = "mounted"
+    EXPIRED = "expired"
     TERMINATED = "terminated"
 
 
