@@ -45,34 +45,7 @@ from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
 from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
-
-
-async def vnp_prober_loop() -> None:
-    """Optional local VNP prober loop; production uses external node telemetry."""
-    while True:
-        try:
-            with SessionLocal() as db:
-                import random
-
-                from sqlalchemy import select
-
-                from cappo_backend.models.vnp_models import APIState
-
-                apis = db.execute(select(APIState)).scalars().all()
-                telemetry_service = VNPTelemetryService(db)
-
-                for api in apis:
-                    regions = ["us-east", "us-west", "eu-west", "ap-southeast", "ap-northeast"]
-                    for region in regions:
-                        latency = random.randint(50, 800)
-                        status = 200 if random.random() > 0.05 else 500
-                        telemetry_service.ingest_probe(api.api_did, region, latency, status)
-
-                db.commit()
-        except Exception as e:
-            print(f"VNP prober loop error: {e}")
-
-        await asyncio.sleep(60) # Probe every minute in the backend
+from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
 
 
 @asynccontextmanager
@@ -80,10 +53,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
     settings.validate_production()
-
-    prober_task: asyncio.Task[None] | None = None
-    if os.environ.get("ENABLE_VNP_PROBER") == "1" or os.getenv("CAPPO_ENABLE_INTERNAL_VNP_PROBER", "").lower() in {"1", "true", "yes"}:
-        prober_task = asyncio.create_task(vnp_prober_loop())
 
     from cappo_backend.services.capi_registration import register_with_capi
     capi_task = asyncio.create_task(register_with_capi(settings))
@@ -93,12 +62,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if capi_task:
         capi_task.cancel()
 
-    if prober_task:
-        prober_task.cancel()
-        try:
-            await prober_task
-        except asyncio.CancelledError:
-            pass
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -125,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     # add_middleware adds outermost-last, so register innermost first.
+    app.add_middleware(OllamaBleedSanitizerMiddleware)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(AmphotericSensingMiddleware)
     app.add_middleware(

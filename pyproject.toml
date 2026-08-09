@@ -18,6 +18,7 @@ dependencies = [
     "x402>=0.1",
     "psutil>=5.9",
     "pynacl>=1.5.0",
+    "PyJWT[crypto]>=2.8.0,<3",
 ]
 
 [project.optional-dependencies]

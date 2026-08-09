@@ -14,8 +14,9 @@ class ShapeContextRequest(BaseModel):
     jurisdiction: str
     capability: str
     context: Dict[str, Any]
-    tenant_id: str = "tenant-default"
-    tenant_jwt: str = "jwt-mock"
+    tenant_id: str
+    tenant_jwt: str
+    execution_id: str
 
 @router.post("/shape")
 def shape_context(request: ShapeContextRequest):
@@ -27,7 +28,7 @@ def shape_context(request: ShapeContextRequest):
     shaper = ContextShaper()
     settings = get_settings()
     
-    policy_bundle = resolver.resolve("exec-mock", request.tenant_id)
+    policy_bundle = resolver.resolve(request.execution_id, request.tenant_id)
     # override jurisdiction for testing purposes
     policy_bundle.jurisdiction = request.jurisdiction
     

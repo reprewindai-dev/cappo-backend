@@ -50,7 +50,6 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session):
         latency_ms=150,
         status_code=200,
         worker_id="worker-001",
-        signature="mock-sig",
         payload_json={"sample": "data"}
     )
     db.commit()

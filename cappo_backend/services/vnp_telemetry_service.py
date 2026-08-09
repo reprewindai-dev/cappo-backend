@@ -75,8 +75,6 @@ class VNPTelemetryService:
             signature = hmac.new(
                 self._worker_secret.encode(), payload_str.encode(), hashlib.sha256
             ).hexdigest()
-        elif signature == "mock-sig" and os.environ.get("ENVIRONMENT", "development").lower() not in {"production", "prod"}:
-            logger.warning("Accepting legacy mock telemetry signature outside production")
         elif not self._verify_signature(payload_str, signature):
             raise ValueError("Invalid probe signature")
 
