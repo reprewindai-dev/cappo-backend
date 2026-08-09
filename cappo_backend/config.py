@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     pgl_ledger_api_key: str | None = None
     pgl_ledger_timeout_ms: int = 8000
 
+    # Capability discovery and signed beacon publication.
+    capability_packages_json: str | None = None
+    capability_beacon_issuer: str = "cappo-backend"
+    capability_beacon_ttl_seconds: int = 300
+    capability_beacon_kid: str = "default"
+    capability_beacon_keys_json: str | None = None
+
     # --- Phase 6 execution bridge (Veklom BYOS MCP gateway) ---
     byos_mcp_gateway_url: str | None = None
     byos_internal_api_key: str | None = None
@@ -82,11 +89,11 @@ class Settings(BaseSettings):
     # --- Veklom BYOS Backend (Real PGL) ---
     veklom_byos_backend_url: str | None = None  # https://api.veklom.com/v1
     veklom_api_key: str | None = None  # API key for veklom-byos-backend
-    
+
     # --- Universal USB (cAPI) Integration ---
     capi_backend_url: str | None = "http://capi-container:3003"
     capi_api_key: str | None = None
-    
+
     capi_external_validation_enabled: bool = False
     # Public verification key used by the local cAPI gatekeeper for signed
     # request envelopes. Production /v1/exec requests must be signed.
@@ -203,9 +210,7 @@ class Settings(BaseSettings):
                 "requires authentication)."
             )
         elif not self.api_key_set:
-            problems.append(
-                "API_KEYS must contain at least one key when AUTH_ENABLED is true."
-            )
+            problems.append("API_KEYS must contain at least one key when AUTH_ENABLED is true.")
         if not self.license_admin_key:
             problems.append(
                 "LICENSE_ADMIN_KEY must be set in production to secure admin endpoints."
@@ -221,8 +226,7 @@ class Settings(BaseSettings):
 
         if problems:
             raise InsecureProductionConfigError(
-                "Refusing to start with insecure production configuration: "
-                + " ".join(problems)
+                "Refusing to start with insecure production configuration: " + " ".join(problems)
             )
 
 
