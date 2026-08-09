@@ -1,6 +1,6 @@
 # Archived alignment documentation — 2026-08-09
 
-The previous root `AGENT_ALIGNMENT_MANIFESTO.md` is superseded by [`../../00_VEKLOM_BIBLE.md`](../../00_VEKLOM_BIBLE.md).
+The previous root `AGENT_ALIGNMENT_MANIFESTO.md` is superseded by [`../../../00_VEKLOM_BIBLE.md`](../../../00_VEKLOM_BIBLE.md).
 
 Historical blob: `5024e67ba8791d6da820089d075ea3b862bf2e14`.
 
