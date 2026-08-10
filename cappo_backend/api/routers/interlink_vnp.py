@@ -8,15 +8,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
-from cappo_backend.config import get_settings
 from cappo_backend.db.session import get_session
 from cappo_backend.models.vnp_interlink_nonce import VNPInterlinkNonce
-from cappo_backend.services.canonical import sign_payload_ed25519
 
 router = APIRouter()
 VNP_SIGNATURE_MAX_AGE_SECONDS = 300
@@ -104,6 +103,25 @@ async def verify_vnp_signature(
         raise HTTPException(status_code=409, detail="VNP request replay detected") from exc
 
 
+def _unverified_evidence_response(*, action: str, bond_id: str) -> JSONResponse:
+    """Deny financial authorization until canonical PGL evidence verification exists.
+
+    Request authentication proves who called CAPPO; it does not prove that the
+    referenced durable evidence exists or is bound to this bond/challenge/action.
+    CAPPO therefore must not mint an authorization receipt from identifier syntax.
+    """
+    return JSONResponse(
+        status_code=503,
+        content={
+            "authorized": False,
+            "action": action,
+            "bond_id": bond_id,
+            "evidence_status": "NOT_VERIFIED",
+            "reason": "canonical_pgl_evidence_verifier_unavailable",
+        },
+    )
+
+
 @router.post("/authorize-slash")
 async def authorize_slash(
     request: VnpAuthorizeSlashRequest,
@@ -112,25 +130,10 @@ async def authorize_slash(
     if not request.pgl_evidence_id.startswith("pgl_"):
         raise HTTPException(status_code=400, detail="Invalid PGL evidence format")
 
-    settings = get_settings()
-    payload_to_sign = {
-        "version": 2,
-        "kind": "cappo_slash",
-        "bond_id": request.bond_id,
-        "challenge_id": request.challenge_id,
-        "pgl_evidence_id": request.pgl_evidence_id,
-    }
-    auth_receipt = (
-        f"cappo_auth_slash_v2_{sign_payload_ed25519(payload_to_sign, settings.ei_signing_key)}"
-    )
-
-    return {
-        "authorized": True,
-        "action": "slash",
-        "bond_id": request.bond_id,
-        "receipt_version": 2,
-        "authorization_receipt": auth_receipt,
-    }
+    # Fail closed. A pgl_* identifier is not proof that the evidence exists, is
+    # authentic, or is bound to this bond/challenge/slash action. No CAPPO-signed
+    # authorization receipt is issued until a canonical durable verifier exists.
+    return _unverified_evidence_response(action="slash", bond_id=request.bond_id)
 
 
 @router.post("/authorize-release")
@@ -141,21 +144,4 @@ async def authorize_release(
     if not request.pgl_evidence_id.startswith("pgl_"):
         raise HTTPException(status_code=400, detail="Invalid PGL evidence format")
 
-    settings = get_settings()
-    payload_to_sign = {
-        "version": 2,
-        "kind": "cappo_release",
-        "bond_id": request.bond_id,
-        "pgl_evidence_id": request.pgl_evidence_id,
-    }
-    auth_receipt = (
-        f"cappo_auth_rel_v2_{sign_payload_ed25519(payload_to_sign, settings.ei_signing_key)}"
-    )
-
-    return {
-        "authorized": True,
-        "action": "release",
-        "bond_id": request.bond_id,
-        "receipt_version": 2,
-        "authorization_receipt": auth_receipt,
-    }
+    return _unverified_evidence_response(action="release", bond_id=request.bond_id)
