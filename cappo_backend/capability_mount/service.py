@@ -9,7 +9,12 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_mount import CapabilityMount
+from cappo_backend.services.mount_evidence import (
+    BoundMountEvidenceVerifier,
+    VerifiedMountEvidence,
+)
 
 from .engine import ExecutionBinding, InMemoryAuditSink, Mounter
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
@@ -62,10 +67,16 @@ class MountRecord:
 class MountRegistry:
     """Own package discovery and DB-backed ephemeral mount records."""
 
-    def __init__(self, db: Session | None = None, anchor: EventAnchor | None = None) -> None:
+    def __init__(
+        self,
+        db: Session | None = None,
+        anchor: EventAnchor | None = None,
+        evidence_verifier: BoundMountEvidenceVerifier | None = None,
+    ) -> None:
         self.db = db
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
+        self.evidence_verifier = evidence_verifier or BoundMountEvidenceVerifier()
         self.mounter = Mounter()
 
     def register_package(self, package: CapabilityPackage) -> None:
@@ -110,6 +121,12 @@ class MountRegistry:
             statement = statement.with_for_update()
         return self._db().execute(statement).scalar_one_or_none()
 
+    def _evidence_consumed(self, jti: str) -> bool:
+        statement = select(CapabilityEvidenceConsumption.jti).where(
+            CapabilityEvidenceConsumption.jti == jti
+        )
+        return self._db().execute(statement).scalar_one_or_none() is not None
+
     def request_mount(
         self,
         package_ref: str,
@@ -118,8 +135,8 @@ class MountRegistry:
         role: str,
         policy: MountPolicy,
         ttl_seconds: int,
-        owner_principal: str,
-        owner_workspace: str,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
         execution_id: str | None = None,
     ) -> tuple[MountRecord | None, AnchorResult, str]:
         db = self._db()
@@ -165,7 +182,7 @@ class MountRegistry:
                 token_id=token.token_id,
                 token_nonce=token.nonce,
                 owner_principal=owner_principal,
-                owner_workspace=owner_workspace,
+                owner_workspace=owner_workspace or scope.workspace,
                 mount_json=mount.model_dump(mode="json"),
                 token_json=token.model_dump(mode="json"),
                 issued_at=token.issued_at,
@@ -192,8 +209,8 @@ class MountRegistry:
         self,
         mount_id: str,
         *,
-        owner_principal: str,
-        owner_workspace: str | None,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
     ) -> tuple[MountRecord | None, str]:
         row = self._row(mount_id)
         if row is None:
@@ -216,12 +233,15 @@ class MountRegistry:
         *,
         token_id: str,
         nonce: str,
-        owner_principal: str,
-        owner_workspace: str | None,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
         approval_token: str | None = None,
+        suppression_evidence: str | None = None,
         suppression_confirmed: bool = False,
     ) -> tuple[Decision, str, AnchorResult, dict[str, Any] | None]:
-        _ = approval_token, suppression_confirmed
+        # ``suppression_confirmed`` remains a compatibility input only. A caller
+        # boolean is never evidence and cannot satisfy the suppression gate.
+        _ = suppression_confirmed
         db = self._db()
         row = self._row(mount_id, lock=True)
         if row is None:
@@ -270,6 +290,7 @@ class MountRegistry:
             db.commit()
             return Decision.DENY, reason, anchor, None
 
+        verified_evidence: list[VerifiedMountEvidence] = []
         try:
             record.binding.check_live()
             if not record.binding._profile.allows(action):  # noqa: SLF001
@@ -280,29 +301,68 @@ class MountRegistry:
                 )
                 record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
                 decision = Decision.DENY
-            elif (
-                action in record.token.grants.external_send
-                and record.token.policy.require_human_approval_for_external_send
-            ):
-                reason = "human_approval_not_verified"
-                record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
-                decision = Decision.DENY
-            elif (
-                action in record.token.grants.suppression_required
-                and record.token.policy.require_suppression_check
-            ):
-                reason = "suppression_not_verified"
-                record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
-                decision = Decision.DENY
             else:
                 decision = Decision.ALLOW
                 reason = "allowed"
+
+                if (
+                    action in record.token.grants.external_send
+                    and record.token.policy.require_human_approval_for_external_send
+                ):
+                    approval, _approval_reason = self.evidence_verifier.verify(
+                        approval_token,
+                        kind="human_approval",
+                        principal=owner_principal,
+                        mount=record.mount,
+                        action=action,
+                        nonce=nonce,
+                    )
+                    if approval is None:
+                        decision, reason = Decision.DENY, "human_approval_not_verified"
+                    elif self._evidence_consumed(approval.jti):
+                        decision, reason = Decision.DENY, "human_approval_replayed"
+                    else:
+                        verified_evidence.append(approval)
+
+                if (
+                    decision is Decision.ALLOW
+                    and action in record.token.grants.suppression_required
+                    and record.token.policy.require_suppression_check
+                ):
+                    suppression, _suppression_reason = self.evidence_verifier.verify(
+                        suppression_evidence,
+                        kind="suppression_check",
+                        principal=owner_principal,
+                        mount=record.mount,
+                        action=action,
+                        nonce=nonce,
+                    )
+                    if suppression is None:
+                        decision, reason = Decision.DENY, "suppression_not_verified"
+                    elif self._evidence_consumed(suppression.jti):
+                        decision, reason = Decision.DENY, "suppression_evidence_replayed"
+                    else:
+                        verified_evidence.append(suppression)
+
+                if decision is Decision.DENY:
+                    record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
         except TokenExpiredError:
             decision, reason = Decision.DENY, "token_expired"
         except ExecutionTerminatedError:
             decision, reason = Decision.DENY, "terminated"
         except PolicyError as exc:
             decision, reason = Decision.DENY, str(exc)
+
+        if decision is Decision.ALLOW:
+            for evidence in verified_evidence:
+                db.add(
+                    CapabilityEvidenceConsumption(
+                        jti=evidence.jti,
+                        kind=evidence.kind,
+                        mount_id=mount_id,
+                        action=action,
+                    )
+                )
 
         anchor = self.anchor.anchor(
             "action_decision",
@@ -337,8 +397,8 @@ class MountRegistry:
         mount_id: str,
         reason: UnmountReason,
         *,
-        owner_principal: str,
-        owner_workspace: str | None,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
     ) -> tuple[Decision, str, AnchorResult]:
         db = self._db()
         row = self._row(mount_id, lock=True)
