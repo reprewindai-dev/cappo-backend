@@ -1,12 +1,8 @@
 """Audit/ledger service — single emission point for governance-critical events.
 
-Lineage seed: ``AIAuditLog`` hash chaining (migration note §6). Two differences
-from the old backend:
-
-1. **Fail-loud.** Governance-critical events (e.g. ``law0_violation``) must not be
-   swallowed. ``record`` raises if persistence fails.
-2. **Single boundary.** All LAW 0 / EI lifecycle events flow through here rather
-   than being scattered across call sites.
+Governance-critical persistence is fail-loud. External Gnomledger forwarding is
+normally best-effort, but callers that require synchronous confirmation may opt
+out and perform exactly one evidence append themselves.
 """
 
 from __future__ import annotations
@@ -27,8 +23,6 @@ from cappo_backend.services.canonical import sha256_json
 logger = logging.getLogger(__name__)
 
 LAW0_VIOLATION = "law0_violation"
-
-# Operation types that raise an out-of-band alert in addition to being persisted.
 ALERTING_OPERATIONS = frozenset({LAW0_VIOLATION})
 
 
@@ -41,8 +35,6 @@ class AuditService:
         settings: Settings | None = None,
     ) -> None:
         self._db = db
-        # Pluggable alert transport (EI Plan §Phase 4 alerting). Defaults to the
-        # module-level logging sink; tests inject an in-memory sink to assert.
         self._alert_sink: AlertSink = alert_sink or default_alert_sink
         self._settings = settings or get_settings()
 
@@ -55,10 +47,9 @@ class AuditService:
                 select(AuditEvent.previous_log_hash).where(
                     AuditEvent.previous_log_hash.isnot(None)
                 )
-            )
-            .scalars()
+            ).scalars()
         )
-        tails = [h for h in all_hashes if h not in referenced]
+        tails = [value for value in all_hashes if value not in referenced]
         return tails[0] if tails else all_hashes[-1]
 
     def record(
@@ -68,8 +59,9 @@ class AuditService:
         *,
         workspace_id: str | None = None,
         run_id: str | None = None,
+        forward_to_gnomledger: bool = True,
     ) -> AuditEvent:
-        """Append a hash-chained event. Raises on failure (fail-loud)."""
+        """Append a hash-chained event and optionally forward it asynchronously."""
         previous = self._latest_hash()
         chained = {
             "operation_type": operation_type,
@@ -89,12 +81,9 @@ class AuditService:
         self._db.add(event)
         self._db.flush()
 
-        # Phase 7: PGL ledger forwarding (best-effort, non-blocking).
-        self._forward_to_gnomledger(event)
+        if forward_to_gnomledger:
+            self._forward_to_gnomledger(event)
 
-        # Fire an out-of-band alert for governance-critical events. The audit row
-        # is already persisted (fail-loud); the alert is a best-effort notify on
-        # top and must never mask the recorded event.
         if operation_type in ALERTING_OPERATIONS:
             self._alert_sink(
                 operation_type,
@@ -106,17 +95,13 @@ class AuditService:
         return event
 
     def _forward_to_gnomledger(self, event: AuditEvent) -> None:
-        """Forward event to external gnomledger if configured.
-
-        Mirrors the cAPI Phase 7 best-effort forwarding logic.
-        """
+        """Forward event to external Gnomledger when configured."""
         url = self._settings.pgl_ledger_url
         if not url:
             return
 
-        def _worker():
+        def _worker() -> None:
             try:
-                # Mirror cAPI summary format
                 summary = f"cappo {event.operation_type}: {event.run_id or 'no-run'}"
                 body = {
                     "agent_id": event.run_id or "cappo-system",
@@ -139,16 +124,15 @@ class AuditService:
                     headers["x-api-key"] = self._settings.pgl_ledger_api_key
 
                 with httpx.Client(timeout=self._settings.pgl_ledger_timeout_ms / 1000.0) as client:
-                    resp = client.post(
+                    response = client.post(
                         f"{url.rstrip('/')}/api/v1/ledger/events",
                         json=body,
                         headers=headers,
                     )
-                    resp.raise_for_status()
-            except Exception as e:
-                logger.warning("Failed to forward audit event to gnomledger: %s", e)
+                    response.raise_for_status()
+            except Exception as exc:
+                logger.warning("Failed to forward audit event to gnomledger: %s", exc)
 
-        # Fire and forget in a background thread to keep the pipeline synchronous.
         threading.Thread(target=_worker, daemon=True).start()
 
     def record_law0_violation(
@@ -162,4 +146,9 @@ class AuditService:
         payload = {"detail": detail, "law0": True}
         if extra:
             payload.update(extra)
-        return self.record(LAW0_VIOLATION, payload, workspace_id=workspace_id, run_id=run_id)
+        return self.record(
+            LAW0_VIOLATION,
+            payload,
+            workspace_id=workspace_id,
+            run_id=run_id,
+        )
