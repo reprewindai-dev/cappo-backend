@@ -30,7 +30,7 @@ def get_beacon_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-def cache_response(content: Any, ttl_seconds: int) -> JSONResponse:
+def public_cache_response(content: Any, ttl_seconds: int) -> JSONResponse:
     return JSONResponse(
         content=content,
         headers={
@@ -40,10 +40,21 @@ def cache_response(content: Any, ttl_seconds: int) -> JSONResponse:
     )
 
 
+def protected_response(content: Any, *, status_code: int = 200) -> JSONResponse:
+    return JSONResponse(
+        content=content,
+        status_code=status_code,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Vary": "Authorization, X-API-Key, Accept-Encoding",
+        },
+    )
+
+
 @issuer_key_router.get("/.well-known/capability-beacon-keys")
 @issuer_key_router.get("/.well-known/capability-beacon-keys.json", include_in_schema=False)
 def get_issuer_keys(settings: Settings = Depends(get_beacon_settings)) -> JSONResponse:
-    return cache_response(
+    return public_cache_response(
         {"issuer": settings.capability_beacon_issuer, "keys": published_keys(settings)},
         settings.capability_beacon_ttl_seconds,
     )
@@ -54,9 +65,8 @@ def get_beacon_set(
     registry: MountRegistry = Depends(get_registry),
     settings: Settings = Depends(get_beacon_settings),
 ) -> JSONResponse:
-    return cache_response(
-        {"beacons": [build_beacon(package, settings) for package in registry.list_packages()]},
-        settings.capability_beacon_ttl_seconds,
+    return protected_response(
+        {"beacons": [build_beacon(package, settings) for package in registry.list_packages()]}
     )
 
 
@@ -77,8 +87,5 @@ def get_capability_beacon(
 ) -> JSONResponse:
     package = registry.packages.get(package_ref)
     if package is None:
-        return JSONResponse({"error": "CAPABILITY_PACKAGE_NOT_FOUND"}, status_code=404)
-    return cache_response(
-        build_beacon(package, settings),
-        settings.capability_beacon_ttl_seconds,
-    )
+        return protected_response({"error": "CAPABILITY_PACKAGE_NOT_FOUND"}, status_code=404)
+    return protected_response(build_beacon(package, settings))
