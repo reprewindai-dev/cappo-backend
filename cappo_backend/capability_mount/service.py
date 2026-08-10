@@ -193,6 +193,10 @@ class MountRegistry:
         approval_token: str | None = None,
         suppression_confirmed: bool = False,
     ) -> tuple[Decision, str, AnchorResult, dict[str, Any] | None]:
+        # These compatibility fields are caller assertions, not trusted evidence. They
+        # must not authorize execution until CAPPO has an actual verifier for signed,
+        # expiring, replay-resistant approval/suppression evidence bound to this action.
+        _ = approval_token, suppression_confirmed
         db = self._db()
         row = self._row(mount_id, lock=True)
         if row is None:
@@ -241,17 +245,15 @@ class MountRegistry:
             elif (
                 action in record.token.grants.external_send
                 and record.token.policy.require_human_approval_for_external_send
-                and not approval_token
             ):
-                reason = "human_approval_required"
+                reason = "human_approval_not_verified"
                 record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
                 decision = Decision.DENY
             elif (
                 action in record.token.grants.suppression_required
                 and record.token.policy.require_suppression_check
-                and suppression_confirmed is not True
             ):
-                reason = "suppression_check_required"
+                reason = "suppression_not_verified"
                 record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
                 decision = Decision.DENY
             else:
