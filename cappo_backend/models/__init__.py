@@ -21,6 +21,7 @@ from cappo_backend.models.retrieval import (
     RetrievalTrace,
     SourceDocument,
 )
+from cappo_backend.models.vnp_interlink_nonce import VNPInterlinkNonce
 from cappo_backend.models.vnp_models import (
     APIState,
     ComplianceAuditLog,
@@ -65,6 +66,7 @@ __all__ = [
     "VNPSDKCredential",
     "VNPValidator",
     "VNPIncident",
+    "VNPInterlinkNonce",
     "SourceDocument",
     "DocumentIndex",
     "RetrievalSession",
