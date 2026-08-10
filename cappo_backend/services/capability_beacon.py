@@ -63,6 +63,12 @@ def _parse_expiry(value: str) -> datetime:
 
 def build_beacon(package: CapabilityPackage, settings: Settings | None = None) -> dict[str, Any]:
     settings = settings or get_settings()
+    seeds = _key_seeds(settings)
+    kid = settings.capability_beacon_kid
+    if kid not in seeds:
+        raise ValueError("CAPABILITY_BEACON_KID is not present in CAPABILITY_BEACON_KEYS_JSON")
+    signing_seed = seeds[kid]
+
     issued_at = datetime.now(timezone.utc)
     expires_at = issued_at.timestamp() + max(1, settings.capability_beacon_ttl_seconds)
     issued = issued_at.isoformat()
@@ -75,10 +81,10 @@ def build_beacon(package: CapabilityPackage, settings: Settings | None = None) -
         "issued_at": issued,
         "expires_at": expires,
         "issuer": settings.capability_beacon_issuer,
-        "kid": settings.capability_beacon_kid,
-        "issuer_public_key": _public_key(_key_seeds(settings)[settings.capability_beacon_kid]),
+        "kid": kid,
+        "issuer_public_key": _public_key(signing_seed),
     }
-    body["signature"] = sign_payload_ed25519(body, settings.ei_signing_key)
+    body["signature"] = sign_payload_ed25519(body, signing_seed)
     return body
 
 
