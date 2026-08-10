@@ -127,27 +127,37 @@ def test_task_complete_unmount(package: CapabilityPackage, scope: MountScope) ->
         binding.call("contact.read", lambda: "never")
 
 
-def test_human_approval_required_for_external_send(
+def test_raw_human_approval_token_never_authorizes_external_send(
     package: CapabilityPackage, scope: MountScope
 ) -> None:
-    _, _, binding, _ = mount_binding(package, scope, require_suppression_check=False)
-    with pytest.raises(PolicyError, match="human_approval_required"):
-        binding.call("outreach.email_send", lambda: "never", suppression_confirmed=True)
-    assert (
+    _, _, binding, sink = mount_binding(package, scope, require_suppression_check=False)
+    with pytest.raises(PolicyError, match="human_approval_not_verified"):
         binding.call(
             "outreach.email_send",
-            lambda: "sent",
-            approval_token="approval-1",
+            lambda: "never",
+            approval_token="arbitrary-caller-string",
             suppression_confirmed=True,
         )
-        == "sent"
+    assert sink.events[-1].decision is Decision.DENY
+    assert sink.events[-1].reason == "human_approval_not_verified"
+
+
+def test_raw_suppression_boolean_never_authorizes_suppression_gate(
+    package: CapabilityPackage, scope: MountScope
+) -> None:
+    _, _, binding, sink = mount_binding(
+        package,
+        scope,
+        require_human_approval_for_external_send=False,
     )
-
-
-def test_suppression_check_required(package: CapabilityPackage, scope: MountScope) -> None:
-    _, _, binding, _ = mount_binding(package, scope, require_human_approval_for_external_send=False)
-    with pytest.raises(PolicyError, match="suppression_check_required"):
-        binding.call("outreach.email_send", lambda: "never")
+    with pytest.raises(PolicyError, match="suppression_not_verified"):
+        binding.call(
+            "outreach.email_send",
+            lambda: "never",
+            suppression_confirmed=True,
+        )
+    assert sink.events[-1].decision is Decision.DENY
+    assert sink.events[-1].reason == "suppression_not_verified"
 
 
 def test_classified_actions_must_be_declared_writes(package: CapabilityPackage) -> None:
