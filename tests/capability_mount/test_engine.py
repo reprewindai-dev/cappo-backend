@@ -5,6 +5,7 @@ import pytest
 from cappo_backend.capability_mount.engine import InMemoryAuditSink, Mounter
 from cappo_backend.capability_mount.errors import (
     ExecutionTerminatedError,
+    MountError,
     PolicyError,
     TokenExpiredError,
 )
@@ -145,8 +146,9 @@ def test_raw_human_approval_token_never_authorizes_external_send(
 def test_raw_suppression_boolean_never_authorizes_suppression_gate(
     package: CapabilityPackage, scope: MountScope
 ) -> None:
+    suppression_only = package.model_copy(update={"external_send_actions": []})
     _, _, binding, sink = mount_binding(
-        package,
+        suppression_only,
         scope,
         require_human_approval_for_external_send=False,
     )
@@ -160,6 +162,27 @@ def test_raw_suppression_boolean_never_authorizes_suppression_gate(
     assert sink.events[-1].reason == "suppression_not_verified"
 
 
+def test_caller_policy_cannot_weaken_package_security_defaults(
+    package: CapabilityPackage, scope: MountScope
+) -> None:
+    _, token = Mounter().mount(
+        package,
+        scope,
+        MountPolicy(
+            mode="caller-selected-live",
+            require_human_approval_for_external_send=False,
+            require_suppression_check=False,
+            persistent_memory_allowed=True,
+        ),
+    )
+
+    assert token.policy.mode == "draft_only"
+    assert token.policy.default == "deny"
+    assert token.policy.require_human_approval_for_external_send is True
+    assert token.policy.require_suppression_check is True
+    assert token.policy.persistent_memory_allowed is False
+
+
 def test_classified_actions_must_be_declared_writes(package: CapabilityPackage) -> None:
     with pytest.raises(ValueError, match="declared writes"):
         CapabilityPackage.model_validate(
@@ -167,13 +190,30 @@ def test_classified_actions_must_be_declared_writes(package: CapabilityPackage) 
         )
 
 
-def test_persistent_memory_disallowed_by_default(
+def test_persistent_memory_is_package_bounded_and_ephemeral_mounts_reject_it(
     package: CapabilityPackage, scope: MountScope
 ) -> None:
-    _, token, _, _ = mount_binding(package, scope)
+    _, token = Mounter().mount(
+        package,
+        scope,
+        MountPolicy(persistent_memory_allowed=True),
+    )
     assert token.policy.persistent_memory_allowed is False
-    with pytest.raises(Exception, match="persistent memory"):
-        Mounter().mount(package, scope, MountPolicy(persistent_memory_allowed=True))
+
+    unsafe_package = package.model_copy(
+        update={
+            "policy_defaults": {
+                "mode": "draft_only",
+                "persistent_memory_allowed": True,
+            }
+        }
+    )
+    with pytest.raises(MountError, match="persistent memory"):
+        Mounter().mount(
+            unsafe_package,
+            scope,
+            MountPolicy(persistent_memory_allowed=True),
+        )
 
 
 def test_audit_appends_on_allow_and_deny(package: CapabilityPackage, scope: MountScope) -> None:
