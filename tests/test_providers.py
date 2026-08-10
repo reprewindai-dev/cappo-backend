@@ -1,9 +1,4 @@
-"""OpenAI-compatible provider client + settings-driven executor factory.
-
-Uses httpx.MockTransport so no network or API key is needed: we assert the
-outgoing request shape, response parsing, and that network/HTTP/JSON failures
-raise ProviderError (which the circuit breaker records and fails over on).
-"""
+"""Provider clients + settings-driven executor factory tests."""
 
 from __future__ import annotations
 
@@ -17,6 +12,7 @@ from cappo_backend.services.executor import (
     ResilientExecutor,
 )
 from cappo_backend.services.providers import (
+    OllamaExecutor,
     OpenAICompatExecutor,
     ProviderError,
     build_executor,
@@ -33,11 +29,6 @@ def _ok_response(content="hello", total_tokens=7, model="gpt-4o-mini"):
         "choices": [{"message": {"role": "assistant", "content": content}}],
         "usage": {"total_tokens": total_tokens},
     }
-
-
-# --------------------------------------------------------------------------
-# Request shaping + response parsing
-# --------------------------------------------------------------------------
 
 
 def test_sends_openai_chat_request_and_parses_response():
@@ -79,14 +70,12 @@ def test_omits_authorization_header_when_no_key():
         return httpx.Response(200, json=_ok_response())
 
     ex = OpenAICompatExecutor(
-        name="ollama", base_url="http://localhost:11434/v1", model="llama3", client=_client(handler)
+        name="openai",
+        base_url="http://localhost:11434/v1",
+        model="llama3",
+        client=_client(handler),
     )
-    assert ex.execute({"prompt": "x"})["provider"] == "ollama"
-
-
-# --------------------------------------------------------------------------
-# Failure modes -> ProviderError (so the breaker counts them)
-# --------------------------------------------------------------------------
+    assert ex.execute({"prompt": "x"})["provider"] == "openai"
 
 
 def test_http_error_status_raises_provider_error():
@@ -116,11 +105,6 @@ def test_malformed_response_raises_provider_error():
         ex.execute({"prompt": "x"})
 
 
-# --------------------------------------------------------------------------
-# Settings-driven factory
-# --------------------------------------------------------------------------
-
-
 def test_build_executor_defaults_to_echo():
     assert isinstance(build_executor(Settings(_env_file=None)), EchoExecutor)
 
@@ -139,7 +123,7 @@ def test_build_executor_single_provider():
     assert [p.name for p in ex._providers] == ["groq"]
 
 
-def test_build_executor_uses_ollama_base_url_env(monkeypatch):
+def test_build_executor_uses_native_ollama_and_base_url_env(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://10.42.0.12:11434")
     settings = Settings(
         _env_file=None,
@@ -149,11 +133,13 @@ def test_build_executor_uses_ollama_base_url_env(monkeypatch):
     )
 
     ex = build_executor(settings)
+    provider_executor = ex._providers[0].executor
 
-    assert ex._providers[0].executor._base_url == "http://10.42.0.12:11434/v1"
+    assert isinstance(provider_executor, OllamaExecutor)
+    assert provider_executor._base_url == "http://10.42.0.12:11434"
 
 
-def test_build_executor_with_fallback():
+def test_build_executor_with_ollama_fallback_uses_native_adapter():
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
@@ -166,11 +152,11 @@ def test_build_executor_with_fallback():
     )
     ex = build_executor(settings)
     assert [p.name for p in ex._providers] == ["openai", "ollama"]
+    assert isinstance(ex._providers[1].executor, OllamaExecutor)
+    assert ex._providers[1].executor._base_url == "http://localhost:11434"
 
 
 def test_factory_executor_fails_over_across_real_clients():
-    """End-to-end: primary 500s, breaker records it, fallback (mock) serves."""
-
     def fail(request):
         return httpx.Response(503, json={"error": "down"})
 
@@ -186,7 +172,6 @@ def test_factory_executor_fails_over_across_real_clients():
         llm_fallback_base_url="https://fallback.test/v1",
     )
     ex = build_executor(settings)
-    # Swap in mock-backed clients on the constructed providers.
     ex._providers[0].executor._client = _client(fail)
     ex._providers[1].executor._client = _client(ok)
 
@@ -202,7 +187,9 @@ def test_factory_executor_halts_when_all_real_clients_down():
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+        llm_provider_name="primary",
         llm_base_url="https://primary.test/v1",
+        llm_fallback_provider_name="fallback",
         llm_fallback_base_url="https://fallback.test/v1",
     )
     ex = build_executor(settings)
