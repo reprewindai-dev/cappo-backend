@@ -137,6 +137,29 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
     ]
 
 
+def test_raw_approval_and_suppression_assertions_fail_closed(client: TestClient) -> None:
+    prepare(client)
+    response = client.post("/v1/capability/mounts", json=mount_payload())
+    body = response.json()
+    assert body["decision"] == "allow"
+
+    attempted_send = client.post(
+        f"/v1/capability/mounts/{body['mount']['id']}/actions",
+        json={
+            "token_id": body["token"]["token_id"],
+            "nonce": body["token"]["nonce"],
+            "action": "outreach.email_send",
+            "approval_token": "arbitrary-caller-string",
+            "suppression_confirmed": True,
+        },
+    )
+    assert attempted_send.json()["decision"] == "deny"
+    assert attempted_send.json()["reason"] == "human_approval_not_verified"
+
+    status = client.get(f"/v1/capability/mounts/{body['mount']['id']}")
+    assert status.json()["token"]["nonce_consumed"] is False
+
+
 def test_unknown_package_mount_is_governed_deny(client: TestClient) -> None:
     anchor = prepare(client)
     payload = mount_payload()
