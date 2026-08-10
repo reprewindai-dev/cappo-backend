@@ -20,7 +20,7 @@ POST /v1/exec  ──►  RunOrchestrator (single governed entry path, no bypass
                         → [mint ExecutionIdentityV1] → route → execute → attest
                                        │
                   PGLClient ───────────┤  mints + persists PGLCertificate (+ ledger)
-                  ExecutionIdentityBuilder  canonical JSON → SHA-256 hash → HMAC signature
+                  ExecutionIdentityBuilder  canonical JSON → SHA-256 hash → Ed25519 signature
                   MCPGateway.require_execution_identity()  9-rule LAW 0 enforcement (403)
                   AuditService  hash-chained, fail-loud, law0_violation events
 ```
@@ -54,25 +54,31 @@ Install `.[evm]` only if you need the optional EVM signing / settlement stack.
 
 ## Coolify Provider Wiring
 
-CAPPO governed execution uses `/v1/exec` and the OpenAI-compatible provider
-adapter in `cappo_backend/services/providers.py`.
+CAPPO governed execution enters through `/v1/exec`. OpenAI/Groq use the
+OpenAI-compatible provider adapter. Ollama uses CAPPO's native Ollama adapter so
+model lifecycle controls are transmitted on the provider request itself.
 
 For production Ollama on its own server, set these Coolify variables:
 
 ```env
-EXECUTOR_MODE=provider
+EXECUTOR_MODE=openai
 LLM_PROVIDER_NAME=ollama
 LLM_MODEL=qwen2.5:3b
 LLM_TIMEOUT_SECONDS=60
 OLLAMA_BASE_URL=http://YOUR_OLLAMA_SERVER_PRIVATE_IP:11434
 ```
 
-CAPPO will normalize `OLLAMA_BASE_URL` to the OpenAI-compatible
-`/v1/chat/completions` surface. You can also set the explicit CAPPO URL:
+For `LLM_PROVIDER_NAME=ollama`, CAPPO sends `POST /api/chat` and includes
+`keep_alive: 0` plus `stream: false`. `OLLAMA_BASE_URL` should identify the
+Ollama server root. If an older deployment still supplies an explicit CAPPO URL
+ending in `/v1`, the native adapter strips that suffix before calling `/api/chat`:
 
 ```env
 LLM_BASE_URL=http://YOUR_OLLAMA_SERVER_PRIVATE_IP:11434/v1
 ```
+
+Do not configure a proxy/allowlist that exposes only `/v1/chat/completions` for
+this adapter; CAPPO must be able to reach Ollama's native `/api/chat` endpoint.
 
 Do not use `localhost` in Coolify unless Ollama runs in the same container.
 Inside Docker, `localhost` is the CAPPO container itself, not the host or a
