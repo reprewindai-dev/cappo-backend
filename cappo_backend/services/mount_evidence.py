@@ -1,14 +1,14 @@
 """Versioned evidence tokens for capability-mount approval gates.
 
-The verifier is intentionally narrow: evidence is valid only for one principal,
-mount, action, execution nonce and workspace/project scope, for a short expiry.
-Replay consumption is persisted by ``MountRegistry`` in the same transaction as
-the final action decision.
+Evidence is valid only for one principal, mount, action, execution nonce and
+workspace/project scope, for a short expiry. Replay consumption is persisted by
+``MountRegistry`` in the same transaction as the final action decision.
 """
 
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -64,7 +64,7 @@ class BoundMountEvidenceVerifier:
             encoded_payload, signature = token.split(".", 1)
             payload_bytes = _b64decode(encoded_payload)
             payload = json.loads(payload_bytes.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error):
             return None, "evidence_malformed"
         if not isinstance(payload, dict):
             return None, "evidence_malformed"
@@ -118,7 +118,7 @@ def issue_bound_mount_evidence(
     jti: str | None = None,
     issued_at: datetime | None = None,
 ) -> str:
-    """Issue a token for trusted internal producers/tests; this is not an API route."""
+    """Issue evidence for trusted internal producers/tests; this is not an API route."""
     if not signing_key:
         raise ValueError("signing_key is required")
     if ttl_seconds < 1 or ttl_seconds > MAX_EVIDENCE_TTL_SECONDS:
@@ -146,10 +146,7 @@ def issue_bound_mount_evidence(
 def _scope_hash(mount: Mount) -> str:
     return sha256(
         canonical_json(
-            {
-                "workspace": mount.scope.workspace,
-                "project": mount.scope.project,
-            }
+            {"workspace": mount.scope.workspace, "project": mount.scope.project}
         ).encode("utf-8")
     ).hexdigest()
 
