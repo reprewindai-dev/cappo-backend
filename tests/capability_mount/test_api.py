@@ -65,6 +65,7 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
     assert body["decision"] == "allow"
     assert body["mount"]["token"]["ttl_seconds"] == 600
     assert body["token"]["ttl_seconds"] == 600
+    assert body["token"]["nonce_consumed"] is False
     assert body["anchoring"]["status"] == "confirmed"
 
     mount_id = body["mount"]["id"]
@@ -91,6 +92,21 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
         },
     )
     assert allowed.json()["decision"] == "allow"
+    status_after_action = client.get(f"/v1/capability/mounts/{mount_id}")
+    assert status_after_action.json()["token"]["nonce_consumed"] is True
+
+    replay = client.post(
+        f"/v1/capability/mounts/{mount_id}/actions",
+        json={
+            "token_id": body["token"]["token_id"],
+            "nonce": body["token"]["nonce"],
+            "action": "contact.read",
+        },
+    )
+    assert replay.json()["decision"] == "deny"
+    assert replay.json()["reason"] == "token_replay"
+    status_after_replay = client.get(f"/v1/capability/mounts/{mount_id}")
+    assert status_after_replay.json()["token"]["nonce_consumed"] is True
 
     terminated = client.post(
         f"/v1/capability/mounts/{mount_id}/terminate",
@@ -113,6 +129,7 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
     assert after.json()["reason"] == "terminated"
     assert [event["event_type"] for event in anchor.events] == [
         "mount",
+        "action_decision",
         "action_decision",
         "action_decision",
         "terminate",

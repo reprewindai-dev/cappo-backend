@@ -85,28 +85,28 @@ def build_beacon(package: CapabilityPackage, settings: Settings | None = None) -
 def verify_beacon(
     beacon: dict[str, Any],
     settings: Settings | None = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, str | None]:
     settings = settings or get_settings()
     signature = beacon.get("signature")
     if not isinstance(signature, str):
-        return False, "signature_missing"
+        return False, "signature_missing", None
     if beacon.get("issuer") != settings.capability_beacon_issuer:
-        return False, "issuer_mismatch"
+        return False, "issuer_mismatch", None
     try:
         expires_at = _parse_expiry(str(beacon["expires_at"]))
     except (KeyError, TypeError, ValueError):
-        return False, "expiry_invalid"
+        return False, "expiry_invalid", None
     if expires_at <= datetime.now(timezone.utc):
-        return False, "beacon_expired"
+        return False, "beacon_expired", None
     body = {key: value for key, value in beacon.items() if key != "signature"}
     kid = beacon.get("kid")
     seeds = _key_seeds(settings)
     if not isinstance(kid, str) or kid not in seeds:
-        return False, "unknown_kid"
+        return False, "unknown_kid", None
     expected_public_key = _public_key(seeds[kid])
     if beacon.get("issuer_public_key") != expected_public_key:
-        return False, "issuer_key_mismatch"
+        return False, "issuer_key_mismatch", None
     raw_key = base64.urlsafe_b64decode(expected_public_key + "===")
     if not verify_signature_ed25519(body, signature, raw_key):
-        return False, "signature_invalid"
-    return True, "verified"
+        return False, "signature_invalid", None
+    return True, "verified", kid

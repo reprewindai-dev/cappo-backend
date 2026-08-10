@@ -27,11 +27,19 @@ def test_signed_beacon_round_trip_and_tamper_detection(client: TestClient) -> No
     assert "trust_score" not in beacon
 
     verified = client.post("/v1/capability/beacons/verify", json={"beacon": beacon})
-    assert verified.json() == {"valid": True, "reason": "verified"}
+    assert verified.json() == {
+        "valid": True,
+        "reason": "verified",
+        "verified_kid": beacon["kid"],
+    }
 
     tampered = dict(beacon, policy_hash="tampered")
     invalid = client.post("/v1/capability/beacons/verify", json={"beacon": tampered})
-    assert invalid.json() == {"valid": False, "reason": "signature_invalid"}
+    assert invalid.json() == {
+        "valid": False,
+        "reason": "signature_invalid",
+        "verified_kid": None,
+    }
 
     keys = client.get("/.well-known/capability-beacon-keys")
     assert keys.status_code == 200
@@ -52,7 +60,33 @@ def test_expired_beacon_rejected(client: TestClient) -> None:
     beacon = client.get("/v1/capability/beacons/expired@v1").json()
     beacon["expires_at"] = "2020-01-01T00:00:00+00:00"
     rejected = client.post("/v1/capability/beacons/verify", json={"beacon": beacon})
-    assert rejected.json() == {"valid": False, "reason": "beacon_expired"}
+    assert rejected.json() == {
+        "valid": False,
+        "reason": "beacon_expired",
+        "verified_kid": None,
+    }
+
+
+def test_unknown_beacon_kid_is_not_reported_as_verified(client: TestClient) -> None:
+    registry = client.app.state.mount_registry
+    registry.register_package(
+        CapabilityPackage(
+            id="unknown-kid@v1",
+            family="unknown-kid",
+            title="Unknown kid",
+            purpose="Unknown kid verification",
+        )
+    )
+    beacon = client.get("/v1/capability/beacons/unknown-kid@v1").json()
+    beacon["kid"] = "attacker-selected-kid"
+
+    rejected = client.post("/v1/capability/beacons/verify", json={"beacon": beacon})
+
+    assert rejected.json() == {
+        "valid": False,
+        "reason": "unknown_kid",
+        "verified_kid": None,
+    }
 
 
 def test_beacon_keys_are_public_when_authentication_is_enabled(

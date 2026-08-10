@@ -82,7 +82,9 @@ class MountRegistry:
     @staticmethod
     def _record(row: CapabilityMount) -> MountRecord:
         mount = Mount.model_validate(row.mount_json)
-        token = EphemeralScopedToken.model_validate(row.token_json)
+        token = EphemeralScopedToken.model_validate(row.token_json).model_copy(
+            update={"nonce_consumed": row.nonce_consumed}
+        )
         return MountRecord(
             mount,
             token,

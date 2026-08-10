@@ -151,6 +151,7 @@ class EphemeralScopedToken(ContractModel):
     expires_at: datetime
     ttl_seconds: int = Field(ge=1, le=600)
     single_use: Literal[True] = True
+    nonce_consumed: bool = False
     nonce: str = Field(min_length=1)
 
     @field_validator("expires_at")

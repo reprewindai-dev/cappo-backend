@@ -65,8 +65,8 @@ def verify_presented_beacon(
     body: BeaconVerificationRequest,
     settings: Settings = Depends(get_beacon_settings),
 ) -> dict[str, Any]:
-    valid, reason = verify_beacon(body.beacon, settings)
-    return {"valid": valid, "reason": reason}
+    valid, reason, verified_kid = verify_beacon(body.beacon, settings)
+    return {"valid": valid, "reason": reason, "verified_kid": verified_kid}
 
 
 @router.get("/{package_ref:path}")
