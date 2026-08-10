@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -24,6 +26,7 @@ from cappo_backend.capability_mount.service import (
     UnconfirmedAnchor,
 )
 from cappo_backend.db.session import get_session
+from cappo_backend.services.mount_evidence import BoundMountEvidenceVerifier
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
 router = APIRouter(prefix="/v1/capability", tags=["Capability Mount"])
@@ -57,6 +60,8 @@ class MountResponse(BaseModel):
     anchoring: dict[str, Any]
     mount: Mount | None = None
     token: EphemeralScopedToken | None = None
+    ttl_seconds: int | None = None
+    expires_at: datetime | None = None
     nonce_consumed: bool | None = None
 
 
@@ -67,6 +72,8 @@ class ActionRequest(BaseModel):
     nonce: str = Field(min_length=1)
     action: str = Field(min_length=1)
     approval_token: str | None = None
+    suppression_evidence: str | None = None
+    # Compatibility only. Caller booleans never authorize suppression-gated actions.
     suppression_confirmed: bool = False
 
 
@@ -97,20 +104,22 @@ class TerminateResponse(BaseModel):
 
 def get_registry(request: Request, db: Session = Depends(get_session)) -> MountRegistry:
     shared: MountRegistry = request.app.state.mount_registry
+    settings = request.app.state.settings
     anchor = shared.anchor
     if isinstance(anchor, UnconfirmedAnchor):
-        anchor = AuditPGLAnchor(db, request.app.state.settings)
-    registry = MountRegistry(db=db, anchor=anchor)
+        anchor = AuditPGLAnchor(db, settings)
+    verifier = BoundMountEvidenceVerifier(
+        approval_key=settings.approval_token_signing_key,
+        suppression_key=os.getenv("SUPPRESSION_EVIDENCE_SIGNING_KEY", ""),
+    )
+    registry = MountRegistry(db=db, anchor=anchor, evidence_verifier=verifier)
     registry.packages.update(shared.packages)
     return registry
 
 
 def anchor_payload(status: Any) -> dict[str, Any]:
     # Never expose exception/debug detail from the evidence boundary.
-    return {
-        "status": status.status,
-        "anchor_id": status.anchor_id,
-    }
+    return {"status": status.status, "anchor_id": status.anchor_id}
 
 
 def _caller(request: Request, *, requested_workspace: str | None = None) -> tuple[str, str | None]:
@@ -176,6 +185,8 @@ def request_mount(
         anchoring=anchor_payload(anchor),
         mount=record.mount,
         token=record.token,
+        ttl_seconds=record.token.ttl_seconds,
+        expires_at=record.token.expires_at,
         nonce_consumed=record.token.nonce_consumed,
     )
 
@@ -198,25 +209,21 @@ def mount_status(
             reason=state,
             anchoring={"status": "not_applicable", "anchor_id": None},
         )
+    mount = record.mount
     if state != "mounted":
-        return MountResponse(
-            decision=Decision.DENY,
-            reason=state,
-            anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
-            mount=record.mount.model_copy(
-                update={
-                    "lifecycle": record.mount.lifecycle.model_copy(
-                        update={"state": LifecycleState(state)}
-                    )
-                }
-            ),
-            nonce_consumed=record.token.nonce_consumed,
+        mount = mount.model_copy(
+            update={
+                "lifecycle": mount.lifecycle.model_copy(update={"state": LifecycleState(state)})
+            }
         )
     return MountResponse(
-        decision=Decision.ALLOW,
+        decision=Decision.ALLOW if state == "mounted" else Decision.DENY,
         reason=state,
         anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
-        mount=record.mount,
+        mount=mount,
+        # Status never re-discloses token_id or nonce.
+        ttl_seconds=record.token.ttl_seconds,
+        expires_at=record.token.expires_at,
         nonce_consumed=record.token.nonce_consumed,
     )
 
@@ -237,6 +244,7 @@ def evaluate_action(
         owner_principal=principal,
         owner_workspace=workspace,
         approval_token=body.approval_token,
+        suppression_evidence=body.suppression_evidence,
         suppression_confirmed=body.suppression_confirmed,
     )
     return ActionResponse(
