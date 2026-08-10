@@ -5,6 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
+POLICY_HEADER = b"x-veklom-require-ollama-keep-alive-zero"
 
 
 class OllamaBleedSanitizerMiddleware(BaseHTTPMiddleware):
@@ -13,8 +14,7 @@ class OllamaBleedSanitizerMiddleware(BaseHTTPMiddleware):
     This middleware is not the provider enforcement boundary and does not claim
     that model memory was flushed. Actual ``keep_alive=0`` enforcement belongs
     in the native Ollama request builder. The legacy class name is retained to
-    avoid an import-breaking change while callers migrate to the clearer policy
-    semantics.
+    avoid an import-breaking change while callers migrate to clearer semantics.
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
@@ -25,9 +25,12 @@ class OllamaBleedSanitizerMiddleware(BaseHTTPMiddleware):
 
         if inference_route:
             try:
-                headers = dict(request.scope["headers"])
-                headers[b"x-veklom-require-ollama-keep-alive-zero"] = b"true"
-                request.scope["headers"] = list(headers.items())
+                original_headers = list(request.scope.get("headers", []))
+                request.scope["headers"] = [
+                    (name, value)
+                    for name, value in original_headers
+                    if name.lower() != POLICY_HEADER
+                ] + [(POLICY_HEADER, b"true")]
             except Exception:
                 logger.exception("[OllamaPolicy] Failed to attach lifecycle policy signal")
                 return JSONResponse(
