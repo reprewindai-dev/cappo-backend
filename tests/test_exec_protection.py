@@ -26,34 +26,42 @@ from cappo_backend.services.run_state import RunState
 
 class TestGovernedExecPath:
     def test_happy_path(self, client: TestClient, db: Session) -> None:
-        resp = client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"})
+        resp = client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["response"] == "echo: hello"
         assert body["run_id"] is not None
         assert body["execution_id"] is not None
 
-    def test_missing_governance_directive_fails_closed(self, client: TestClient, db: Session) -> None:
+    def test_missing_governance_directive_fails_closed(
+        self, client: TestClient, db: Session
+    ) -> None:
         resp = client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "CAPPO_GOVERNANCE_DECISION_REQUIRED"
         assert resp.json()["detail"]["fail_closed"] is True
 
     def test_governance_deny_fails_closed(self, client: TestClient, db: Session) -> None:
-        resp = client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "DENY"})
+        resp = client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "DENY"}
+        )
         assert resp.status_code == 403
         assert resp.json()["detail"]["error"] == "CAPPO_GOVERNANCE_DENIED"
 
     def test_run_reaches_attested_state(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"})
+        client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+        )
         run = db.query(GovernedRun).first()
         assert run is not None
         assert run.state == RunState.ATTESTED.value
 
-    def test_pgl_certificates_created_pre_and_post(
-        self, client: TestClient, db: Session
-    ) -> None:
-        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"})
+    def test_pgl_certificates_created_pre_and_post(self, client: TestClient, db: Session) -> None:
+        client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+        )
         certs = db.query(PGLCertificate).all()
         # A pre-execution cert (commit) and a post-execution cert (attest).
         assert len(certs) == 2
@@ -69,10 +77,10 @@ class TestGovernedExecPath:
         assert post[0].output_hash is not None
         assert post[0].outcome_hash is not None
 
-    def test_ei_row_links_post_certificate(
-        self, client: TestClient, db: Session
-    ) -> None:
-        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"})
+    def test_ei_row_links_post_certificate(self, client: TestClient, db: Session) -> None:
+        client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+        )
         ei = db.query(ExecutionIdentity).first()
         post = (
             db.query(PGLCertificate)
@@ -83,20 +91,24 @@ class TestGovernedExecPath:
         assert ei.pgl_post_certificate_id == post.certificate_id
 
     def test_execution_identity_persisted(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"})
+        client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+        )
         eis = db.query(ExecutionIdentity).all()
         assert len(eis) == 1
         assert eis[0].directive == "ALLOW"
 
     def test_audit_attestation_logged(self, client: TestClient, db: Session) -> None:
-        client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"})
-        events = db.query(AuditEvent).filter(
-            AuditEvent.operation_type == "run_attested"
-        ).all()
+        client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+        )
+        events = db.query(AuditEvent).filter(AuditEvent.operation_type == "run_attested").all()
         assert len(events) == 1
 
     def test_ei_contains_run_id(self, client: TestClient, db: Session) -> None:
-        resp = client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"})
+        resp = client.post(
+            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+        )
         body = resp.json()
         ei_record = db.query(ExecutionIdentity).first()
         assert ei_record is not None
@@ -113,7 +125,9 @@ class TestNoBypass:
         # No ungoverned bypass path should exist.
         for bypass in ["/exec", "/v1/run", "/run", "/v1/execute"]:
             r = client.post(bypass, json={"prompt": "probe"})
-            assert r.status_code == 404, f"unexpected route {bypass} exists (status {r.status_code})"
+            assert r.status_code == 404, (
+                f"unexpected route {bypass} exists (status {r.status_code})"
+            )
 
 
 class TestCAPIGatekeeperKey:

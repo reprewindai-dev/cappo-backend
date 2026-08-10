@@ -134,7 +134,7 @@ class RunOrchestrator:
         import httpx
 
         from cappo_backend.config import get_settings
-        
+
         settings = get_settings()
 
         if not settings.capi_external_validation_enabled:
@@ -143,17 +143,17 @@ class RunOrchestrator:
         base_url = settings.veklom_byos_backend_url
         if not base_url:
             return
-            
+
         normalized_url = base_url.rstrip("/")
         if normalized_url.endswith("/v1"):
             capi_url = normalized_url[:-3] + "/api/v1/capi/execute"
         else:
             capi_url = normalized_url + "/api/v1/capi/execute"
-            
+
         request_payload = run.request_payload or {}
         agent_id = request_payload.get("agent_id") or "agent_cappo"
         pgl_id = request_payload.get("pgl_id") or "pgl_cappo_default_sig"
-        
+
         # Build cAPI execution intent
         intent = {
             "agent_id": agent_id,
@@ -163,20 +163,21 @@ class RunOrchestrator:
             "action": request_payload.get("action") or "cappo.exec",
             "payload": request_payload,
         }
-        
+
         headers = {}
         if settings.veklom_api_key:
             headers["Authorization"] = f"Bearer {settings.veklom_api_key}"
-            
+
         try:
             with httpx.Client(timeout=30) as client:
                 response = client.post(capi_url, json=intent, headers=headers)
-                
+
             if response.status_code != 200:
                 from fastapi import HTTPException
+
                 detail_data = {
                     "error": "cAPI_VETO_ENGAGED",
-                    "message": "Execution intent violated cAPI validation rules."
+                    "message": "Execution intent violated cAPI validation rules.",
                 }
                 try:
                     res_json = response.json()
@@ -191,10 +192,8 @@ class RunOrchestrator:
             raise
         except Exception as e:
             from fastapi import HTTPException
-            raise HTTPException(
-                status_code=502,
-                detail=f"cAPI Gateway connection failed: {str(e)}"
-            )
+
+            raise HTTPException(status_code=502, detail=f"cAPI Gateway connection failed: {str(e)}")
 
     # ------------------------------------------------------------------
     # Phase methods
@@ -205,7 +204,13 @@ class RunOrchestrator:
         # register a real genome and derive genome_hash from the Merkle root.
         genome_hash = request.get("genome_hash")
         if self._genome_service is not None and not genome_hash:
-            layer_keys = {"model_layer", "prompt_layer", "policy_layer", "watchtower_layer", "task_profile"}
+            layer_keys = {
+                "model_layer",
+                "prompt_layer",
+                "policy_layer",
+                "watchtower_layer",
+                "task_profile",
+            }
             if layer_keys.issubset(request.keys()):
                 result = self._genome_service.register_genome(
                     model_layer=request["model_layer"],
@@ -226,7 +231,8 @@ class RunOrchestrator:
             request_payload=request,
             hashes={
                 "genome_hash": genome_hash or sha256_json(request),
-                "constitution_hash": request.get("constitution_hash") or sha256_json({"version": "1"}),
+                "constitution_hash": request.get("constitution_hash")
+                or sha256_json({"version": "1"}),
                 "plan_hash": request.get("plan_hash") or sha256_json(request.get("prompt", "")),
             },
             scope=request.get("scope") or {"tools": ["llm.exec"]},
@@ -247,12 +253,13 @@ class RunOrchestrator:
     def govern_run(self, run: GovernedRun) -> None:
         """Governance decision. No post-hoc/status-derived defaults."""
         payload = run.request_payload or {}
-        
+
         raw_directive = payload.get("directive")
         if not raw_directive or not str(raw_directive).strip():
             raise MissingGovernanceDecisionError("CAPPO governance decision required")
-            
+
         from cappo_backend.services.authorization import normalize_directive
+
         normalized = normalize_directive(payload, strict=True)
         directive = normalized.directive
         risk_tier = normalized.risk_tier
@@ -272,7 +279,9 @@ class RunOrchestrator:
             run_id=run.run_id,
             workspace_id=run.workspace_id,
             actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
-            agent_id=run.request_payload.get("agent", {}).get("id") if run.request_payload else None,
+            agent_id=run.request_payload.get("agent", {}).get("id")
+            if run.request_payload
+            else None,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
@@ -341,12 +350,12 @@ class RunOrchestrator:
         """Mint Execution Authorization Token - strictly after EI, before route."""
         if self._gateway is None and self._eat_builder is None:
             return
-            
+
         request = run.request_payload or {}
         ei = run.execution_identity
         if not ei:
             raise ValueError("Cannot mint EAT without an Execution Identity.")
-            
+
         agent_id = request.get("agent", {}).get("id", "unknown")
         certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "unknown")
 
@@ -431,7 +440,9 @@ class RunOrchestrator:
             run_id=run.run_id,
             workspace_id=run.workspace_id,
             actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
-            agent_id=run.request_payload.get("agent", {}).get("id") if run.request_payload else None,
+            agent_id=run.request_payload.get("agent", {}).get("id")
+            if run.request_payload
+            else None,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),

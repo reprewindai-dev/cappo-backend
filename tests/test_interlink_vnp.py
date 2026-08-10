@@ -16,15 +16,16 @@ def test_authorize_slash_missing_signature(client):
             "x-capability-id": "test-cap",
             "x-target-url": "test-url",
             "x-payment": "BYPASS",
-            "x-pgl-pre-cert": "test-cert"
+            "x-pgl-pre-cert": "test-cert",
         },
         json={
             "bond_id": str(uuid.uuid4()),
             "challenge_id": str(uuid.uuid4()),
-            "pgl_evidence_id": "pgl_123"
-        }
+            "pgl_evidence_id": "pgl_123",
+        },
     )
     assert response.status_code == 401
+
 
 def test_authorize_slash_invalid_signature(client):
     response = client.post(
@@ -38,26 +39,23 @@ def test_authorize_slash_invalid_signature(client):
             "x-capability-id": "test-cap",
             "x-target-url": "test-url",
             "x-payment": "BYPASS",
-            "x-pgl-pre-cert": "test-cert"
+            "x-pgl-pre-cert": "test-cert",
         },
         json={
             "bond_id": str(uuid.uuid4()),
             "challenge_id": str(uuid.uuid4()),
-            "pgl_evidence_id": "pgl_123"
-        }
+            "pgl_evidence_id": "pgl_123",
+        },
     )
     assert response.status_code == 403
+
 
 def test_authorize_slash_valid_signature(client):
     settings = get_settings()
     secret = getattr(settings, "vnp_cappo_interlink_secret", "dev-interlink-secret")
     timestamp = datetime.now(timezone.utc).isoformat()
-    
-    mac = hmac.new(
-        secret.encode(),
-        timestamp.encode(),
-        hashlib.sha256
-    ).hexdigest()
+
+    mac = hmac.new(secret.encode(), timestamp.encode(), hashlib.sha256).hexdigest()
 
     bond_id = str(uuid.uuid4())
     response = client.post(
@@ -71,13 +69,9 @@ def test_authorize_slash_valid_signature(client):
             "x-capability-id": "test-cap",
             "x-target-url": "test-url",
             "x-payment": "BYPASS",
-            "x-pgl-pre-cert": "test-cert"
+            "x-pgl-pre-cert": "test-cert",
         },
-        json={
-            "bond_id": bond_id,
-            "challenge_id": str(uuid.uuid4()),
-            "pgl_evidence_id": "pgl_456"
-        }
+        json={"bond_id": bond_id, "challenge_id": str(uuid.uuid4()), "pgl_evidence_id": "pgl_456"},
     )
     assert response.status_code == 200, response.json()
     data = response.json()

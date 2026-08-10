@@ -24,22 +24,26 @@ from cappo_backend.config import Settings
 # Non-side-effecting, safe-to-expose paths. Note: /v1/exec is deliberately absent.
 # License endpoints use their own X-License-Admin-Key header for admin operations;
 # /validate and /activate are intentionally public for veklom-byos-backend to call.
-PUBLIC_PATHS = frozenset({
-    "/",
-    "/favicon.ico",
-    "/robots.txt",
-    "/health",
-    "/docs",
-    "/redoc",
-    "/openapi.json",
-    "/v1/license/validate",
-    "/v1/license/activate",
-    "/v1/vnp/metrics",
-    "/.well-known/x402",
-    "/.well-known/x402.json",
-    "/x402/bazaar",
-    "/api/v1/pricing",
-})
+PUBLIC_PATHS = frozenset(
+    {
+        "/",
+        "/favicon.ico",
+        "/robots.txt",
+        "/health",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/v1/license/validate",
+        "/v1/license/activate",
+        "/v1/vnp/metrics",
+        "/.well-known/x402",
+        "/.well-known/x402.json",
+        "/.well-known/capability-beacon-keys",
+        "/.well-known/capability-beacon-keys.json",
+        "/x402/bazaar",
+        "/api/v1/pricing",
+    }
+)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -69,7 +73,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         token = api_key or (auth_header.removeprefix("Bearer ").strip() if auth_header else None)
         if not token:
             return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
-            
+
         if token.startswith("eyJ"):
             if not self._jwt_key:
                 return JSONResponse({"error": "JWT_MISCONFIGURED"}, status_code=500)
