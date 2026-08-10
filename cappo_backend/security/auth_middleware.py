@@ -1,17 +1,14 @@
-"""Authentication middleware — the earlier, separate layer before LAW 0 authority.
+"""Authentication middleware — authentication precedes LAW 0 authority.
 
-Migration note §4: the old ``ZeroTrustMiddleware`` enforced authentication at a
-single choke point with a public-path allowlist. CAPPO keeps that shape but is
-explicit that **authentication is not authority** — passing this layer only
-proves *who* is calling, never *permission to execute*. EI/LAW 0 authority is
-enforced separately inside the governed pipeline.
-
-Critically, ``/v1/exec`` is **not** on the public allowlist (the old backend's
-LAW 0 bypass), so every side-effecting route is either paid via x402 or
-bypassed by an explicitly governed internal operator credential.
+Passing this layer proves caller identity only; it never grants execution
+authority. Authenticated routes receive a non-secret principal identifier in the
+ASGI scope so downstream resources can bind ownership without retaining bearer
+credentials or API keys.
 """
 
 from __future__ import annotations
+
+import hashlib
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -21,9 +18,6 @@ from starlette.responses import JSONResponse, Response
 
 from cappo_backend.config import Settings
 
-# Non-side-effecting, safe-to-expose paths. Note: /v1/exec is deliberately absent.
-# License endpoints use their own X-License-Admin-Key header for admin operations;
-# /validate and /activate are intentionally public for veklom-byos-backend to call.
 PUBLIC_PATHS = frozenset(
     {
         "/",
@@ -46,6 +40,10 @@ PUBLIC_PATHS = frozenset(
 )
 
 
+def _token_fingerprint(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, *, settings: Settings) -> None:
         super().__init__(app)
@@ -53,15 +51,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._jwt_key = None
         if settings.jwt_public_verification_key:
             try:
-                # Try loading from hex first (Veklom ecosystem standard)
                 key_bytes = bytes.fromhex(settings.jwt_public_verification_key)
                 self._jwt_key = Ed25519PublicKey.from_public_bytes(key_bytes)
             except ValueError:
-                # Fallback to assuming PEM
                 self._jwt_key = settings.jwt_public_verification_key
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self._settings.auth_enabled:
+            request.scope["auth_principal"] = "auth-disabled"
             return await call_next(request)
 
         path = request.url.path
@@ -87,13 +84,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     options={"require": ["exp", "iss", "aud"]},
                 )
                 request.scope["jwt_payload"] = payload
+                subject = str(payload.get("sub") or _token_fingerprint(token))
+                issuer = str(payload.get("iss") or self._settings.jwt_issuer or "unknown")
+                request.scope["auth_principal"] = f"jwt:{issuer}:{subject}"
+                workspace = payload.get("workspace_id") or payload.get("workspace") or payload.get(
+                    "tenant_id"
+                )
+                if workspace:
+                    request.scope["auth_workspace"] = str(workspace)
             except jwt.ExpiredSignatureError:
                 return JSONResponse({"error": "TOKEN_EXPIRED"}, status_code=401)
-            except jwt.InvalidTokenError as e:
-                return JSONResponse({"error": "INVALID_TOKEN", "detail": str(e)}, status_code=401)
+            except jwt.InvalidTokenError:
+                return JSONResponse({"error": "INVALID_TOKEN"}, status_code=401)
         else:
             if token not in self._settings.api_key_set:
                 return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
+            request.scope["auth_principal"] = f"api-key:{_token_fingerprint(token)}"
+            workspace = request.headers.get("X-Workspace-ID")
+            if workspace:
+                request.scope["auth_workspace"] = workspace.strip()
 
         operator_key = request.headers.get("x-uacp-internal-key")
         if operator_key and operator_key in self._settings.api_key_set:
