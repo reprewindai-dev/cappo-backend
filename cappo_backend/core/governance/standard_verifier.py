@@ -36,9 +36,10 @@ class StandardVerifier:
         Verifies the execution context against the required standards by evaluating
         the field_check requirements defined in each standard's YAML definition.
 
-        Returns a list of compliance results. Results use only PASS, FAIL, NOT_FOUND,
-        or NOT_EVALUATED — never a mock default. Missing or failing mandatory fields
-        produce a FAIL result.
+        Structural field checks may produce PASS/FAIL only for standards whose
+        verification contract is actually implemented here. Protocols requiring an
+        external cryptographic verifier must remain NOT_VERIFIED until that verifier
+        is integrated; caller-supplied presence flags are not verification evidence.
         """
         results = []
         for std_id in required_standards:
@@ -51,6 +52,26 @@ class StandardVerifier:
                 continue
 
             std_def = self.standards[std_id]
+            verification = std_def.get("verification", {})
+
+            # x402 requires cryptographically verified settlement evidence. The
+            # current StandardVerifier has no settlement verifier, key provenance,
+            # replay protection, or durable receipt lookup. HTTP 402 plus a
+            # caller-supplied `has_receipt_id` flag can therefore never establish
+            # x402 compliance. Keep this fail-closed until the canonical settlement
+            # verifier is wired in.
+            if std_id == "x402" and verification.get("evidence_required", False):
+                results.append({
+                    "id": std_id,
+                    "version": str(std_def.get("version", "unknown")),
+                    "result": "NOT_VERIFIED",
+                    "reason": (
+                        "x402 cryptographic settlement verification is not integrated; "
+                        "HTTP/header presence checks are insufficient evidence."
+                    )
+                })
+                continue
+
             requirements = std_def.get("requirements", [])
 
             if not requirements:
