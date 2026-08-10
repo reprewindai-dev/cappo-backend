@@ -20,6 +20,8 @@ class CapabilityMount(Base):
     mount_id: Mapped[str] = mapped_column(String, primary_key=True)
     token_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     token_nonce: Mapped[str] = mapped_column(String, unique=True, index=True)
+    owner_principal: Mapped[str] = mapped_column(String, default="legacy-unbound", index=True)
+    owner_workspace: Mapped[str] = mapped_column(String, default="legacy-unbound", index=True)
     mount_json: Mapped[dict] = mapped_column(JSON)
     token_json: Mapped[dict] = mapped_column(JSON)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
