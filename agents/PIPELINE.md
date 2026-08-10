@@ -17,7 +17,7 @@
 
 These roles must not be collapsed in examples or dashboard copy.
 
-## Canonical CAPPO runtime contract
+## Canonical CAPPO source contract
 
 | Property | Source contract |
 |---|---|
@@ -29,7 +29,9 @@ These roles must not be collapsed in examples or dashboard copy.
 | HTTP / protocol identity | `NOT_VERIFIED` until independently observed |
 | Production health | `NOT_VERIFIED` until independently observed |
 
-Production/root CAPPO examples must not normalize ports `3000` or `8000`.
+The governed source target for CAPPO is `8002`. Production/root CAPPO examples
+must not normalize legacy ports `3000` or `8000` as the authoritative target.
+This source contract does **not** assert which listener is currently deployed.
 
 ## Intended pipeline
 
@@ -92,7 +94,7 @@ revision and service identity. At minimum, record:
 ```yaml
 runtime_verification:
   source_sha: NOT_VERIFIED
-  cappo_listener: 8002
+  cappo_listener: NOT_VERIFIED
   http_identity: NOT_VERIFIED
   health_protocol: NOT_VERIFIED
   traefik_target: NOT_VERIFIED
@@ -122,7 +124,8 @@ Example safe design mock:
 
 ```text
 CAPPO
-  listener: 8002
+  configured listener: 8002
+  observed listener: NOT_VERIFIED
   deployed SHA: NOT_VERIFIED
   health: NOT_VERIFIED
   latency: UNAVAILABLE
