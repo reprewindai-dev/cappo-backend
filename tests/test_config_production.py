@@ -29,6 +29,7 @@ def _prod(**overrides) -> Settings:
         license_admin_key="prod-license-key",
         capi_gatekeeper_public_key="test-capi-public-key",
         approval_token_signing_key="test-approval-token-key",
+        jwt_public_verification_key="test-jwt-key",
         cors_allow_origins="https://api.veklom.com",
     )
     base.update(overrides)
@@ -57,9 +58,7 @@ class TestProductionFailClosed:
             _prod(ei_signing_key="short").validate_production()
 
     def test_non_persistent_pgl_rejected(self) -> None:
-        with pytest.raises(
-            InsecureProductionConfigError, match="CAPPO_REQUIRE_PERSISTENT_PGL"
-        ):
+        with pytest.raises(InsecureProductionConfigError, match="CAPPO_REQUIRE_PERSISTENT_PGL"):
             _prod(cappo_require_persistent_pgl=False).validate_production()
 
     def test_sqlite_rejected_in_prod(self) -> None:

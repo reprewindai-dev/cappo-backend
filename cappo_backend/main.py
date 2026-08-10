@@ -45,6 +45,7 @@ from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
 from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
 from cappo_backend.config import Settings, get_settings
+from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
 from cappo_backend.db.session import SessionLocal
 from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
@@ -92,7 +93,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         "CAPPO_ENABLE_INTERNAL_VNP_PROBER", ""
     ).lower() in {"1", "true", "yes"}:
         prober_task = asyncio.create_task(vnp_prober_loop())
-
     from cappo_backend.services.capi_registration import register_with_capi
 
     capi_task = asyncio.create_task(register_with_capi(settings))
@@ -101,7 +101,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     if capi_task:
         capi_task.cancel()
-
     if prober_task:
         prober_task.cancel()
         try:
@@ -140,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     # add_middleware adds outermost-last, so register innermost first.
+    app.add_middleware(OllamaBleedSanitizerMiddleware)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(AmphotericSensingMiddleware)
     app.add_middleware(

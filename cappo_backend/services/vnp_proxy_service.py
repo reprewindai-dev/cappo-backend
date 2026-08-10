@@ -86,11 +86,17 @@ class VNPProxyService:
 
         # 2. Record Transaction (x402/MPP settlement)
         tx_id = f"vnp_mpp_tx_{uuid.uuid4().hex[:10]}"
+        # Calculate dynamic MPP fraction based on latency and payload size
+        base_cost = Decimal("0.001000")
+        latency_cost = Decimal(latency_ms) * Decimal("0.000002")
+        payload_cost = Decimal(len(str(payload))) * Decimal("0.000001")
+        calculated_amount = round(base_cost + latency_cost + payload_cost, 6)
+
         transaction = VNPTransaction(
             buyer_user_id=user_id,
             target_api_id=api.id,
             microtransaction_id=tx_id,
-            amount_usd=Decimal("0.003190"), # Mock MPP fraction
+            amount_usd=calculated_amount,
             payment_status="Settled" if proxy_success else "Failed",
             settled_at=func.now() if proxy_success else None
         )

@@ -37,17 +37,23 @@ class EnforcementEngine:
                 })
             return {}, {"field_decisions": field_decisions, "decision_id": decision.decision_id}
             
-        def _process_payload(obj: Any) -> Any:
+        import re
+        
+        PII_REGEXES = {
+            "email": re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
+            "ssn": re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),
+            "phone": re.compile(r'\b(?:\+\d{1,2}\s)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b')
+        }
+        
+        def _process_payload(obj: Any, path: str = "") -> Any:
             if isinstance(obj, dict):
                 shaped = {}
                 for k, v in obj.items():
                     if k in effective_denies:
                         policy_reason = "Global Jurisdiction Policy" if k in global_denies else "Capability Contract prohibits exposure"
-                        action = decision.action
-                        if action == "ALLOW_WITH_REDACTION":
-                            action = "STRIP"
+                        action = decision.action if decision.action != "ALLOW_WITH_REDACTION" else "STRIP"
                         field_decisions.append({
-                            "field": k,
+                            "field": f"{path}.{k}" if path else k,
                             "classification": "PII",
                             "requested_by": capability_id,
                             "policy": ", ".join(policy_bundle.applicable_policies) if policy_bundle else policy_reason,
@@ -59,10 +65,28 @@ class EnforcementEngine:
                             "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
                         })
                     else:
-                        shaped[k] = _process_payload(v)
+                        shaped[k] = _process_payload(v, f"{path}.{k}" if path else k)
                 return shaped
             elif isinstance(obj, list):
-                return [_process_payload(item) for item in obj]
+                return [_process_payload(item, path) for item in obj]
+            elif isinstance(obj, str):
+                original = obj
+                for pii_type, pattern in PII_REGEXES.items():
+                    if pattern.search(original):
+                        original = pattern.sub(f"[{pii_type.upper()}]", original)
+                        field_decisions.append({
+                            "field": path,
+                            "classification": f"PII_INLINE_{pii_type.upper()}",
+                            "requested_by": capability_id,
+                            "policy": ", ".join(policy_bundle.applicable_policies) if policy_bundle else "Global Policy",
+                            "rule": decision.rule_applied,
+                            "decision_id": decision.decision_id,
+                            "decision": "REDACT_INLINE",
+                            "reason": f"Detected inline PII ({pii_type})",
+                            "resolver_version": decision.policy_version,
+                            "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+                        })
+                return original
             return obj
             
         shaped_payload = _process_payload(payload)

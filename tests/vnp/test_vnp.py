@@ -20,7 +20,7 @@ def test_vnp_control_plane_onboarding(client: TestClient, db: Session):
         "name": "Production LLM",
         "endpoint": "https://api.testcloud.com/v1",
         "version": "v2.0",
-        "x402Ready": True
+        "x402Ready": True,
     }
     response = client.post(f"/v1/vnp/admin/providers/{provider_id}/apis", json=payload)
     assert response.status_code == 200
@@ -37,10 +37,14 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session):
     # Onboard
     client.post("/v1/vnp/admin/providers", json={"name": "Telemetry Cloud"})
     provider = db.query(VNPProvider).first()
-    client.post(f"/v1/vnp/admin/providers/{provider.id}/apis", json={"name": "Metrics API", "endpoint": "https://m.test"})
+    client.post(
+        f"/v1/vnp/admin/providers/{provider.id}/apis",
+        json={"name": "Metrics API", "endpoint": "https://m.test"},
+    )
     api = db.query(APIState).first()
 
     from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
+
     service = VNPTelemetryService(db)
 
     # Ingest with raw event tracking
@@ -50,8 +54,7 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session):
         latency_ms=150,
         status_code=200,
         worker_id="worker-001",
-        signature="mock-sig",
-        payload_json={"sample": "data"}
+        payload_json={"sample": "data"},
     )
     db.commit()
 
@@ -70,10 +73,14 @@ def test_vnp_incidents(client: TestClient, db: Session):
     # Setup
     client.post("/v1/vnp/admin/providers", json={"name": "SLA Cloud"})
     provider = db.query(VNPProvider).first()
-    client.post(f"/v1/vnp/admin/providers/{provider.id}/apis", json={"name": "SLA API", "endpoint": "https://s.test"})
+    client.post(
+        f"/v1/vnp/admin/providers/{provider.id}/apis",
+        json={"name": "SLA API", "endpoint": "https://s.test"},
+    )
     api = db.query(APIState).first()
 
     from cappo_backend.services.vnp_incident_service import VNPIncidentService
+
     service = VNPIncidentService(db)
 
     # Open Incident
@@ -81,7 +88,7 @@ def test_vnp_incidents(client: TestClient, db: Session):
         api_id=api.id,
         region="us-east",
         incident_type="Latency Spike",
-        description="P99 exceeded 2000ms"
+        description="P99 exceeded 2000ms",
     )
     db.commit()
 
@@ -96,6 +103,7 @@ def test_vnp_incidents(client: TestClient, db: Session):
 
 def test_vnp_validators(client: TestClient, db: Session):
     from cappo_backend.services.vnp_validator_service import VNPValidatorService
+
     service = VNPValidatorService(db)
 
     service.register_validator("Hetzner Node", stake_amount=Decimal("1000.50"))
@@ -113,12 +121,16 @@ def test_vnp_route_beacon_snapshots(client: TestClient, db: Session):
     # Setup API with score
     client.post("/v1/vnp/admin/providers", json={"name": "Route Cloud"})
     provider = db.query(VNPProvider).first()
-    client.post(f"/v1/vnp/admin/providers/{provider.id}/apis", json={"name": "Route API", "endpoint": "https://r.test"})
+    client.post(
+        f"/v1/vnp/admin/providers/{provider.id}/apis",
+        json={"name": "Route API", "endpoint": "https://r.test"},
+    )
     api = db.query(APIState).first()
     api.composite_score = Decimal("95.50")
     db.commit()
 
     from cappo_backend.services.vnp_route_snapshot_service import VNPRouteSnapshotService
+
     service = VNPRouteSnapshotService(db)
 
     # Generate snapshot

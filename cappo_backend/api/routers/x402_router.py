@@ -20,7 +20,7 @@ async def get_well_known_x402() -> JSONResponse:
     """
     manager = get_x402_manager()
     # If disabled (e.g. during tests without a configured wallet), return fallback
-    wallet = manager._config.evm_address if manager.is_enabled else "0x3a74772e925b54F7dAD7FD95c9Ba30825033f970"
+    wallet = manager._config.evm_address if manager.is_enabled else "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
     
     return JSONResponse(content={
         "name": "Sovereign AI Hub",

@@ -53,3 +53,16 @@ def test_expired_beacon_rejected(client: TestClient) -> None:
     beacon["expires_at"] = "2020-01-01T00:00:00+00:00"
     rejected = client.post("/v1/capability/beacons/verify", json={"beacon": beacon})
     assert rejected.json() == {"valid": False, "reason": "beacon_expired"}
+
+
+def test_beacon_keys_are_public_when_authentication_is_enabled(
+    client: TestClient,
+    settings,
+) -> None:
+    settings.auth_enabled = True
+    client.headers.pop("X-API-Key", None)
+
+    response = client.get("/.well-known/capability-beacon-keys")
+
+    assert response.status_code == 200
+    assert response.json()["keys"][0]["kid"] == "default"

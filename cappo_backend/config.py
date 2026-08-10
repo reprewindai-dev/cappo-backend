@@ -9,7 +9,9 @@ explicit environment flag. Placeholders must never be acceptable in production.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The development default for the EI signing key. It is intentionally obvious so
@@ -81,6 +83,13 @@ class Settings(BaseSettings):
     # Comma-separated set of accepted API keys. Deployment must inject values;
     # repository defaults intentionally contain no credential material.
     api_keys: str = ""
+
+    # --- JWT Authentication ---
+    jwt_auth_enabled: bool = False
+    jwt_public_verification_key: str = ""
+    jwt_algorithm: str = "EdDSA"
+    jwt_issuer: str = ""
+    jwt_audience: str = ""
 
     # --- License Server (this service acts as license authority) ---
     license_admin_key: str = ""  # Shared secret for /v1/license admin endpoints
@@ -162,6 +171,14 @@ class Settings(BaseSettings):
     def api_key_set(self) -> frozenset[str]:
         return frozenset(k.strip() for k in self.api_keys.split(",") if k.strip())
 
+    @field_validator("api_keys", mode="before")
+    @classmethod
+    def reject_known_insecure_keys(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            if "cappo_internal_exec_key_veklom_2026" in v:
+                raise ValueError("Known compromised default credential detected in API_KEYS.")
+        return v
+
     def validate_production(self) -> None:
         """Fail-closed: refuse to run production with unsafe defaults.
 
@@ -223,6 +240,19 @@ class Settings(BaseSettings):
             problems.append(
                 "APPROVAL_TOKEN_SIGNING_KEY must be set in production for approval-token verification."
             )
+        if self.jwt_auth_enabled:
+            if not self.jwt_public_verification_key:
+                problems.append(
+                    "JWT_PUBLIC_VERIFICATION_KEY must be set in production when JWT_AUTH_ENABLED is true."
+                )
+            if not self.jwt_issuer:
+                problems.append(
+                    "JWT_ISSUER must be set in production when JWT_AUTH_ENABLED is true."
+                )
+            if not self.jwt_audience:
+                problems.append(
+                    "JWT_AUDIENCE must be set in production when JWT_AUTH_ENABLED is true."
+                )
 
         if problems:
             raise InsecureProductionConfigError(

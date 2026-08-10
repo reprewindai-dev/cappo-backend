@@ -253,6 +253,11 @@ class RunOrchestrator:
     def govern_run(self, run: GovernedRun) -> None:
         """Governance decision. No post-hoc/status-derived defaults."""
         payload = run.request_payload or {}
+
+        raw_directive = payload.get("directive")
+        if not raw_directive or not str(raw_directive).strip():
+            raise MissingGovernanceDecisionError("CAPPO governance decision required")
+
         from cappo_backend.services.authorization import normalize_directive
 
         normalized = normalize_directive(payload, strict=True)
