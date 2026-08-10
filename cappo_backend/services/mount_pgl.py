@@ -14,7 +14,12 @@ from cappo_backend.services.audit_service import AuditService
 
 
 class AuditPGLAnchor:
-    """Persist locally and synchronously confirm an external PGL append when configured."""
+    """Stage local evidence and synchronously confirm one external PGL append.
+
+    Transaction ownership stays with the mount registry. This helper must never
+    commit or roll back the caller's request transaction because the registry may
+    be holding a ``SELECT ... FOR UPDATE`` lock until nonce/state persistence.
+    """
 
     def __init__(self, db: Session, settings: Settings | None = None) -> None:
         self.db = db
@@ -45,17 +50,19 @@ class AuditPGLAnchor:
                 payload,
                 workspace_id=mount.scope.workspace if mount else None,
                 run_id=token.execution_id if token else None,
+                forward_to_gnomledger=False,
             )
-            self.db.commit()
-        except Exception as exc:
-            self.db.rollback()
-            return AnchorResult("failed", detail=f"local PGL append failed: {exc}")
+        except Exception:
+            return AnchorResult("failed", detail="local PGL append failed")
 
         url = self.settings.pgl_ledger_url
         if not url:
             return AnchorResult(
-                "unconfirmed", anchor_id=event.log_hash, detail="external PGL is not configured"
+                "unconfirmed",
+                anchor_id=event.log_hash,
+                detail="external PGL is not configured",
             )
+
         try:
             headers: dict[str, str] = {}
             if self.settings.pgl_ledger_api_key:
@@ -69,12 +76,15 @@ class AuditPGLAnchor:
                     "actor": "cappo-backend",
                     "summary": f"Capability mount {event_type}",
                     "details": payload | {"log_hash": event.log_hash},
+                    "idempotency_key": event.log_hash,
                 },
                 timeout=self.settings.pgl_ledger_timeout_ms / 1000,
             )
             response.raise_for_status()
         except Exception:
             return AnchorResult(
-                "unconfirmed", anchor_id=event.log_hash, detail="external PGL append unconfirmed"
+                "unconfirmed",
+                anchor_id=event.log_hash,
+                detail="external PGL append unconfirmed",
             )
         return AnchorResult("confirmed", anchor_id=event.log_hash)
