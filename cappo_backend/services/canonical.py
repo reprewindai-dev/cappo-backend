@@ -73,6 +73,8 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
     asymmetric trust boundary.
     """
     try:
+        if not isinstance(signature, str) or not signature:
+            return False
         if isinstance(public_key_or_seed, str):
             public_key = get_ed25519_private_key(public_key_or_seed).public_key()
         elif isinstance(public_key_or_seed, bytes):
@@ -83,7 +85,13 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
         serialized = canonical_json(payload).encode("utf-8")
         rem = len(signature) % 4
         signature_padded = signature + "=" * (4 - rem) if rem > 0 else signature
-        sig_bytes = base64.urlsafe_b64decode(signature_padded.encode("utf-8"))
+        sig_bytes = base64.b64decode(
+            signature_padded.encode("ascii"),
+            altchars=b"-_",
+            validate=True,
+        )
+        if len(sig_bytes) != 64:
+            return False
         public_key.verify(sig_bytes, serialized)
         return True
     except Exception:
