@@ -60,7 +60,7 @@ class MountRecord:
 
 
 class MountRegistry:
-    """Owns package discovery and DB-backed ephemeral mount records."""
+    """Own package discovery and DB-backed ephemeral mount records."""
 
     def __init__(self, db: Session | None = None, anchor: EventAnchor | None = None) -> None:
         self.db = db
@@ -92,6 +92,18 @@ class MountRegistry:
             AnchorResult(row.anchor_status, row.anchor_id, row.anchor_detail),
         )
 
+    @staticmethod
+    def _owned_by(
+        row: CapabilityMount,
+        owner_principal: str,
+        owner_workspace: str | None,
+    ) -> bool:
+        if row.owner_principal != owner_principal:
+            return False
+        if owner_principal == "auth-disabled":
+            return True
+        return bool(owner_workspace) and row.owner_workspace == owner_workspace
+
     def _row(self, mount_id: str, *, lock: bool = False) -> CapabilityMount | None:
         statement = select(CapabilityMount).where(CapabilityMount.mount_id == mount_id)
         if lock:
@@ -106,8 +118,11 @@ class MountRegistry:
         role: str,
         policy: MountPolicy,
         ttl_seconds: int,
+        owner_principal: str,
+        owner_workspace: str,
         execution_id: str | None = None,
     ) -> tuple[MountRecord | None, AnchorResult, str]:
+        db = self._db()
         package = self.packages.get(package_ref)
         if package is None:
             anchor = self.anchor.anchor(
@@ -118,6 +133,7 @@ class MountRegistry:
                 mount=None,
                 token=None,
             )
+            db.commit()
             return None, anchor, "unknown_package"
         try:
             mount, token = self.mounter.mount(
@@ -140,14 +156,16 @@ class MountRegistry:
             token=token,
         )
         if anchor.status != "confirmed":
+            db.rollback()
             return None, anchor, "pgl_anchor_unconfirmed"
 
-        db = self._db()
         db.add(
             CapabilityMount(
                 mount_id=mount.id,
                 token_id=token.token_id,
                 token_nonce=token.nonce,
+                owner_principal=owner_principal,
+                owner_workspace=owner_workspace,
                 mount_json=mount.model_dump(mode="json"),
                 token_json=token.model_dump(mode="json"),
                 issued_at=token.issued_at,
@@ -170,10 +188,18 @@ class MountRegistry:
             return None
         return self._record(row)
 
-    def status(self, mount_id: str) -> tuple[MountRecord | None, str]:
+    def status(
+        self,
+        mount_id: str,
+        *,
+        owner_principal: str,
+        owner_workspace: str | None,
+    ) -> tuple[MountRecord | None, str]:
         row = self._row(mount_id)
         if row is None:
             return None, "unknown_mount"
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            return None, "owner_mismatch"
         record = self._record(row)
         if row.terminated:
             state = "terminated"
@@ -190,12 +216,11 @@ class MountRegistry:
         *,
         token_id: str,
         nonce: str,
+        owner_principal: str,
+        owner_workspace: str | None,
         approval_token: str | None = None,
         suppression_confirmed: bool = False,
     ) -> tuple[Decision, str, AnchorResult, dict[str, Any] | None]:
-        # These compatibility fields are caller assertions, not trusted evidence. They
-        # must not authorize execution until CAPPO has an actual verifier for signed,
-        # expiring, replay-resistant approval/suppression evidence bound to this action.
         _ = approval_token, suppression_confirmed
         db = self._db()
         row = self._row(mount_id, lock=True)
@@ -210,6 +235,18 @@ class MountRegistry:
             )
             db.commit()
             return Decision.DENY, "unknown_mount", anchor, None
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            anchor = self.anchor.anchor(
+                "action_decision",
+                action=action,
+                decision=Decision.DENY.value,
+                reason="owner_mismatch",
+                mount=None,
+                token=None,
+            )
+            db.commit()
+            return Decision.DENY, "owner_mismatch", anchor, None
+
         record = self._record(row)
         if row.terminated:
             reason = "terminated"
@@ -232,6 +269,7 @@ class MountRegistry:
             )
             db.commit()
             return Decision.DENY, reason, anchor, None
+
         try:
             record.binding.check_live()
             if not record.binding._profile.allows(action):  # noqa: SLF001
@@ -275,7 +313,7 @@ class MountRegistry:
             token=record.token,
         )
         if decision is Decision.ALLOW and anchor.status != "confirmed":
-            db.commit()
+            db.rollback()
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor, None
         if decision is Decision.ALLOW:
             row.nonce_consumed = True
@@ -294,7 +332,14 @@ class MountRegistry:
             },
         )
 
-    def terminate(self, mount_id: str, reason: UnmountReason) -> tuple[Decision, str, AnchorResult]:
+    def terminate(
+        self,
+        mount_id: str,
+        reason: UnmountReason,
+        *,
+        owner_principal: str,
+        owner_workspace: str | None,
+    ) -> tuple[Decision, str, AnchorResult]:
         db = self._db()
         row = self._row(mount_id, lock=True)
         if row is None:
@@ -308,6 +353,18 @@ class MountRegistry:
             )
             db.commit()
             return Decision.DENY, "unknown_mount", anchor
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            anchor = self.anchor.anchor(
+                "terminate",
+                action="execution",
+                decision=Decision.DENY.value,
+                reason="owner_mismatch",
+                mount=None,
+                token=None,
+            )
+            db.commit()
+            return Decision.DENY, "owner_mismatch", anchor
+
         record = self._record(row)
         if row.terminated:
             db.commit()
@@ -325,7 +382,7 @@ class MountRegistry:
             token=record.token,
         )
         if anchor.status != "confirmed":
-            db.commit()
+            db.rollback()
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor
         row.terminated = True
         db.commit()
