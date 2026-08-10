@@ -16,7 +16,7 @@ services:
       # Using the real DB
       - DATABASE_URL=postgresql+psycopg2://postgres:postgres@llwfyzhnft87bz6brddiax1z:5432/veklom
       - HOST=0.0.0.0
-      - PORT=8000
+      - PORT=8002
     networks:
       - coolify
 

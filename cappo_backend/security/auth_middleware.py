@@ -24,26 +24,23 @@ from cappo_backend.config import Settings
 # Non-side-effecting, safe-to-expose paths. Note: /v1/exec is deliberately absent.
 # License endpoints use their own X-License-Admin-Key header for admin operations;
 # /validate and /activate are intentionally public for veklom-byos-backend to call.
-PUBLIC_PATHS = frozenset(
-    {
-        "/",
-        "/favicon.ico",
-        "/robots.txt",
-        "/health",
-        "/docs",
-        "/redoc",
-        "/openapi.json",
-        "/v1/license/validate",
-        "/v1/license/activate",
-        "/v1/vnp/metrics",
-        "/.well-known/x402",
-        "/.well-known/x402.json",
-        "/.well-known/capability-beacon-keys",
-        "/.well-known/capability-beacon-keys.json",
-        "/x402/bazaar",
-        "/api/v1/pricing",
-    }
-)
+PUBLIC_PATHS = frozenset({
+    "/",
+    "/favicon.ico",
+    "/robots.txt",
+    "/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/v1/license/validate",
+    "/v1/license/activate",
+    "/v1/vnp/metrics",
+    "/.well-known/x402",
+    "/.well-known/x402.json",
+    "/.well-known/capability-beacon-keys",
+    "/x402/bazaar",
+    "/api/v1/pricing",
+})
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -67,10 +64,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path in PUBLIC_PATHS or request.method == "OPTIONS":
             return await call_next(request)
+            
+        # Also allow anything under /.well-known/ if we decide to wildcard it
+        if path.startswith("/.well-known/"):
+            return await call_next(request)
 
         api_key = request.headers.get("X-API-Key")
         auth_header = request.headers.get("Authorization")
-        token = api_key or (auth_header.removeprefix("Bearer ").strip() if auth_header else None)
+        cookie_token = request.cookies.get("access_token")
+        
+        token = api_key or (auth_header.removeprefix("Bearer ").strip() if auth_header else cookie_token)
         if not token:
             return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
 
