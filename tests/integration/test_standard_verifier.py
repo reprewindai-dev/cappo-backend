@@ -1,5 +1,6 @@
-from cappo_backend.core.governance.standard_verifier import StandardVerifier
 from cappo_backend.core.governance.context_shaper import ContextShaper
+from cappo_backend.core.governance.jurisdiction import JurisdictionResolver
+from cappo_backend.core.governance.standard_verifier import StandardVerifier
 
 
 def test_standard_verifier_loads_standards():
@@ -48,6 +49,8 @@ def test_x402_receipt_presence_cannot_promote_verification():
 
 def test_context_shaper_fails_closed_when_required_standard_is_unverified():
     shaper = ContextShaper()
+    policy_bundle = JurisdictionResolver().resolve("exec_standard_test", "tenant-ca-123")
+    assert policy_bundle.jurisdiction == "Canada"
 
     payload = {
         "tenant": "test_tenant",
@@ -62,13 +65,20 @@ def test_context_shaper_fails_closed_when_required_standard_is_unverified():
         capability_id="blueprint.generate",
         payload=payload,
         tenant_jwt="test-token",
+        policy_bundle=policy_bundle,
     )
 
     compliance = audit_record["standards_compliance"]
     assert len(compliance) == 2
 
     x402_compliance = next(c for c in compliance if c["id"] == "x402")
+    rfc_compliance = next(c for c in compliance if c["id"] == "RFC9989")
     assert x402_compliance["result"] == "NOT_VERIFIED"
+    assert rfc_compliance["result"] == "PASS"
+
+    # Canada/blueprint.generate is otherwise an allowing-with-redaction policy.
+    # This FAIL_CLOSED therefore comes from the required-standard enforcement.
     assert action == "FAIL_CLOSED"
+    assert audit_record["rule_applied"] == "Required-Standard-Verification-Failed:x402"
     assert audit_record["enforcement_decision"] == "FAIL_CLOSED"
     assert shaped_payload == {}
