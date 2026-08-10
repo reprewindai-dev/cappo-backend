@@ -184,22 +184,23 @@ class ExecutionBinding:
             self._append(action, Decision.DENY, reason)
             raise PolicyError(reason)
 
-        approval_token = kwargs.pop("approval_token", None)
-        suppression_confirmed = kwargs.pop("suppression_confirmed", False)
+        # Compatibility inputs are deliberately consumed but never trusted as evidence.
+        # A future verifier must replace these raw assertions with signed, expiring,
+        # replay-resistant evidence bound to the principal, mount, action and nonce.
+        kwargs.pop("approval_token", None)
+        kwargs.pop("suppression_confirmed", False)
         if (
             action in self.token.grants.external_send
             and self.token.policy.require_human_approval_for_external_send
-            and not approval_token
         ):
-            self._append(action, Decision.DENY, "human_approval_required")
-            raise PolicyError("human_approval_required")
+            self._append(action, Decision.DENY, "human_approval_not_verified")
+            raise PolicyError("human_approval_not_verified")
         if (
             action in self.token.grants.suppression_required
             and self.token.policy.require_suppression_check
-            and suppression_confirmed is not True
         ):
-            self._append(action, Decision.DENY, "suppression_check_required")
-            raise PolicyError("suppression_check_required")
+            self._append(action, Decision.DENY, "suppression_not_verified")
+            raise PolicyError("suppression_not_verified")
 
         result = fn(**kwargs)
         self._append(action, Decision.ALLOW, "allowed")
