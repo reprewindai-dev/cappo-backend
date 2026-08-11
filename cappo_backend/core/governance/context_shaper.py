@@ -62,12 +62,20 @@ class ContextShaper:
         # 1. Standard Compliance Verification
         required_standards = contract.get("requires_standards", [])
         standard_results = self.standard_verifier.verify(required_standards, payload)
-        
-        # If any required standard strictly fails and the action requires it, we could
-        # fail early. For now, we record the compliance in the audit log.
+        blocking_standard_results = [
+            result for result in standard_results if result.get("result") != "PASS"
+        ]
         
         # 2. Execution Policy Resolution
         decision = self.resolver.resolve(capability_id, jurisdiction)
+
+        # Required standards are part of the capability contract. Missing, failed,
+        # unavailable, or unverified standard evidence must therefore deny execution;
+        # recording the result in an audit object is not sufficient enforcement.
+        if blocking_standard_results:
+            blocking_ids = ",".join(result.get("id", "unknown") for result in blocking_standard_results)
+            decision.action = "FAIL_CLOSED"
+            decision.rule_applied = f"Required-Standard-Verification-Failed:{blocking_ids}"
         
         # 3. Enforcement
         shaped_payload, enforcement_details = self.enforcer.apply(
