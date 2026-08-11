@@ -1,10 +1,5 @@
 """Canonical serialization, hashing, and signing helpers.
 
-Lineage seed: the old backend's ``_sha256_json()`` provenance helper and the
-``AIAuditLog`` HMAC-SHA256 ``log_hash`` pattern. CAPPO promotes these to a shared,
-deterministic primitive used by PGL certificates, the ledger, and
-ExecutionIdentityV1.
-
 Determinism rule: the same logical payload must always produce the same hash and
 signature. We therefore serialize with sorted keys, no insignificant whitespace,
 and ``ensure_ascii=False`` so equivalent unicode is stable.
@@ -70,48 +65,42 @@ def sign_payload_ed25519(payload: Any, private_key_or_seed: Any) -> str:
 
 
 def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: Any) -> bool:
-    """Verify Base64url Ed25519 signature."""
-    is_ed25519_ok = False
+    """Strictly verify a Base64url Ed25519 signature.
+
+    This function never falls back to HMAC or another signature scheme. Callers
+    that require a legacy symmetric verifier must invoke that verifier explicitly;
+    accepting another algorithm here would allow algorithm-confusion at an
+    asymmetric trust boundary.
+    """
     try:
+        if not isinstance(signature, str) or not signature:
+            return False
         if isinstance(public_key_or_seed, str):
-            priv_key = get_ed25519_private_key(public_key_or_seed)
-            public_key = priv_key.public_key()
+            public_key = get_ed25519_private_key(public_key_or_seed).public_key()
         elif isinstance(public_key_or_seed, bytes):
             public_key = ed25519.Ed25519PublicKey.from_public_bytes(public_key_or_seed)
         else:
             public_key = public_key_or_seed
 
         serialized = canonical_json(payload).encode("utf-8")
-        # Add padding back to base64url if needed
         rem = len(signature) % 4
         signature_padded = signature + "=" * (4 - rem) if rem > 0 else signature
-        sig_bytes = base64.urlsafe_b64decode(signature_padded.encode("utf-8"))
+        sig_bytes = base64.b64decode(
+            signature_padded.encode("ascii"),
+            altchars=b"-_",
+            validate=True,
+        )
+        if len(sig_bytes) != 64:
+            return False
         public_key.verify(sig_bytes, serialized)
-        is_ed25519_ok = True
+        return True
     except Exception:
         logger.debug("Ed25519 signature verification failed", exc_info=True)
-
-    if is_ed25519_ok:
-        return True
-
-    # Fallback to HMAC verification if key is string
-    if isinstance(public_key_or_seed, str):
-        try:
-            if verify_signature_hmac(payload, signature, public_key_or_seed):
-                return True
-        except Exception:
-            logger.debug("Fallback signature verification failed", exc_info=True)
-        try:
-            if verify_signature(payload, signature, public_key_or_seed):
-                return True
-        except Exception:
-            logger.debug("Fallback signature verification failed", exc_info=True)
-
-    return False
+        return False
 
 
 def sign_payload_hmac(payload: Any, hmac_key: str) -> str:
-    """Return a Base64url-encoded HMAC-SHA256 signature over the canonical JSON of ``payload``."""
+    """Return a Base64url-encoded HMAC-SHA256 signature over canonical JSON."""
     serialized = canonical_json(payload).encode("utf-8")
     sig_bytes = hmac.new(
         hmac_key.encode("utf-8"),
@@ -128,7 +117,7 @@ def verify_signature_hmac(payload: Any, signature: str, hmac_key: str) -> bool:
 
 
 def sign_payload(payload: Any, signing_key: str) -> str:
-    """Legacy helper: Return a hex HMAC-SHA256 signature over canonical JSON."""
+    """Legacy helper: return a hex HMAC-SHA256 signature over canonical JSON."""
     return hmac.new(
         signing_key.encode("utf-8"),
         canonical_json(payload).encode("utf-8"),
@@ -137,7 +126,7 @@ def sign_payload(payload: Any, signing_key: str) -> str:
 
 
 def verify_signature(payload: Any, signature: str, signing_key: str) -> bool:
-    """Legacy helper: Constant-time verification of legacy signatures."""
+    """Legacy helper: constant-time verification of legacy signatures."""
     expected = sign_payload(payload, signing_key)
     if hmac.compare_digest(expected, signature):
         return True
@@ -147,4 +136,3 @@ def verify_signature(payload: Any, signature: str, signing_key: str) -> bool:
     except Exception:
         logger.debug("Legacy signature verification failed", exc_info=True)
     return False
-
