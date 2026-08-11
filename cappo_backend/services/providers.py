@@ -1,15 +1,10 @@
 """Real execution-layer providers.
 
-The migration note (§2/§5) keeps provider clients behind a small interface,
-invoked by the governed path. This implements a provider-agnostic
-**OpenAI-compatible** HTTP client: OpenAI, Groq, and local Ollama all expose an
-OpenAI-style ``POST {base_url}/chat/completions``, so a single client serves all
-three by varying ``base_url`` + ``api_key``.
-
-The client satisfies the :class:`~cappo_backend.services.executor.Executor`
-protocol (``execute(request) -> dict``) so it drops straight into a
-``Provider(...)`` slot behind a circuit breaker. Network/HTTP errors are raised
-(never swallowed) so the breaker records them and fails over.
+Provider clients stay behind the governed execution boundary. OpenAI-compatible
+providers use ``POST /chat/completions``. Ollama is intentionally different:
+its model lifecycle controls are exposed by the native ``POST /api/chat`` API,
+so CAPPO uses a dedicated native adapter whenever the configured provider name
+is ``ollama``.
 """
 
 from __future__ import annotations
@@ -45,32 +40,11 @@ DEFAULT_TIMEOUT = 30.0
 
 
 class ProviderError(RuntimeError):
-    """Raised when a provider call fails (network, timeout, or HTTP status).
-
-    Surfacing a single error type lets the circuit breaker treat any provider
-    failure uniformly while preserving the original cause via ``__cause__``.
-    """
+    """Raised when a provider call fails."""
 
 
 class OpenAICompatExecutor:
-    """OpenAI-compatible chat-completions executor.
-
-    Parameters
-    ----------
-    name:
-        Provider identifier (e.g. ``"openai"``, ``"groq"``, ``"ollama"``).
-    base_url:
-        API root, e.g. ``https://api.openai.com/v1``.
-    model:
-        Model id sent with each request.
-    api_key:
-        Bearer token. Optional for keyless local providers (Ollama).
-    timeout:
-        Per-request timeout in seconds.
-    client:
-        Optional pre-built :class:`httpx.Client` (inject a ``MockTransport`` in
-        tests). When omitted a client is created lazily and reused.
-    """
+    """OpenAI-compatible chat-completions executor."""
 
     def __init__(
         self,
@@ -88,8 +62,6 @@ class OpenAICompatExecutor:
         self._timeout = timeout
         self._client = client
 
-    # The orchestrator passes the whole run request_payload; we read prompt and
-    # optional generation params from it and ignore the rest.
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         prompt = request.get("prompt", "")
         payload: dict[str, Any] = {
@@ -106,18 +78,16 @@ class OpenAICompatExecutor:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         try:
-            response = self._http().post(
-                "/chat/completions", json=payload, headers=headers
-            )
+            response = self._http().post("/chat/completions", json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPStatusError as exc:
             raise ProviderError(
                 f"{self.provider} returned HTTP {exc.response.status_code}"
             ) from exc
-        except httpx.HTTPError as exc:  # timeouts, connection errors, etc.
+        except httpx.HTTPError as exc:
             raise ProviderError(f"{self.provider} request failed: {exc}") from exc
-        except ValueError as exc:  # malformed JSON
+        except ValueError as exc:
             raise ProviderError(f"{self.provider} returned invalid JSON") from exc
 
         return self._parse(data, payload["model"])
@@ -135,6 +105,89 @@ class OpenAICompatExecutor:
             "model": data.get("model", model),
             "provider": self.provider,
             "tokens": int(usage.get("total_tokens", 0)),
+        }
+
+    def _http(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(base_url=self._base_url, timeout=self._timeout)
+        return self._client
+
+
+class OllamaExecutor:
+    """Native Ollama chat executor with request-bound model unloading.
+
+    ``keep_alive=0`` is sent on every native ``/api/chat`` request. This is the
+    enforcement boundary; middleware headers are never treated as proof that the
+    provider honored a lifecycle control.
+    """
+
+    provider = "ollama"
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        api_key: str | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+        client: httpx.Client | None = None,
+        name: str = "ollama",
+    ) -> None:
+        normalized = base_url.rstrip("/")
+        if normalized.endswith("/v1"):
+            normalized = normalized[:-3]
+        self.provider = name
+        self.model = model
+        self._base_url = normalized.rstrip("/")
+        self._api_key = api_key
+        self._timeout = timeout
+        self._client = client
+
+    def execute(self, request: dict[str, Any]) -> dict[str, Any]:
+        prompt = request.get("prompt", "")
+        payload: dict[str, Any] = {
+            "model": request.get("model") or self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "keep_alive": 0,
+        }
+        options: dict[str, Any] = {}
+        if "temperature" in request:
+            options["temperature"] = request["temperature"]
+        if "max_tokens" in request:
+            options["num_predict"] = request["max_tokens"]
+        if options:
+            payload["options"] = options
+
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+
+        try:
+            response = self._http().post("/api/chat", json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPStatusError as exc:
+            raise ProviderError(
+                f"{self.provider} returned HTTP {exc.response.status_code}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ProviderError(f"{self.provider} request failed: {exc}") from exc
+        except ValueError as exc:
+            raise ProviderError(f"{self.provider} returned invalid JSON") from exc
+
+        try:
+            content = data["message"]["content"]
+        except (KeyError, TypeError) as exc:
+            raise ProviderError(
+                f"{self.provider} response missing message.content"
+            ) from exc
+        prompt_tokens = int(data.get("prompt_eval_count") or 0)
+        completion_tokens = int(data.get("eval_count") or 0)
+        return {
+            "response": content,
+            "model": data.get("model", payload["model"]),
+            "provider": self.provider,
+            "tokens": prompt_tokens + completion_tokens,
         }
 
     def _http(self) -> httpx.Client:
@@ -172,12 +225,9 @@ def _build_warm_cache(settings: Settings) -> WarmCache:
 
 
 def _maybe_wrap_cache(executor: Executor, settings: Settings) -> Executor:
-    """Front the executor with the tiered completion cache when enabled."""
     if not settings.cache_enabled:
         return executor
-    hot = HotCache(
-        max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds
-    )
+    hot = HotCache(max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds)
     warm = _build_warm_cache(settings)
     return CachingExecutor(
         inner=executor,
@@ -188,18 +238,11 @@ def _maybe_wrap_cache(executor: Executor, settings: Settings) -> Executor:
     )
 
 
-# Module-level registry so platform_router can read live breaker states.
 _breaker_registry: dict[str, CircuitBreaker] = {}
 
 
 def _provider_base_url(settings: Settings) -> str:
-    """Resolve the execution provider base URL.
-
-    CAPPO uses the OpenAI-compatible chat completions surface, while the BYOS
-    agent docs historically exposed Ollama as OLLAMA_BASE_URL. Accept both env
-    names so Coolify deployments do not silently fall back to localhost when
-    Ollama runs on its own server.
-    """
+    """Resolve the configured provider base URL without committing topology."""
     base_url = settings.llm_base_url
     if settings.llm_provider_name.lower() == "ollama":
         ollama_base_url = os.getenv("OLLAMA_BASE_URL")
@@ -211,33 +254,47 @@ def _provider_base_url(settings: Settings) -> str:
         }
         if ollama_base_url and settings.llm_base_url.rstrip("/") in loopback_defaults:
             base_url = ollama_base_url
+    return base_url.rstrip("/")
 
-    normalized = base_url.rstrip("/")
-    if settings.llm_provider_name.lower() == "ollama" and not normalized.endswith("/v1"):
-        normalized = f"{normalized}/v1"
-    return normalized
+
+def _provider_executor(
+    *,
+    name: str,
+    base_url: str,
+    model: str,
+    api_key: str | None,
+    timeout: float,
+) -> Executor:
+    if name.lower() == "ollama":
+        return OllamaExecutor(
+            name=name,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            timeout=timeout,
+        )
+    return OpenAICompatExecutor(
+        name=name,
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+        timeout=timeout,
+    )
 
 
 def build_executor(settings: Settings) -> Executor:
-    """Construct the execution-layer executor from configuration.
-
-    ``executor_mode="echo"`` (default) returns the deterministic stub. Otherwise
-    the primary OpenAI-compatible provider is wired behind its own breaker, with
-    an optional fallback provider (enabled when ``llm_fallback_base_url`` is set),
-    yielding a :class:`ResilientExecutor`. When ``cache_enabled`` is set the
-    result is fronted by the tiered hot/warm completion cache.
-    """
+    """Construct the execution-layer executor from settings."""
     if settings.executor_mode.lower() == "echo":
         return _maybe_wrap_cache(EchoExecutor(), settings)
 
-    primary_breaker = _breaker(settings, settings.llm_provider_name)
-    _breaker_registry[settings.llm_provider_name] = primary_breaker
-
+    primary_name = settings.llm_provider_name
+    primary_breaker = _breaker(settings, primary_name)
+    _breaker_registry[primary_name] = primary_breaker
     providers: list[Provider] = [
         Provider(
-            name=settings.llm_provider_name,
-            executor=OpenAICompatExecutor(
-                name=settings.llm_provider_name,
+            name=primary_name,
+            executor=_provider_executor(
+                name=primary_name,
                 base_url=_provider_base_url(settings),
                 model=settings.llm_model,
                 api_key=settings.llm_api_key or None,
@@ -246,6 +303,7 @@ def build_executor(settings: Settings) -> Executor:
             breaker=primary_breaker,
         )
     ]
+
     if settings.llm_fallback_base_url:
         fallback_name = settings.llm_fallback_provider_name or "fallback"
         fallback_breaker = _breaker(settings, fallback_name)
@@ -253,7 +311,7 @@ def build_executor(settings: Settings) -> Executor:
         providers.append(
             Provider(
                 name=fallback_name,
-                executor=OpenAICompatExecutor(
+                executor=_provider_executor(
                     name=fallback_name,
                     base_url=settings.llm_fallback_base_url,
                     model=settings.llm_fallback_model or settings.llm_model,
