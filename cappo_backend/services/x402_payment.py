@@ -1,34 +1,39 @@
 """x402 Payment Integration for CAPPO / cAPI.
 
-Omnipresent X402 Monetization Plan:
-  Every API route is monetized except the 4 public endpoints that would break
-  the server if paywalled (/health, /docs, /openapi.json, /redoc).
+Omnipresent X402 Monetization:
+  Every API route is monetized except public infrastructure endpoints
+  (/health, /docs, /openapi.json, /redoc) and the machine discovery
+  surface (veklom-discovery.json, x402/config, agent.json, llms.txt).
+  The discovery surface is always free — machines must be able to find
+  and price-check Veklom before committing payment.
 
   Pricing tiers (all USD, paid in USDC on Base):
 
     Tier 1 — MICRO    $0.001  Discovery & status reads. Targets M2M polling agents.
-                              At 1B market transactions, capturing 100K calls here
-                              = $100 pure signal revenue at near-zero marginal cost.
-
-    Tier 2 — READ     $0.005  Audit, ledger, license lookups, benchmark reads.
-                              5x micro because these results carry governed proof —
-                              the consumer is paying for integrity, not just data.
-
-    Tier 3 — ACTION   $0.05   All state mutations: kill-switch, budget, revoke,
+    Tier 2 — READ     $0.005  Governed audit, ledger, license, benchmark reads.
+                              Consumers pay for integrity-proven responses.
+    Tier 3 — ACTION   $0.05   State mutations: kill-switch, budget, revoke,
                               governance approve/deny, license lifecycle ops.
-                              Benchmarks: comparable to Stripe per-call ($0.03–$0.08)
-                              for a governed write. 10x read premium justified.
-
-    Tier 4 — COMPUTE  $0.50   Agent execution, compile jobs, governance assessment,
-                              identity mint, discovery unlock.
-                              Market reference: Anthropic tool-calls $2.50/1K tokens
-                              (GPT-4o tool-call parity). CAPPO adds audit + PGL proof
-                              on top — $0.50 is the *floor*, not the ceiling.
+    Tier 4 — COMPUTE  $0.50   Agent execution, compile, assess, identity mint.
+                              Market reference: $0.50 is the floor for a fully
+                              governed, PGL-evidenced execution receipt.
 
   All prices flow to `veklom_evm_address` (treasury) on Base Mainnet + Sepolia.
-  Multi-chain expansion: zkSync, Unichain, Monad gated by x402_networks env var.
+  Multi-chain: zkSync, Unichain, Monad gated by x402_networks env var.
 
-  X402FreemiumASGI: 5 free trials per wallet preserved for developer onboarding.
+  X402FreemiumASGI: 5 free trials per wallet for developer onboarding.
+
+Payment Protocol Abstraction:
+  CAPPO accepts x402 V2 (Payment-Required / Payment-Signature / Payment-Response)
+  and MPP (Machine Payments Protocol — Cloudflare/Stripe/Tempo, supports
+  stablecoins, cards, Lightning). Both schemes produce a CommercialAdmission
+  envelope. CAPPO's authorization logic doesn't care which scheme was used.
+  See payment_abstraction.py for the CommercialAdmission dataclass.
+
+  Architecture invariant:
+    Payment satisfies COMMERCIAL admission.
+    CAPPO independently determines GOVERNANCE admission.
+    Payment != authorization. A paid request that fails governance is refused.
 
 See docs/x402-pricing.md for GTM rationale and 100K-call capture plan.
 """
@@ -68,10 +73,20 @@ NETWORKS = {
 # Routes that are unconditionally FREE — paywalling these would break clients
 # ---------------------------------------------------------------------------
 FREE_PATHS: frozenset[str] = frozenset({
+    # Infrastructure — paywalling these would break clients
     "/health",
     "/docs",
     "/openapi.json",
     "/redoc",
+    # Machine discovery surface — always free.
+    # Machines must be able to discover and price-check before paying.
+    "/veklom-discovery.json",
+    "/api/v1/x402/config",
+    "/.well-known/agent.json",
+    "/.well-known/mcp.json",
+    "/llms.txt",
+    "/robots.txt",
+    "/sitemap.xml",
 })
 
 # ---------------------------------------------------------------------------
@@ -139,11 +154,12 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
 ]
 
 # Prices per tier (USD string format consumed by PaymentOption)
+# Approved billing surface — see implementation_plan_phase2.md
 TIER_PRICES: dict[str, str] = {
-    "micro":   "$0.10",
-    "read":    "$0.10",
-    "action":  "$0.80",
-    "compute": "$0.80",
+    "micro":   "$0.001",
+    "read":    "$0.005",
+    "action":  "$0.05",
+    "compute": "$0.50",
 }
 
 # Human-readable descriptions for each tier (used in RouteConfig.description)
@@ -306,8 +322,13 @@ class X402PaymentManager:
             "free_paths": sorted(FREE_PATHS),
             "total_billable_routes": len(BILLABLE_ROUTES),
             "networks": list(NETWORKS.keys()),
-            "payment_protocol": "x402",
+            "payment_protocols": ["x402", "mpp"],
+            "payment_schemes": {
+                "x402": "x402 V2 — Payment-Required / Payment-Signature / Payment-Response headers",
+                "mpp": "Machine Payments Protocol — Cloudflare/Stripe/Tempo; stablecoins, cards, Lightning",
+            },
             "settlement_chain": "Base (eip155:8453)",
+            "free_discovery_surface": sorted(FREE_PATHS),
         }
 
 
