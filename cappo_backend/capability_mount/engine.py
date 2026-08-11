@@ -36,15 +36,10 @@ Action = Callable[..., T]
 
 
 class AuditSink(Protocol):
-    """Pluggable append-only audit destination."""
-
-    def append(self, event: ExecutionAuditEvent) -> None:
-        """Append an event to the sink."""
+    def append(self, event: ExecutionAuditEvent) -> None: ...
 
 
 class InMemoryAuditSink:
-    """Default sink for isolated use and deterministic tests."""
-
     def __init__(self) -> None:
         self.events: list[ExecutionAuditEvent] = []
 
@@ -78,10 +73,46 @@ class CapabilityProfile:
 
 
 class Mounter:
-    """Creates a package-bound mount and a short-lived token descriptor."""
+    """Create a package-bound mount and short-lived token descriptor."""
 
     DEFAULT_TTL_SECONDS = 300
     MAX_TTL_SECONDS = 600
+    _POLICY_KEYS = frozenset(MountPolicy.model_fields)
+
+    @classmethod
+    def _effective_policy(
+        cls,
+        package: CapabilityPackage,
+        requested: MountPolicy | None,
+    ) -> MountPolicy:
+        """Attenuate caller policy against trusted package policy.
+
+        Caller input may strengthen a gate, never weaken package/default human
+        approval, suppression, default-deny, mode, or persistent-memory limits.
+        Unknown package policy metadata is ignored here rather than being treated
+        as a runtime MountPolicy field.
+        """
+        package_policy_raw = {
+            key: value
+            for key, value in package.policy_defaults.items()
+            if key in cls._POLICY_KEYS
+        }
+        trusted = MountPolicy.model_validate(package_policy_raw)
+        caller = requested or MountPolicy()
+        return MountPolicy(
+            mode=trusted.mode,
+            default="deny",
+            require_human_approval_for_external_send=(
+                trusted.require_human_approval_for_external_send
+                or caller.require_human_approval_for_external_send
+            ),
+            require_suppression_check=(
+                trusted.require_suppression_check or caller.require_suppression_check
+            ),
+            persistent_memory_allowed=(
+                trusted.persistent_memory_allowed and caller.persistent_memory_allowed
+            ),
+        )
 
     def mount(
         self,
@@ -95,7 +126,7 @@ class Mounter:
     ) -> tuple[Mount, EphemeralScopedToken]:
         if ttl < 1 or ttl > self.MAX_TTL_SECONDS:
             raise MountError(f"ttl must be between 1 and {self.MAX_TTL_SECONDS} seconds")
-        selected_policy = policy or MountPolicy()
+        selected_policy = self._effective_policy(package, policy)
         if selected_policy.persistent_memory_allowed:
             raise MountError("persistent memory is not permitted for ephemeral mounts")
 
@@ -145,7 +176,7 @@ class Mounter:
 
 
 class ExecutionBinding:
-    """Binds one token to one execution and exposes fail-closed calls."""
+    """Bind one token to one execution and expose fail-closed calls."""
 
     def __init__(
         self,
@@ -184,22 +215,20 @@ class ExecutionBinding:
             self._append(action, Decision.DENY, reason)
             raise PolicyError(reason)
 
-        approval_token = kwargs.pop("approval_token", None)
-        suppression_confirmed = kwargs.pop("suppression_confirmed", False)
+        kwargs.pop("approval_token", None)
+        kwargs.pop("suppression_confirmed", False)
         if (
             action in self.token.grants.external_send
             and self.token.policy.require_human_approval_for_external_send
-            and not approval_token
         ):
-            self._append(action, Decision.DENY, "human_approval_required")
-            raise PolicyError("human_approval_required")
+            self._append(action, Decision.DENY, "human_approval_not_verified")
+            raise PolicyError("human_approval_not_verified")
         if (
             action in self.token.grants.suppression_required
             and self.token.policy.require_suppression_check
-            and suppression_confirmed is not True
         ):
-            self._append(action, Decision.DENY, "suppression_check_required")
-            raise PolicyError("suppression_check_required")
+            self._append(action, Decision.DENY, "suppression_not_verified")
+            raise PolicyError("suppression_not_verified")
 
         result = fn(**kwargs)
         self._append(action, Decision.ALLOW, "allowed")

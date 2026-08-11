@@ -67,10 +67,13 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
     assert body["token"]["ttl_seconds"] == 600
     assert body["token"]["nonce_consumed"] is False
     assert body["anchoring"]["status"] == "confirmed"
+    assert "detail" not in body["anchoring"]
 
     mount_id = body["mount"]["id"]
     status = client.get(f"/v1/capability/mounts/{mount_id}")
     assert status.json()["decision"] == "allow"
+    assert status.json()["token"] is None
+    assert status.json()["nonce_consumed"] is False
 
     blocked = client.post(
         f"/v1/capability/mounts/{mount_id}/actions",
@@ -93,7 +96,8 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
     )
     assert allowed.json()["decision"] == "allow"
     status_after_action = client.get(f"/v1/capability/mounts/{mount_id}")
-    assert status_after_action.json()["token"]["nonce_consumed"] is True
+    assert status_after_action.json()["token"] is None
+    assert status_after_action.json()["nonce_consumed"] is True
 
     replay = client.post(
         f"/v1/capability/mounts/{mount_id}/actions",
@@ -106,7 +110,8 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
     assert replay.json()["decision"] == "deny"
     assert replay.json()["reason"] == "token_replay"
     status_after_replay = client.get(f"/v1/capability/mounts/{mount_id}")
-    assert status_after_replay.json()["token"]["nonce_consumed"] is True
+    assert status_after_replay.json()["token"] is None
+    assert status_after_replay.json()["nonce_consumed"] is True
 
     terminated = client.post(
         f"/v1/capability/mounts/{mount_id}/terminate",
@@ -135,6 +140,63 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
         "terminate",
         "action_decision",
     ]
+
+
+def test_raw_approval_and_suppression_assertions_fail_closed(client: TestClient) -> None:
+    prepare(client)
+    response = client.post("/v1/capability/mounts", json=mount_payload())
+    body = response.json()
+    assert body["decision"] == "allow"
+
+    attempted_send = client.post(
+        f"/v1/capability/mounts/{body['mount']['id']}/actions",
+        json={
+            "token_id": body["token"]["token_id"],
+            "nonce": body["token"]["nonce"],
+            "action": "outreach.email_send",
+            "approval_token": "arbitrary-caller-string",
+            "suppression_confirmed": True,
+        },
+    )
+    assert attempted_send.json()["decision"] == "deny"
+    assert attempted_send.json()["reason"] == "human_approval_not_verified"
+
+    status = client.get(f"/v1/capability/mounts/{body['mount']['id']}")
+    assert status.json()["token"] is None
+    assert status.json()["nonce_consumed"] is False
+
+
+def test_authenticated_mount_is_bound_to_principal_and_workspace(
+    client: TestClient,
+    settings,
+) -> None:
+    prepare(client)
+    settings.auth_enabled = True
+    settings.api_keys = "owner-key,other-key"
+    client.headers["X-API-Key"] = "owner-key"
+    client.headers["X-Workspace-ID"] = "w1"
+
+    mounted = client.post("/v1/capability/mounts", json=mount_payload())
+    assert mounted.status_code == 200
+    body = mounted.json()
+    assert body["decision"] == "allow"
+
+    client.headers["X-API-Key"] = "other-key"
+    wrong_principal = client.get(f"/v1/capability/mounts/{body['mount']['id']}")
+    assert wrong_principal.json()["decision"] == "deny"
+    assert wrong_principal.json()["reason"] == "owner_mismatch"
+    assert wrong_principal.json()["mount"] is None
+    assert wrong_principal.json()["token"] is None
+
+    client.headers["X-API-Key"] = "owner-key"
+    client.headers["X-Workspace-ID"] = "other-workspace"
+    wrong_workspace = client.get(f"/v1/capability/mounts/{body['mount']['id']}")
+    assert wrong_workspace.json()["decision"] == "deny"
+    assert wrong_workspace.json()["reason"] == "owner_mismatch"
+
+    mismatched_creation = client.post("/v1/capability/mounts", json=mount_payload())
+    assert mismatched_creation.status_code == 403
+    assert mismatched_creation.json()["detail"] == "WORKSPACE_SCOPE_MISMATCH"
 
 
 def test_unknown_package_mount_is_governed_deny(client: TestClient) -> None:

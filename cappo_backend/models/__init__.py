@@ -5,6 +5,7 @@ autogeneration and ``create_all`` see the full schema.
 """
 
 from cappo_backend.models.audit_event import AuditEvent
+from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.execution_authorization import ExecutionAuthorization
 from cappo_backend.models.execution_identity import ExecutionIdentity
@@ -21,6 +22,7 @@ from cappo_backend.models.retrieval import (
     RetrievalTrace,
     SourceDocument,
 )
+from cappo_backend.models.vnp_interlink_nonce import VNPInterlinkNonce
 from cappo_backend.models.vnp_models import (
     APIState,
     ComplianceAuditLog,
@@ -41,6 +43,7 @@ from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 __all__ = [
     "FreeRunQuota",
     "AuditEvent",
+    "CapabilityEvidenceConsumption",
     "CapabilityMount",
     "ExecutionAuthorization",
     "ExecutionIdentity",
@@ -65,6 +68,7 @@ __all__ = [
     "VNPSDKCredential",
     "VNPValidator",
     "VNPIncident",
+    "VNPInterlinkNonce",
     "SourceDocument",
     "DocumentIndex",
     "RetrievalSession",

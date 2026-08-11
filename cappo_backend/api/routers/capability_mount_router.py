@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,7 @@ from cappo_backend.capability_mount.service import (
     UnconfirmedAnchor,
 )
 from cappo_backend.db.session import get_session
+from cappo_backend.services.mount_evidence import BoundMountEvidenceVerifier
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
 router = APIRouter(prefix="/v1/capability", tags=["Capability Mount"])
@@ -57,6 +60,9 @@ class MountResponse(BaseModel):
     anchoring: dict[str, Any]
     mount: Mount | None = None
     token: EphemeralScopedToken | None = None
+    ttl_seconds: int | None = None
+    expires_at: datetime | None = None
+    nonce_consumed: bool | None = None
 
 
 class ActionRequest(BaseModel):
@@ -66,6 +72,8 @@ class ActionRequest(BaseModel):
     nonce: str = Field(min_length=1)
     action: str = Field(min_length=1)
     approval_token: str | None = None
+    suppression_evidence: str | None = None
+    # Compatibility only. Caller booleans never authorize suppression-gated actions.
     suppression_confirmed: bool = False
 
 
@@ -96,20 +104,43 @@ class TerminateResponse(BaseModel):
 
 def get_registry(request: Request, db: Session = Depends(get_session)) -> MountRegistry:
     shared: MountRegistry = request.app.state.mount_registry
+    settings = request.app.state.settings
     anchor = shared.anchor
     if isinstance(anchor, UnconfirmedAnchor):
-        anchor = AuditPGLAnchor(db, request.app.state.settings)
-    registry = MountRegistry(db=db, anchor=anchor)
+        anchor = AuditPGLAnchor(db, settings)
+    verifier = BoundMountEvidenceVerifier(
+        approval_key=settings.approval_token_signing_key,
+        suppression_key=os.getenv("SUPPRESSION_EVIDENCE_SIGNING_KEY", ""),
+    )
+    registry = MountRegistry(db=db, anchor=anchor, evidence_verifier=verifier)
     registry.packages.update(shared.packages)
     return registry
 
 
 def anchor_payload(status: Any) -> dict[str, Any]:
-    return {
-        "status": status.status,
-        "anchor_id": status.anchor_id,
-        "detail": status.detail,
-    }
+    # Never expose exception/debug detail from the evidence boundary.
+    return {"status": status.status, "anchor_id": status.anchor_id}
+
+
+def _caller(request: Request, *, requested_workspace: str | None = None) -> tuple[str, str | None]:
+    principal = request.scope.get("auth_principal")
+    if not isinstance(principal, str) or not principal:
+        raise HTTPException(status_code=401, detail="AUTHENTICATION_REQUIRED")
+
+    settings = request.app.state.settings
+    workspace = request.scope.get("auth_workspace")
+    if not isinstance(workspace, str) or not workspace:
+        workspace = None
+
+    if settings.auth_enabled:
+        if workspace is None:
+            raise HTTPException(status_code=403, detail="WORKSPACE_IDENTITY_REQUIRED")
+        if requested_workspace is not None and workspace != requested_workspace:
+            raise HTTPException(status_code=403, detail="WORKSPACE_SCOPE_MISMATCH")
+    elif requested_workspace is not None:
+        workspace = requested_workspace
+
+    return principal, workspace
 
 
 @router.get("/packages", response_model=list[CapabilityPackage])
@@ -120,8 +151,11 @@ def list_packages(registry: MountRegistry = Depends(get_registry)) -> list[Capab
 @router.post("/mounts", response_model=MountResponse)
 def request_mount(
     body: MountRequest,
+    request: Request,
     registry: MountRegistry = Depends(get_registry),
 ) -> MountResponse:
+    principal, workspace = _caller(request, requested_workspace=body.execution_scope.workspace)
+    assert workspace is not None
     scope = body.execution_scope.model_copy(
         update={
             "reads": body.requested_action_scope.reads,
@@ -135,6 +169,8 @@ def request_mount(
         role=body.role,
         policy=body.policy,
         ttl_seconds=min(body.ttl_seconds, registry.mounter.MAX_TTL_SECONDS),
+        owner_principal=principal,
+        owner_workspace=workspace,
         execution_id=body.execution_id,
     )
     if record is None:
@@ -149,40 +185,46 @@ def request_mount(
         anchoring=anchor_payload(anchor),
         mount=record.mount,
         token=record.token,
+        ttl_seconds=record.token.ttl_seconds,
+        expires_at=record.token.expires_at,
+        nonce_consumed=record.token.nonce_consumed,
     )
 
 
 @router.get("/mounts/{mount_id}", response_model=MountResponse)
 def mount_status(
     mount_id: str,
+    request: Request,
     registry: MountRegistry = Depends(get_registry),
 ) -> MountResponse:
-    record, state = registry.status(mount_id)
+    principal, workspace = _caller(request)
+    record, state = registry.status(
+        mount_id,
+        owner_principal=principal,
+        owner_workspace=workspace,
+    )
     if record is None:
         return MountResponse(
             decision=Decision.DENY,
-            reason="unknown_mount",
-            anchoring={"status": "not_applicable"},
-        )
-    if state != "mounted":
-        return MountResponse(
-            decision=Decision.DENY,
             reason=state,
-            anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
-            mount=record.mount.model_copy(
-                update={
-                    "lifecycle": record.mount.lifecycle.model_copy(
-                        update={"state": LifecycleState(state)}
-                    )
-                }
-            ),
+            anchoring={"status": "not_applicable", "anchor_id": None},
+        )
+    mount = record.mount
+    if state != "mounted":
+        mount = mount.model_copy(
+            update={
+                "lifecycle": mount.lifecycle.model_copy(update={"state": LifecycleState(state)})
+            }
         )
     return MountResponse(
-        decision=Decision.ALLOW,
+        decision=Decision.ALLOW if state == "mounted" else Decision.DENY,
         reason=state,
         anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
-        mount=record.mount,
-        token=record.token,
+        mount=mount,
+        # Status never re-discloses token_id or nonce.
+        ttl_seconds=record.token.ttl_seconds,
+        expires_at=record.token.expires_at,
+        nonce_consumed=record.token.nonce_consumed,
     )
 
 
@@ -190,14 +232,19 @@ def mount_status(
 def evaluate_action(
     mount_id: str,
     body: ActionRequest,
+    request: Request,
     registry: MountRegistry = Depends(get_registry),
 ) -> ActionResponse:
+    principal, workspace = _caller(request)
     decision, reason, anchor, _ = registry.evaluate(
         mount_id,
         body.action,
         token_id=body.token_id,
         nonce=body.nonce,
+        owner_principal=principal,
+        owner_workspace=workspace,
         approval_token=body.approval_token,
+        suppression_evidence=body.suppression_evidence,
         suppression_confirmed=body.suppression_confirmed,
     )
     return ActionResponse(
@@ -213,9 +260,16 @@ def evaluate_action(
 def terminate_mount(
     mount_id: str,
     body: TerminateRequest,
+    request: Request,
     registry: MountRegistry = Depends(get_registry),
 ) -> TerminateResponse:
-    decision, reason, anchor = registry.terminate(mount_id, body.reason)
+    principal, workspace = _caller(request)
+    decision, reason, anchor = registry.terminate(
+        mount_id,
+        body.reason,
+        owner_principal=principal,
+        owner_workspace=workspace,
+    )
     return TerminateResponse(
         decision=decision,
         reason=reason,
