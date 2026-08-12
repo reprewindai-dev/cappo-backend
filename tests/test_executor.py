@@ -49,21 +49,39 @@ def test_http_executor_success() -> None:
         assert kwargs["headers"]["Authorization"] == "Bearer mock-key"
 
 
-def test_http_executor_failure() -> None:
+from httpx import HTTPStatusError, Request, Response
+from cappo_backend.services.executor import ExecutorUnavailableError, TerminalExecutionError
+
+def test_http_executor_failure_403_terminal() -> None:
     executor = ResilientExecutor(
         api_url="https://api.groq.com/openai/v1/chat/completions",
         api_key="mock-key",
     )
 
-    with patch("httpx.Client.post", side_effect=Exception("Connection refused")):
-        with pytest.raises(ExecutorUnavailableError, match="External provider call failed"):
+    # 403 should raise TerminalExecutionError immediately
+    req = Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    res_403 = Response(403, request=req)
+    http_error = HTTPStatusError("403 Forbidden", request=req, response=res_403)
+    
+    with patch("httpx.Client.post", side_effect=http_error):
+        with pytest.raises(TerminalExecutionError, match="Authority Denied \\(403\\)"):
             executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})
-            
-        # Or if it returns an HTTP error status code:
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = Exception("Internal Server Error")
-        
-    with patch("httpx.Client.post", return_value=mock_response):
-        with pytest.raises(ExecutorUnavailableError, match="Internal Server Error"):
+
+def test_http_executor_failure_503_fallback() -> None:
+    # Set up executor with multiple providers to prove it fails over or raises Unavailable
+    executor = ResilientExecutor(
+        api_url="https://api.groq.com/openai/v1/chat/completions",
+        api_key="mock-key",
+    )
+
+    req = Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    res_503 = Response(503, request=req)
+    http_error = HTTPStatusError("503 Service Unavailable", request=req, response=res_503)
+
+    with patch("httpx.Client.post", side_effect=http_error):
+        with pytest.raises(ExecutorUnavailableError, match="all providers unavailable"):
+            executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})
+
+    with patch("httpx.Client.post", side_effect=Exception("Connection refused")):
+        with pytest.raises(ExecutorUnavailableError, match="all providers unavailable"):
             executor.execute({"prompt": "hi", "pgl_id": "test-user-id"})

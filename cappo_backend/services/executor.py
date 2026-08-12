@@ -35,7 +35,13 @@ class ExecutorUnavailableError(RuntimeError):
 
 
 class ProviderExecutionError(RuntimeError):
-    """Raised when an HTTP provider call fails."""
+    """Raised when an HTTP provider call fails (e.g. 503, 500, network error) allowing fallback."""
+
+
+class TerminalExecutionError(RuntimeError):
+    """Raised when an HTTP provider call fails with a 403 (Authority Denied). 
+    This is terminal and must NOT fail over to fallback providers.
+    """
 
 
 class HTTPExecutor:
@@ -77,6 +83,8 @@ class HTTPExecutor:
                     "tokens": tokens,
                 }
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 403:
+                raise TerminalExecutionError(f"Authority Denied (403): {exc}") from exc
             raise ProviderExecutionError(str(exc)) from exc
         except Exception as exc:
             raise ProviderExecutionError(f"External provider call failed: {exc}") from exc
@@ -165,6 +173,13 @@ class ResilientExecutor:
                 return provider.breaker.call(
                     lambda p=provider: p.executor.execute(request)
                 )
+            except TerminalExecutionError as exc:
+                # 403 is terminal. DO NOT fail over to fallback.
+                logger.warning(
+                    "provider returned terminal error (403); halting execution",
+                    extra={"provider": provider.name, "error": str(exc)},
+                )
+                raise
             except CircuitOpenError as exc:  # raced to open between check and call
                 last_error = exc
                 continue

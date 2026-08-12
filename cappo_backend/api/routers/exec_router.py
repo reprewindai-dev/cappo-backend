@@ -32,6 +32,7 @@ from cappo_backend.services.orchestrator import (
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
 from cappo_backend.services.pgl_adapter import create_pgl_client
 from cappo_backend.services.providers import build_executor
+from cappo_backend.services.executor import ExecutorUnavailableError, TerminalExecutionError
 from cappo_backend.services.revocation_service import RevocationService
 
 router = APIRouter(prefix="/v1")
@@ -150,6 +151,26 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
                 "error": "CAPPO_GOVERNANCE_DENIED",
                 "detail": str(exc),
                 "fail_closed": True,
+            },
+        )
+    except TerminalExecutionError as exc:
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "EXECUTION_AUTHORITY_DENIED",
+                "detail": str(exc),
+                "terminal": True,
+            },
+        )
+    except ExecutorUnavailableError as exc:
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "EXECUTOR_UNAVAILABLE",
+                "detail": str(exc),
+                "retryable": True,
             },
         )
 
