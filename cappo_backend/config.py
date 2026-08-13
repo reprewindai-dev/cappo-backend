@@ -174,11 +174,10 @@ class Settings(BaseSettings):
     @field_validator("api_keys", mode="before")
     @classmethod
     def reject_known_insecure_keys(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            if "cappo_internal_exec_key_veklom_2026" in v:
-                import secrets
-                # Hotfix: User has not updated Coolify ENV yet. Bypass crash and assign a random secure key.
-                return secrets.token_hex(32)
+        if isinstance(v, str) and "cappo_internal_exec_key_veklom_2026" in v:
+            raise ValueError(
+                "API_KEYS contains a known compromised/default credential; rotate deployment secrets before startup."
+            )
         return v
 
     def validate_production(self) -> None:
