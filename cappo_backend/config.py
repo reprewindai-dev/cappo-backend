@@ -176,9 +176,7 @@ class Settings(BaseSettings):
     def reject_known_insecure_keys(cls, v: Any) -> Any:
         if isinstance(v, str):
             if "cappo_internal_exec_key_veklom_2026" in v:
-                import secrets
-                # Hotfix: User has not updated Coolify ENV yet. Bypass crash and assign a random secure key.
-                return secrets.token_hex(32)
+                raise ValueError("Known compromised default credential detected in API_KEYS.")
         return v
 
     def validate_production(self) -> None:
