@@ -42,7 +42,6 @@ from cappo_backend.api.routers.protocol_router import router as protocol_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
-from cappo_backend.api.routers.fpi_router import router as fpi_router
 from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
@@ -150,7 +149,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_x402_router, prefix="/api")
     app.include_router(root_discovery_router)
     app.include_router(protocol_router)
-    app.include_router(fpi_router)
 
     from fastapi import Request
     from fastapi.responses import JSONResponse

@@ -123,7 +123,13 @@ class TestNoBypass:
         resp = client.post("/v1/exec", json={"prompt": "probe"})
         assert resp.status_code != 404, "/v1/exec must be reachable"
         # No ungoverned bypass path should exist.
-        for bypass in ["/exec", "/v1/run", "/run", "/v1/execute"]:
+        for bypass in [
+            "/exec",
+            "/v1/run",
+            "/run",
+            "/v1/execute",
+            "/api/fpi/execute",
+        ]:
             r = client.post(bypass, json={"prompt": "probe"})
             assert r.status_code == 404, (
                 f"unexpected route {bypass} exists (status {r.status_code})"
