@@ -29,6 +29,7 @@ from cappo_backend.services.executor import (
     Executor,
     Provider,
     ResilientExecutor,
+    TerminalExecutionError,
 )
 
 if TYPE_CHECKING:
@@ -82,6 +83,10 @@ class OpenAICompatExecutor:
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 403:
+                raise TerminalExecutionError(
+                    f"Authority Denied (403): {self.provider} returned HTTP 403"
+                ) from exc
             raise ProviderError(
                 f"{self.provider} returned HTTP {exc.response.status_code}"
             ) from exc

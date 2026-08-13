@@ -10,6 +10,7 @@ from cappo_backend.services.executor import (
     EchoExecutor,
     ExecutorUnavailableError,
     ResilientExecutor,
+    TerminalExecutionError,
 )
 from cappo_backend.services.providers import (
     OllamaExecutor,
@@ -84,6 +85,15 @@ def test_http_error_status_raises_provider_error():
 
     ex = OpenAICompatExecutor("openai", "https://api.test/v1", "m", client=_client(handler))
     with pytest.raises(ProviderError):
+        ex.execute({"prompt": "x"})
+
+
+def test_http_403_raises_terminal_authority_denial():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, request=request, json={"detail": "denied"})
+
+    ex = OpenAICompatExecutor("primary", "https://api.test/v1", "m", client=_client(handler))
+    with pytest.raises(TerminalExecutionError, match="Authority Denied \\(403\\)"):
         ex.execute({"prompt": "x"})
 
 
