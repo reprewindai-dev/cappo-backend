@@ -16,6 +16,7 @@ from cappo_backend.config import (
 
 _SECURE_KEY = "ab" * 24
 _PG_URL = "postgresql+psycopg://u:p@db:5432/cappo"
+_COMPROMISED_API_KEY = "cappo_internal_exec_key_veklom_2026"
 
 
 def _prod(**overrides) -> Settings:
@@ -43,6 +44,20 @@ class TestNonProduction:
 
     def test_test_env_is_noop(self) -> None:
         Settings(environment="test").validate_production()
+
+
+class TestApiKeyValidation:
+    def test_exact_compromised_api_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="known compromised/default credential"):
+            Settings(api_keys=_COMPROMISED_API_KEY)
+
+    def test_compromised_api_key_in_comma_separated_value_rejected(self) -> None:
+        with pytest.raises(ValueError, match="known compromised/default credential"):
+            Settings(api_keys=f"safe-key,{_COMPROMISED_API_KEY},other-safe-key")
+
+    def test_safe_api_keys_accepted(self) -> None:
+        settings = Settings(api_keys="safe-key-1,safe-key-2")
+        assert settings.api_key_set == frozenset({"safe-key-1", "safe-key-2"})
 
 
 class TestProductionFailClosed:
