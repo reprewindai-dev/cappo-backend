@@ -8,6 +8,8 @@ a recorded ``law0_violation``.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,6 +21,7 @@ from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBuilder
 from cappo_backend.services.orchestrator import (
+    GovernanceDeniedError,
     RunOrchestrator,
     RuntimeOwnershipError,
 )
@@ -94,6 +97,57 @@ def test_valid_ei_allows_side_effect(db: Session) -> None:
     assert result["response"] == "should-not-happen"  # spy executor's output
     assert orch.last_run is not None
     assert orch.last_run.state == RunState.ATTESTED.value
+
+
+def test_commit_uses_top_level_agent_identity_for_pgl(db: Session) -> None:
+    orch, _, _ = _orchestrator(db, mint_key="same-key", gateway_key="same-key")
+    run = orch.create_run(
+        {
+            "prompt": "hi",
+            "agent_id": "agent-production",
+            "pgl_id": "pgl-production",
+            "directive": "ALLOW",
+        }
+    )
+    orch.compile_run(run)
+    orch.contextualize_run(run)
+    orch.govern_run(run)
+
+    class _CapturePGL:
+        params = None
+
+        def mint_pre_certificate(self, params):
+            self.params = params
+            return SimpleNamespace(certificate_id="cert-1", persisted=True)
+
+    capture = _CapturePGL()
+    orch._pgl = capture
+    orch.commit_run(run)
+
+    assert capture.params is not None
+    assert capture.params.agent_id == "agent-production"
+
+
+def test_denied_run_audit_preserves_agent_identity(db: Session) -> None:
+    orch, _, _ = _orchestrator(db, mint_key="same-key", gateway_key="same-key")
+
+    with pytest.raises(GovernanceDeniedError, match="vetoed execution"):
+        orch.run_governed(
+            {
+                "prompt": "hi",
+                "agent_id": "agent-production",
+                "pgl_id": "pgl-production",
+                "directive": "DENY",
+            }
+        )
+
+    event = (
+        db.query(AuditEvent)
+        .filter(AuditEvent.operation_type == "run_failed")
+        .one()
+    )
+    assert event.payload["agent_id"] == "agent-production"
+    assert event.payload["pgl_id"] == "pgl-production"
 
 
 def test_execution_identity_binds_path_owner_and_epoch(db: Session) -> None:

@@ -127,6 +127,7 @@ class RunOrchestrator:
             return result
         except Exception as exc:
             self._transition(run, RunState.FAILED)
+            request_payload = run.request_payload or {}
             # Record the failure in the audit log (audit all rejections/failures).
             self._audit.record(
                 "run_failed",
@@ -134,6 +135,8 @@ class RunOrchestrator:
                     "error": str(exc),
                     "error_type": exc.__class__.__name__,
                     "state_at_failure": run.state,
+                    "agent_id": request_payload.get("agent_id"),
+                    "pgl_id": request_payload.get("pgl_id"),
                 },
                 workspace_id=run.workspace_id,
                 run_id=run.run_id,
@@ -286,13 +289,18 @@ class RunOrchestrator:
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
         governance_decision = _require_governance_decision(run)
+        request_payload = run.request_payload or {}
+        nested_agent = request_payload.get("agent") or {}
+        agent_id = (
+            request_payload.get("agent_id")
+            or request_payload.get("pgl_id")
+            or (nested_agent.get("id") if isinstance(nested_agent, dict) else None)
+        )
         params = PreCertificateParams(
             run_id=run.run_id,
             workspace_id=run.workspace_id,
-            actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
-            agent_id=run.request_payload.get("agent", {}).get("id")
-            if run.request_payload
-            else None,
+            actor_id=request_payload.get("pgl_id"),
+            agent_id=agent_id,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
