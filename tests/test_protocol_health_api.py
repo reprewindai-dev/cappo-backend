@@ -47,6 +47,30 @@ def test_dependency_health_is_redacted_and_non_throwing(client: TestClient) -> N
         assert "://" not in dependency["host"]
 
 
+def test_openai_compatible_executor_probe_uses_models_endpoint() -> None:
+    assert health_router._http_probe_paths(
+        "executor", "http://ollama:11434/v1"
+    ) == ("/models",)
+
+
+def test_redis_dependency_uses_native_ping(monkeypatch) -> None:
+    class _Redis:
+        def ping(self) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        health_router.redis.Redis,
+        "from_url",
+        lambda *_args, **_kwargs: _Redis(),
+    )
+
+    result = asyncio.run(health_router._probe_redis("redis://redis:6379/1"))
+
+    assert result["name"] == "redis"
+    assert result["host"] == "redis"
+    assert result["state"] == "healthy"
+
+
 def test_dependency_probes_start_concurrently(monkeypatch) -> None:
     async def exercise() -> None:
         started = 0

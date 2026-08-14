@@ -29,6 +29,8 @@ def auth_settings() -> Settings:
         auth_enabled=True,
         api_keys=_KEY,
         executor_mode="echo",
+        runtime_kind="amphoteric",
+        runtime_instance="test-runtime",
     )
 
 

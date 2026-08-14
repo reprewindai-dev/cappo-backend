@@ -103,8 +103,13 @@ class AuditService:
         def _worker() -> None:
             try:
                 summary = f"cappo {event.operation_type}: {event.run_id or 'no-run'}"
+                agent_id = (
+                    event.payload.get("agent_id")
+                    or event.payload.get("pgl_id")
+                    or "cappo-system"
+                )
                 body = {
-                    "agent_id": event.run_id or "cappo-system",
+                    "agent_id": agent_id,
                     "event_type": "custom",
                     "actor": event.workspace_id or "cappo-admin",
                     "summary": summary[:255],

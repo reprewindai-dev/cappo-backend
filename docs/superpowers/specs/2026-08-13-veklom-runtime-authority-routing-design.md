@@ -31,6 +31,14 @@ redirect or schema adapter from `/api/fpi/execute`; the old route is removed
 from public ingress and code. If a migration response is temporarily required,
 it returns a non-redirecting deprecation response and performs no execution.
 
+Multiple execution runtimes may remain live concurrently. Concurrency does
+not grant shared ownership: exactly one runtime instance owns a given
+consequence-bearing execution path for a given authority epoch. A runtime
+change is an explicit authority-side reassignment with a new `assignment_id`
+and a strictly greater `authority_epoch`; the previous assignment remains
+durable history. A runtime that cannot prove the current assignment fails
+stop before any side effect.
+
 ## Components
 
 ### Public execution boundary
@@ -104,6 +112,7 @@ The envelope is immutable after CAPPO authorization and contains at minimum:
 
 ```text
 execution_id
+path_id
 request_id
 idempotency_key
 grant_id
@@ -115,6 +124,9 @@ capability_id
 semantic_intent_digest
 resource_constraints
 authority_epoch
+assignment_id
+runtime_kind
+runtime_instance
 policy_digest
 allowed_provider_set
 budget_ceiling
@@ -132,8 +144,11 @@ The following remain constant for the entire semantic transaction:
 
 ```text
 execution_id
+path_id
 grant_id
 authority_epoch
+assignment_id
+runtime_kind and runtime_instance
 policy_digest
 capability_id
 subject and delegation
@@ -151,6 +166,11 @@ executor_binding
 attempt timestamps
 provider response evidence
 ```
+
+Provider failover does not reassign runtime ownership. A provider and a
+runtime are different layers: provider attempts may change inside the same
+runtime assignment, while moving the path to another runtime requires a new
+authority epoch and assignment.
 
 ## HTTP Integrity Profile
 
@@ -253,6 +273,13 @@ transport evidence, never as a signed provider `503`.
 
 Any change to authority-bearing fields between attempts terminates execution,
 records an integrity violation, and prevents another provider call.
+
+### Runtime ownership conflict
+
+A missing assignment, stale epoch, mismatched runtime instance, or silent
+owner replacement terminates the path before execution. The runtime reports a
+non-retryable ownership conflict. It never guesses a replacement owner and
+never derives a new epoch locally.
 
 ### Evidence failure
 

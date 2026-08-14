@@ -27,6 +27,8 @@ def auth_entitlement_client(db: Session) -> Iterator[TestClient]:
         auth_enabled=True,
         api_keys=_KEY,
         executor_mode="echo",
+        runtime_kind="amphoteric",
+        runtime_instance="test-runtime",
     )
     test_app = create_app(settings=settings)
 

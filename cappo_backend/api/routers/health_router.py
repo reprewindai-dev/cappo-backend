@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+import redis
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
@@ -39,18 +40,48 @@ def _result(name: str, host: str, state: str, started: float) -> dict[str, Any]:
     }
 
 
+def _http_probe_paths(name: str, base_url: str) -> tuple[str, ...]:
+    parsed_path = urlparse(base_url).path.rstrip("/")
+    if name == "executor" and parsed_path.endswith("/v1"):
+        return ("/models",)
+    return ("/health", "/protocol.json")
+
+
 async def _probe_http(name: str, base_url: str) -> dict[str, Any]:
     started = time.perf_counter()
-    url = f"{base_url.rstrip('/')}/health"
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS, follow_redirects=False) as client:
-            response = await client.get(url)
-            if response.status_code == 404:
-                response = await client.get(f"{base_url.rstrip('/')}/protocol.json")
+            response = None
+            for path in _http_probe_paths(name, base_url):
+                response = await client.get(f"{base_url.rstrip('/')}{path}")
+                if response.status_code != 404:
+                    break
+            assert response is not None
             state = "healthy" if 200 <= response.status_code < 300 else "degraded"
     except Exception:
         state = "unavailable"
     return _result(name, _host(base_url), state, started)
+
+
+async def _probe_redis(url: str) -> dict[str, Any]:
+    started = time.perf_counter()
+
+    def check() -> bool:
+        client = redis.Redis.from_url(
+            url,
+            socket_connect_timeout=_PROBE_TIMEOUT_SECONDS,
+            socket_timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+        return bool(client.ping())
+
+    try:
+        available = await asyncio.wait_for(
+            asyncio.to_thread(check), timeout=_PROBE_TIMEOUT_SECONDS
+        )
+        state = "healthy" if available else "unavailable"
+    except Exception:
+        state = "unavailable"
+    return _result("redis", _host(url), state, started)
 
 
 async def _probe_database() -> dict[str, Any]:
@@ -88,14 +119,17 @@ async def health_dependencies(settings: Settings = Depends(get_settings)) -> dic
     ]
     if settings.executor_mode.lower() != "echo":
         configured.append(("executor", settings.llm_base_url))
-    if settings.cache_warm_backend.lower() == "redis":
-        configured.append(("redis", settings.redis_url or None))
-
     probes = [_probe_database()]
     probes.extend(
         _probe_http(name, url) if url else _completed(_unconfigured(name))
         for name, url in configured
     )
+    if settings.cache_warm_backend.lower() == "redis":
+        probes.append(
+            _probe_redis(settings.redis_url)
+            if settings.redis_url
+            else _completed(_unconfigured("redis"))
+        )
     checks = list(await asyncio.gather(*probes))
 
     overall = max(checks, key=lambda check: _WORST_STATE[check["state"]])["state"]

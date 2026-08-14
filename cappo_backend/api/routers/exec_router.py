@@ -24,15 +24,16 @@ from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
+from cappo_backend.services.executor import ExecutorUnavailableError, TerminalExecutionError
 from cappo_backend.services.orchestrator import (
     GovernanceDeniedError,
     MissingGovernanceDecisionError,
     RunOrchestrator,
+    RuntimeOwnershipError,
 )
 from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
 from cappo_backend.services.pgl_adapter import create_pgl_client
 from cappo_backend.services.providers import build_executor
-from cappo_backend.services.executor import ExecutorUnavailableError, TerminalExecutionError
 from cappo_backend.services.revocation_service import RevocationService
 
 router = APIRouter(prefix="/v1")
@@ -116,6 +117,8 @@ def _build_orchestrator(db: Session, settings: Settings, audit: AuditService) ->
         audit=audit,
         gateway=gateway,
         genome_service=genome_service,
+        runtime_kind=settings.runtime_kind,
+        runtime_instance=settings.runtime_instance,
     )
 
 def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Session) -> dict[str, Any]:
@@ -163,6 +166,17 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
                 "terminal": True,
             },
         )
+    except RuntimeOwnershipError as exc:
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "RUNTIME_OWNERSHIP_CONFLICT",
+                "detail": str(exc),
+                "fail_stop": True,
+                "retryable": False,
+            },
+        )
     except ExecutorUnavailableError as exc:
         db.commit()
         raise HTTPException(
@@ -201,6 +215,15 @@ def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -
 
     return public_key
 
+
+def _build_capi_payload(body: ExecRequest) -> dict[str, Any]:
+    """Build the signed cAPI intent without recursively hashing its signature."""
+    return {
+        "action": body.action or "execute",
+        "data": body.model_dump(exclude={"security"}),
+        "security": body.security,
+    }
+
 @router.post("/exec", response_model=ExecResponse)
 async def governed_exec(
     body: ExecRequest,
@@ -218,11 +241,7 @@ async def governed_exec(
     capi_public_key = "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
     
     # We construct the payload expected by cAPI
-    capi_payload = {
-        "action": body.action or "execute",
-        "data": body.model_dump(),
-        "security": body.security
-    }
+    capi_payload = _build_capi_payload(body)
     
     # Run the strict cAPI pipeline (Phases 1-6)
     if test_only_echo:

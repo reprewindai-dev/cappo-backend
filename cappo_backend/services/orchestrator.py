@@ -17,10 +17,13 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.governed_run import GovernedRun
+from cappo_backend.models.runtime_path_assignment import RuntimePathAssignment
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
@@ -36,6 +39,10 @@ class MissingGovernanceDecisionError(RuntimeError):
 
 class GovernanceDeniedError(RuntimeError):
     """Raised when CAPPO explicitly vetoes a governed run."""
+
+
+class RuntimeOwnershipError(RuntimeError):
+    """Raised when a runtime cannot prove sole ownership of the current path epoch."""
 
 
 _ALLOW_DIRECTIVES = {"ALLOW", "ALLOW_WITH_AUDIT"}
@@ -78,6 +85,8 @@ class RunOrchestrator:
         issuer: str = "cappo-orchestrator",
         genome_service: Any | None = None,
         gateway: Any | None = None,
+        runtime_kind: str = "",
+        runtime_instance: str = "",
     ) -> None:
         self._db = db
         self._pgl = pgl
@@ -88,6 +97,8 @@ class RunOrchestrator:
         self._issuer = issuer
         self._genome_service = genome_service
         self._gateway = gateway
+        self._runtime_kind = runtime_kind.strip()
+        self._runtime_instance = runtime_instance.strip()
         self._last_run: GovernedRun | None = None
 
     @property
@@ -116,6 +127,7 @@ class RunOrchestrator:
             return result
         except Exception as exc:
             self._transition(run, RunState.FAILED)
+            request_payload = run.request_payload or {}
             # Record the failure in the audit log (audit all rejections/failures).
             self._audit.record(
                 "run_failed",
@@ -123,6 +135,8 @@ class RunOrchestrator:
                     "error": str(exc),
                     "error_type": exc.__class__.__name__,
                     "state_at_failure": run.state,
+                    "agent_id": request_payload.get("agent_id"),
+                    "pgl_id": request_payload.get("pgl_id"),
                 },
                 workspace_id=run.workspace_id,
                 run_id=run.run_id,
@@ -275,13 +289,18 @@ class RunOrchestrator:
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
         governance_decision = _require_governance_decision(run)
+        request_payload = run.request_payload or {}
+        nested_agent = request_payload.get("agent") or {}
+        agent_id = (
+            request_payload.get("agent_id")
+            or request_payload.get("pgl_id")
+            or (nested_agent.get("id") if isinstance(nested_agent, dict) else None)
+        )
         params = PreCertificateParams(
             run_id=run.run_id,
             workspace_id=run.workspace_id,
-            actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
-            agent_id=run.request_payload.get("agent", {}).get("id")
-            if run.request_payload
-            else None,
+            actor_id=request_payload.get("pgl_id"),
+            agent_id=agent_id,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
@@ -302,6 +321,7 @@ class RunOrchestrator:
     def mint_execution_identity(self, run: GovernedRun) -> None:
         """Mint ``ExecutionIdentityV1`` - strictly after commit, before route."""
         governance_decision = _require_governance_decision(run)
+        runtime_ownership = self._claim_runtime_ownership(run)
         ei_inputs: dict[str, Any] = {
             "pgl_pre_certificate_id": run.pgl_identity.get("pre_execution_certificate_id", ""),
             "genome_hash": run.hashes.get("genome_hash", ""),
@@ -318,6 +338,7 @@ class RunOrchestrator:
             "delegation_depth": run.delegation_depth,
             "scope": run.scope,
             "issuer": self._issuer,
+            "runtime_ownership": runtime_ownership,
         }
         identity = self._builder.build(ei_inputs)
         run.execution_identity = identity
@@ -402,6 +423,7 @@ class RunOrchestrator:
         scope ("before any side-effecting tool call").
         """
         self._enforce_law0(run)
+        self._enforce_runtime_ownership(run)
         self._transition(run, RunState.EXECUTING)
         result = self._executor.execute(run.request_payload)
         run.result_payload = result
@@ -420,6 +442,71 @@ class RunOrchestrator:
             workspace_id=run.workspace_id,
             run_id=run.run_id,
         )
+
+    def _claim_runtime_ownership(self, run: GovernedRun) -> dict[str, Any]:
+        if not self._runtime_kind or not self._runtime_instance:
+            raise RuntimeOwnershipError("RUNTIME_IDENTITY_UNAVAILABLE")
+
+        existing = self._db.scalar(
+            select(RuntimePathAssignment)
+            .where(RuntimePathAssignment.path_id == run.run_id)
+            .order_by(RuntimePathAssignment.authority_epoch.desc())
+            .limit(1)
+        )
+        if existing is not None:
+            raise RuntimeOwnershipError("PATH_ALREADY_ASSIGNED")
+
+        ownership = {
+            "path_id": run.run_id,
+            "assignment_id": str(uuid.uuid4()),
+            "authority_epoch": 1,
+            "runtime_kind": self._runtime_kind,
+            "runtime_instance": self._runtime_instance,
+        }
+        try:
+            with self._db.begin_nested():
+                self._db.add(RuntimePathAssignment(**ownership))
+                self._db.flush()
+        except IntegrityError as exc:
+            raise RuntimeOwnershipError("PATH_ALREADY_ASSIGNED") from exc
+        return ownership
+
+    def _enforce_runtime_ownership(self, run: GovernedRun) -> None:
+        identity = run.execution_identity or {}
+        ownership = identity.get("runtime_ownership")
+        if not isinstance(ownership, dict):
+            raise RuntimeOwnershipError("RUNTIME_OWNERSHIP_REQUIRED")
+
+        required = {
+            "path_id",
+            "assignment_id",
+            "authority_epoch",
+            "runtime_kind",
+            "runtime_instance",
+        }
+        if required.difference(ownership):
+            raise RuntimeOwnershipError("RUNTIME_OWNERSHIP_INCOMPLETE")
+        if ownership["path_id"] != run.run_id:
+            raise RuntimeOwnershipError("PATH_ID_MISMATCH")
+        if ownership["runtime_kind"] != self._runtime_kind or ownership[
+            "runtime_instance"
+        ] != self._runtime_instance:
+            previous = ownership.get("previous_assignment_id")
+            if previous and ownership["authority_epoch"] <= 1:
+                raise RuntimeOwnershipError("AUTHORITY_EPOCH_NOT_ADVANCED")
+            raise RuntimeOwnershipError("RUNTIME_OWNER_MISMATCH")
+
+        assignment = self._db.get(RuntimePathAssignment, ownership["assignment_id"])
+        if assignment is None:
+            raise RuntimeOwnershipError("PATH_ASSIGNMENT_NOT_PERSISTED")
+        if assignment.path_id != ownership["path_id"]:
+            raise RuntimeOwnershipError("PERSISTED_PATH_ID_MISMATCH")
+        if assignment.authority_epoch != ownership["authority_epoch"]:
+            raise RuntimeOwnershipError("AUTHORITY_EPOCH_MISMATCH")
+        if assignment.runtime_kind != ownership["runtime_kind"] or assignment.runtime_instance != ownership[
+            "runtime_instance"
+        ]:
+            raise RuntimeOwnershipError("PERSISTED_OWNER_MISMATCH")
 
     def attest_run(self, run: GovernedRun) -> None:
         """Mint the post-execution PGL certificate and attest the outcome.

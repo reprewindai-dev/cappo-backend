@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     # --- Authority limits ---
     max_delegation_depth: int = 4
 
+    # --- Consequence-bearing runtime ownership ---
+    # These values identify this independently deployed runtime control service.
+    # They are minted into the signed execution identity by CAPPO; callers never
+    # choose or override path ownership.
+    runtime_kind: str = ""
+    runtime_instance: str = ""
+
     # --- Observability / CORS ---
     # Comma-separated list of allowed CORS origins. Default "*" suits a headless
     # API in dev; production should pin explicit origins.
@@ -241,6 +248,14 @@ class Settings(BaseSettings):
         if not self.approval_token_signing_key:
             problems.append(
                 "APPROVAL_TOKEN_SIGNING_KEY must be set in production for approval-token verification."
+            )
+        if not self.runtime_kind.strip():
+            problems.append(
+                "RUNTIME_KIND must identify the deployed runtime control service in production."
+            )
+        if not self.runtime_instance.strip():
+            problems.append(
+                "RUNTIME_INSTANCE must identify this deployed runtime instance in production."
             )
         if self.jwt_auth_enabled:
             if not self.jwt_public_verification_key:

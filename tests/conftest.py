@@ -52,6 +52,8 @@ def settings() -> Settings:
         api_keys="test-key",
         veklom_byos_backend_url=None,
         executor_mode="echo",
+        runtime_kind="amphoteric",
+        runtime_instance="test-runtime",
     )
 
 
@@ -67,6 +69,8 @@ def prod_settings() -> Settings:
         cappo_require_persistent_pgl=True,
         environment="production",
         veklom_byos_backend_url=None,
+        runtime_kind="amphoteric",
+        runtime_instance="prod-runtime",
     )
 
 

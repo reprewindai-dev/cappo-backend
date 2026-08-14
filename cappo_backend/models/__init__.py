@@ -22,6 +22,7 @@ from cappo_backend.models.retrieval import (
     RetrievalTrace,
     SourceDocument,
 )
+from cappo_backend.models.runtime_path_assignment import RuntimePathAssignment
 from cappo_backend.models.vnp_interlink_nonce import VNPInterlinkNonce
 from cappo_backend.models.vnp_models import (
     APIState,
@@ -73,4 +74,5 @@ __all__ = [
     "DocumentIndex",
     "RetrievalSession",
     "RetrievalTrace",
+    "RuntimePathAssignment",
 ]
