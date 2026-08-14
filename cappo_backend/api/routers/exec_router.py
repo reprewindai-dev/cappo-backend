@@ -215,6 +215,15 @@ def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -
 
     return public_key
 
+
+def _build_capi_payload(body: ExecRequest) -> dict[str, Any]:
+    """Build the signed cAPI intent without recursively hashing its signature."""
+    return {
+        "action": body.action or "execute",
+        "data": body.model_dump(exclude={"security"}),
+        "security": body.security,
+    }
+
 @router.post("/exec", response_model=ExecResponse)
 async def governed_exec(
     body: ExecRequest,
@@ -232,11 +241,7 @@ async def governed_exec(
     capi_public_key = "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
     
     # We construct the payload expected by cAPI
-    capi_payload = {
-        "action": body.action or "execute",
-        "data": body.model_dump(),
-        "security": body.security
-    }
+    capi_payload = _build_capi_payload(body)
     
     # Run the strict cAPI pipeline (Phases 1-6)
     if test_only_echo:

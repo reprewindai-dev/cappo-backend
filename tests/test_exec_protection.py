@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.api.routers.exec_router import (
     ExecRequest,
+    _build_capi_payload,
     _execute_run,
     _resolve_capi_gatekeeper_public_key,
 )
@@ -139,6 +140,19 @@ class TestNoBypass:
 
 
 class TestCAPIGatekeeperKey:
+    def test_signed_payload_does_not_hash_its_own_signature(self) -> None:
+        body = ExecRequest(
+            prompt="deny-path probe",
+            pgl_id="production-verifier",
+            directive="DENY",
+            security={"nonce": "nonce-1", "signature": "signature-1"},
+        )
+
+        payload = _build_capi_payload(body)
+
+        assert payload["security"] == body.security
+        assert "security" not in payload["data"]
+
     def test_dev_unsigned_request_keeps_existing_internal_compatibility(self) -> None:
         body = ExecRequest(prompt="hello", pgl_id="test-user-id")
         settings = Settings(environment="test")
