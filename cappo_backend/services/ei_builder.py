@@ -148,6 +148,9 @@ class ExecutionIdentityBuilder:
                 identity["directive"] = inputs["directive"]
             identity["risk_tier"] = inputs.get("risk_tier") or "standard"
 
+        if "runtime_ownership" in inputs:
+            identity["runtime_ownership"] = inputs["runtime_ownership"]
+
         return self._finalize_and_sign(identity)
 
     def _validate(self, inputs: dict[str, Any]) -> None:

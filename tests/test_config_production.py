@@ -31,6 +31,8 @@ def _prod(**overrides) -> Settings:
         approval_token_signing_key="test-approval-token-key",
         jwt_public_verification_key="test-jwt-key",
         cors_allow_origins="https://api.veklom.com",
+        runtime_kind="amphoteric",
+        runtime_instance="prod-runtime",
     )
     base.update(overrides)
     return Settings(**base)
@@ -80,6 +82,14 @@ class TestProductionFailClosed:
     def test_missing_approval_token_signing_key_rejected(self) -> None:
         with pytest.raises(InsecureProductionConfigError, match="APPROVAL_TOKEN_SIGNING_KEY"):
             _prod(approval_token_signing_key="").validate_production()
+
+    def test_missing_runtime_kind_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="RUNTIME_KIND"):
+            _prod(runtime_kind="").validate_production()
+
+    def test_missing_runtime_instance_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="RUNTIME_INSTANCE"):
+            _prod(runtime_instance="").validate_production()
 
     def test_multiple_problems_aggregated(self) -> None:
         with pytest.raises(InsecureProductionConfigError) as exc:

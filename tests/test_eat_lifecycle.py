@@ -48,6 +48,8 @@ def _make_orchestrator(db, with_eat: bool = True) -> RunOrchestrator:
         executor=executor,
         audit=audit,
         eat_builder=eat_builder,
+        runtime_kind="amphoteric",
+        runtime_instance="test-runtime",
     )
 
 
@@ -168,6 +170,8 @@ class TestEATExpiry:
             executor=executor,
             audit=audit,
             eat_builder=eat_builder,
+            runtime_kind="amphoteric",
+            runtime_instance="test-runtime",
         )
 
         orch.run_governed(_make_request())

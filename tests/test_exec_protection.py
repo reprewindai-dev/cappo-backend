@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.api.routers.exec_router import (
     ExecRequest,
+    _execute_run,
     _resolve_capi_gatekeeper_public_key,
 )
 from cappo_backend.config import Settings
@@ -21,6 +22,7 @@ from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.models.pgl_certificate import PGLCertificate
+from cappo_backend.services.orchestrator import RuntimeOwnershipError
 from cappo_backend.services.run_state import RunState
 
 
@@ -166,3 +168,20 @@ class TestCAPIGatekeeperKey:
 
         assert exc_info.value.status_code == 401
         assert exc_info.value.detail["error"] == "CAPI_SIGNED_SECURITY_REQUIRED"
+
+
+def test_runtime_ownership_conflict_is_terminal_http_409(db: Session) -> None:
+    class _OwnershipConflictOrchestrator:
+        def run_governed(self, _payload):
+            raise RuntimeOwnershipError("RUNTIME_OWNER_MISMATCH")
+
+    with pytest.raises(HTTPException) as exc_info:
+        _execute_run(_OwnershipConflictOrchestrator(), {}, db)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == {
+        "error": "RUNTIME_OWNERSHIP_CONFLICT",
+        "detail": "RUNTIME_OWNER_MISMATCH",
+        "fail_stop": True,
+        "retryable": False,
+    }
