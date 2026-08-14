@@ -116,7 +116,14 @@ class RunOrchestrator:
         try:
             self.compile_run(run)
             self.contextualize_run(run)
-            self.govern_run(run)
+            try:
+                self.govern_run(run)
+            except GovernanceDeniedError:
+                # A semantic denial is a terminal outcome, but it is still a
+                # governed attempt and therefore needs durable PGL provenance.
+                # No EI, route, provider, or executor is reached on this path.
+                self.commit_run(run)
+                raise
             self.commit_run(run)
             self.mint_execution_identity(run)
             self.mint_eat(run)
@@ -232,7 +239,9 @@ class RunOrchestrator:
 
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
-        governance_decision = _require_governance_decision(run)
+        # A terminal DENY is not executable, but it is still a governed
+        # decision that must receive durable PGL provenance.
+        governance_decision = _require_recorded_governance_decision(run)
         request_payload = run.request_payload or {}
         nested_agent = request_payload.get("agent") or {}
         agent_id = (
@@ -267,6 +276,10 @@ class RunOrchestrator:
         governance_decision = _require_governance_decision(run)
         runtime_ownership = self._claim_runtime_ownership(run)
         ei_inputs: dict[str, Any] = {
+            # The run id is allocated before governance, allowing both a
+            # terminal denial and every provider attempt to share one semantic
+            # execution identifier.
+            "execution_id": run.run_id,
             "pgl_pre_certificate_id": run.pgl_identity.get("pre_execution_certificate_id", ""),
             "genome_hash": run.hashes.get("genome_hash", ""),
             "constitution_hash": run.hashes.get("constitution_hash", ""),
@@ -565,4 +578,11 @@ def _require_governance_decision(run: GovernedRun) -> str:
     directive = _normalize_directive(run.governance_decision)
     if directive not in _ALLOW_DIRECTIVES:
         raise GovernanceDeniedError(f"governance directive {directive!r} does not permit execution")
+    return directive
+
+
+def _require_recorded_governance_decision(run: GovernedRun) -> str:
+    directive = _normalize_directive(run.governance_decision)
+    if directive not in _VALID_DIRECTIVES:
+        raise MissingGovernanceDecisionError("CAPPO governance decision required")
     return directive
