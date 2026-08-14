@@ -369,7 +369,9 @@ class RunOrchestrator:
         self._enforce_law0(run)
         self._enforce_runtime_ownership(run)
         self._transition(run, RunState.EXECUTING)
-        result = self._executor.execute(run.request_payload)
+        result = self._executor.execute(
+            _execution_request(run.request_payload or {}, run.execution_identity or {})
+        )
         run.result_payload = result
         self._transition(run, RunState.EXECUTED)
         return result
@@ -528,6 +530,22 @@ def _default_action(scope: dict[str, Any] | None) -> str:
     """Derive the action to enforce from the run scope (first allowed tool)."""
     tools = (scope or {}).get("tools") or []
     return tools[0] if tools else ""
+
+
+def _execution_request(request: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
+    """Bind execution routing to CAPPO's signed identity, never client hints."""
+    scope = identity.get("scope")
+    allowed_provider_set = scope.get("allowed_provider_set") if isinstance(scope, dict) else None
+    ownership = identity.get("runtime_ownership")
+    authority_epoch = ownership.get("authority_epoch") if isinstance(ownership, dict) else None
+    return {
+        **request,
+        "authority_envelope": {
+            "execution_id": identity.get("execution_id"),
+            "authority_epoch": authority_epoch,
+            "allowed_provider_set": allowed_provider_set,
+        },
+    }
 
 
 def _normalize_directive(raw: Any) -> str:

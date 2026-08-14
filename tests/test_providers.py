@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+from datetime import UTC, datetime
+
 import httpx
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from cappo_backend.config import Settings
 from cappo_backend.services.executor import (
@@ -29,6 +34,28 @@ def _ok_response(content="hello", total_tokens=7, model="gpt-4o-mini"):
         "model": model,
         "choices": [{"message": {"role": "assistant", "content": content}}],
         "usage": {"total_tokens": total_tokens},
+    }
+
+
+def _signed_503(private_key: Ed25519PrivateKey, body: bytes) -> dict[str, str]:
+    created = int(datetime.now(UTC).timestamp())
+    digest = f"sha-256=:{base64.b64encode(hashlib.sha256(body).digest()).decode('ascii')}:"
+    date = "Mon, 01 Jan 2026 12:00:00 GMT"
+    params = f';created={created};keyid="provider-a"'
+    base = "\n".join(
+        [
+            '"@status": 503',
+            f'"content-digest": {digest}',
+            f'"date": {date}',
+            f'"@signature-params": ("@status" "content-digest" "date"){params}',
+        ]
+    ).encode()
+    signature = base64.b64encode(private_key.sign(base)).decode()
+    return {
+        "content-digest": digest,
+        "date": date,
+        "signature-input": f'sig1=("@status" "content-digest" "date"){params}',
+        "signature": f"sig1=:{signature}:",
     }
 
 
@@ -166,7 +193,7 @@ def test_build_executor_with_ollama_fallback_uses_native_adapter():
     assert ex._providers[1].executor._base_url == "http://localhost:11434"
 
 
-def test_factory_executor_fails_over_across_real_clients():
+def test_factory_executor_does_not_fail_over_on_unsigned_503():
     def fail(request):
         return httpx.Response(503, json={"error": "down"})
 
@@ -185,9 +212,51 @@ def test_factory_executor_fails_over_across_real_clients():
     ex._providers[0].executor._client = _client(fail)
     ex._providers[1].executor._client = _client(ok)
 
-    out = ex.execute({"prompt": "hi", "pgl_id": "test-user-id"})
-    assert out["response"] == "from-fallback"
-    assert out["provider"] == "fallback"
+    with pytest.raises(ExecutorUnavailableError, match="verified 503"):
+        ex.execute({"prompt": "hi", "pgl_id": "test-user-id"})
+
+
+def test_factory_executor_fails_over_after_signed_503_inside_authorized_set(monkeypatch):
+    import cappo_backend.config as config
+
+    private_key = Ed25519PrivateKey.generate()
+    monkeypatch.setattr(
+        config,
+        "get_settings",
+        lambda: Settings(
+            _env_file=None,
+            vnp_federation_public_key=private_key.public_key().public_bytes_raw().hex(),
+        ),
+    )
+    body = b'{"error":"unavailable"}'
+
+    def fail(request):
+        return httpx.Response(503, content=body, headers=_signed_503(private_key, body), request=request)
+
+    def ok(request):
+        return httpx.Response(200, json=_ok_response(content="from-fallback"), request=request)
+
+    settings = Settings(
+        _env_file=None,
+        executor_mode="openai",
+        llm_provider_name="primary",
+        llm_base_url="https://primary.test/v1",
+        llm_fallback_provider_name="fallback",
+        llm_fallback_base_url="https://fallback.test/v1",
+    )
+    ex = build_executor(settings)
+    ex._providers[0].executor._client = _client(fail)
+    ex._providers[1].executor._client = _client(ok)
+
+    result = ex.execute(
+        {
+            "prompt": "hi",
+            "authority_envelope": {"allowed_provider_set": ["primary", "fallback"]},
+        }
+    )
+
+    assert result["response"] == "from-fallback"
+    assert [attempt["provider_id"] for attempt in result["attempts"]] == ["primary", "fallback"]
 
 
 def test_factory_executor_halts_when_all_real_clients_down():

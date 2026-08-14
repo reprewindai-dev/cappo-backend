@@ -138,6 +138,10 @@ class Settings(BaseSettings):
     breaker_recovery_timeout: float = 30.0
     breaker_success_threshold: int = 1
 
+    # Ed25519 public key used to verify signed 503 responses before a
+    # configured fallback provider may be considered.
+    vnp_federation_public_key: str = ""
+
     # --- Completion cache (latency) ---
     # When true, a tiered hot (in-process) + warm (shared) cache fronts the
     # providers. Cache hits short-circuit the provider call only; the governed
@@ -270,6 +274,11 @@ class Settings(BaseSettings):
                 problems.append(
                     "JWT_AUDIENCE must be set in production when JWT_AUTH_ENABLED is true."
                 )
+
+        if self.llm_fallback_base_url and not self.vnp_federation_public_key:
+            problems.append(
+                "VNP_FEDERATION_PUBLIC_KEY must be set in production to verify 503 fallback signatures."
+            )
 
         if problems:
             raise InsecureProductionConfigError(

@@ -12,6 +12,7 @@ A deterministic :class:`EchoExecutor` is provided for tests and local dev.
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -36,6 +37,10 @@ class ExecutorUnavailableError(RuntimeError):
 
 class ProviderExecutionError(RuntimeError):
     """Raised when an HTTP provider call fails (e.g. 503, 500, network error) allowing fallback."""
+
+
+class VerifiedProviderUnavailableError(ProviderExecutionError):
+    """A provider's signed HTTP 503 has passed the federation integrity profile."""
 
 
 class TerminalExecutionError(RuntimeError):
@@ -162,17 +167,28 @@ class ResilientExecutor:
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         last_error: Exception | None = None
+        attempts: list[dict[str, str]] = []
+        allowed_providers = _authorized_provider_set(request)
         for provider in self._providers:
+            if allowed_providers is not None and provider.name not in allowed_providers:
+                raise ExecutorUnavailableError(
+                    f"provider {provider.name} cannot be used outside the authorized provider set"
+                )
             if not provider.breaker.allows_request():
                 logger.warning(
                     "provider skipped: circuit open",
                     extra={"provider": provider.name},
                 )
-                continue
+                raise ExecutorUnavailableError(
+                    f"provider {provider.name} circuit open; no current verified 503 permits failover"
+                )
             try:
-                return provider.breaker.call(
+                result = provider.breaker.call(
                     lambda p=provider: p.executor.execute(request)
                 )
+                if attempts:
+                    result = {**result, "attempts": [*attempts, _attempt(provider.name, "succeeded")]}
+                return result
             except TerminalExecutionError as exc:
                 # 403 is terminal. DO NOT fail over to fallback.
                 logger.warning(
@@ -180,18 +196,47 @@ class ResilientExecutor:
                     extra={"provider": provider.name, "error": str(exc)},
                 )
                 raise
+            except VerifiedProviderUnavailableError as exc:
+                attempts.append(_attempt(provider.name, "verified_unavailable"))
+                if allowed_providers is None:
+                    raise ExecutorUnavailableError(
+                        "verified provider failure cannot fail over without an authorized provider set"
+                    ) from exc
+                last_error = exc
+                continue
             except CircuitOpenError as exc:  # raced to open between check and call
                 last_error = exc
-                continue
             except Exception as exc:
-                last_error = exc
                 logger.warning(
-                    "provider failed; failing over",
+                    "provider failed without verified failover authorization",
                     extra={"provider": provider.name, "error": str(exc)},
                 )
-                continue
+                raise ExecutorUnavailableError(
+                    f"provider {provider.name} failed without a verified 503 failover signal"
+                ) from exc
 
         cause_msg = str(last_error) if last_error else ""
         raise ExecutorUnavailableError(
             f"all providers unavailable (circuits open or failing): {cause_msg}"
         ) from last_error
+
+
+def _authorized_provider_set(request: dict[str, Any]) -> set[str] | None:
+    """Read only the provider set already bound into CAPPO's authority envelope."""
+    envelope = request.get("authority_envelope")
+    if not isinstance(envelope, dict):
+        return None
+    providers = envelope.get("allowed_provider_set")
+    if not isinstance(providers, list) or not providers or not all(
+        isinstance(provider, str) and provider.strip() for provider in providers
+    ):
+        return None
+    return set(providers)
+
+
+def _attempt(provider_id: str, outcome: str) -> dict[str, str]:
+    return {
+        "attempt_id": str(uuid.uuid4()),
+        "provider_id": provider_id,
+        "outcome": outcome,
+    }

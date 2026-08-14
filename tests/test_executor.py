@@ -5,8 +5,16 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from httpx import HTTPStatusError, Request, Response
 
-from cappo_backend.services.executor import ExecutorUnavailableError, ResilientExecutor
+from cappo_backend.services.circuit_breaker import CircuitBreaker
+from cappo_backend.services.executor import (
+    ExecutorUnavailableError,
+    Provider,
+    ResilientExecutor,
+    TerminalExecutionError,
+    VerifiedProviderUnavailableError,
+)
 
 
 def test_http_executor_success() -> None:
@@ -49,9 +57,74 @@ def test_http_executor_success() -> None:
         assert kwargs["headers"]["Authorization"] == "Bearer mock-key"
 
 
-from httpx import HTTPStatusError, Request, Response
-from cappo_backend.services.executor import ExecutorUnavailableError, TerminalExecutionError, Provider
-from cappo_backend.services.circuit_breaker import CircuitBreaker
+def test_verified_503_does_not_fail_over_without_authorized_provider_set() -> None:
+    primary = MagicMock()
+    primary.execute.side_effect = VerifiedProviderUnavailableError("verified primary 503")
+    fallback = MagicMock()
+    fallback.execute.return_value = {"response": "must not run"}
+    executor = ResilientExecutor(
+        providers=[
+            Provider("primary", primary, CircuitBreaker()),
+            Provider("fallback", fallback, CircuitBreaker()),
+        ]
+    )
+
+    with pytest.raises(ExecutorUnavailableError, match="authorized provider set"):
+        executor.execute({"prompt": "hello"})
+
+    primary.execute.assert_called_once()
+    fallback.execute.assert_not_called()
+
+
+def test_verified_503_fails_over_only_inside_signed_provider_set() -> None:
+    primary = MagicMock()
+    primary.execute.side_effect = VerifiedProviderUnavailableError("verified primary 503")
+    fallback = MagicMock()
+    fallback.execute.return_value = {"response": "fallback", "provider": "fallback"}
+    executor = ResilientExecutor(
+        providers=[
+            Provider("primary", primary, CircuitBreaker()),
+            Provider("fallback", fallback, CircuitBreaker()),
+        ]
+    )
+    request = {
+        "prompt": "hello",
+        "authority_envelope": {
+            "execution_id": "exec-1",
+            "authority_epoch": 7,
+            "allowed_provider_set": ["primary", "fallback"],
+        },
+    }
+
+    result = executor.execute(request)
+
+    assert result["response"] == "fallback"
+    assert [attempt["provider_id"] for attempt in result["attempts"]] == ["primary", "fallback"]
+    assert result["attempts"][0]["outcome"] == "verified_unavailable"
+    primary.execute.assert_called_once_with(request)
+    fallback.execute.assert_called_once_with(request)
+
+
+def test_open_primary_circuit_does_not_authorize_a_fallback_attempt() -> None:
+    primary_breaker = CircuitBreaker(failure_threshold=1)
+    with pytest.raises(RuntimeError):
+        primary_breaker.call(lambda: (_ for _ in ()).throw(RuntimeError("down")))
+    primary = MagicMock()
+    fallback = MagicMock()
+    executor = ResilientExecutor(
+        providers=[
+            Provider("primary", primary, primary_breaker),
+            Provider("fallback", fallback, CircuitBreaker()),
+        ]
+    )
+
+    with pytest.raises(ExecutorUnavailableError, match="circuit open"):
+        executor.execute(
+            {"authority_envelope": {"allowed_provider_set": ["primary", "fallback"]}}
+        )
+
+    primary.execute.assert_not_called()
+    fallback.execute.assert_not_called()
 
 def test_http_executor_failure_403_terminal() -> None:
     # Set up executor with multiple providers to prove 403 halts fallback
@@ -81,16 +154,11 @@ def test_http_executor_failure_403_terminal() -> None:
     mock_fail_executor.execute.assert_called_once()
     mock_success_executor.execute.assert_not_called()
 
-def test_http_executor_failure_503_fallback() -> None:
+def test_http_executor_verified_503_fallback() -> None:
     # Set up executor with multiple providers to prove it fails over and succeeds
     # preserving the execution context
-    req = Request("POST", "https://api.primary.com/v1/chat")
-    res_503 = Response(503, request=req)
-    http_error = HTTPStatusError("503 Service Unavailable", request=req, response=res_503)
-
     mock_fail_executor = MagicMock()
-    # Need to raise the correct error type expected by executor (Exception that triggers fallback)
-    mock_fail_executor.execute.side_effect = http_error
+    mock_fail_executor.execute.side_effect = VerifiedProviderUnavailableError("verified 503")
 
     mock_success_executor = MagicMock()
     mock_success_executor.execute.return_value = {
@@ -114,7 +182,11 @@ def test_http_executor_failure_503_fallback() -> None:
         "execution_id": "exec_456",
         "grant_id": "grant_789",
         "policy_hash": "hash_abc",
-        "actor_id": "actor_xyz"
+        "actor_id": "actor_xyz",
+        "authority_envelope": {
+            "execution_id": "exec_456",
+            "allowed_provider_set": ["primary", "fallback"],
+        },
     }
 
     # Execution should succeed by falling back to the second provider

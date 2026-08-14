@@ -91,6 +91,10 @@ class TestProductionFailClosed:
         with pytest.raises(InsecureProductionConfigError, match="RUNTIME_INSTANCE"):
             _prod(runtime_instance="").validate_production()
 
+    def test_fallback_provider_without_federation_verification_key_is_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="VNP_FEDERATION_PUBLIC_KEY"):
+            _prod(llm_fallback_base_url="https://fallback.example/v1").validate_production()
+
     def test_multiple_problems_aggregated(self) -> None:
         with pytest.raises(InsecureProductionConfigError) as exc:
             Settings(

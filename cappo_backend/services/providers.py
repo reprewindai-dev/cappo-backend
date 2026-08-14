@@ -28,8 +28,10 @@ from cappo_backend.services.executor import (
     EchoExecutor,
     Executor,
     Provider,
+    ProviderExecutionError,
     ResilientExecutor,
     TerminalExecutionError,
+    VerifiedProviderUnavailableError,
 )
 
 if TYPE_CHECKING:
@@ -86,6 +88,11 @@ class OpenAICompatExecutor:
             if exc.response.status_code == 403:
                 raise TerminalExecutionError(
                     f"Authority Denied (403): {self.provider} returned HTTP 403"
+                ) from exc
+            if exc.response.status_code == 503:
+                _require_verified_503(exc.response)
+                raise VerifiedProviderUnavailableError(
+                    f"{self.provider} returned verified HTTP 503"
                 ) from exc
             raise ProviderError(
                 f"{self.provider} returned HTTP {exc.response.status_code}"
@@ -172,6 +179,15 @@ class OllamaExecutor:
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 403:
+                raise TerminalExecutionError(
+                    f"Authority Denied (403): {self.provider} returned HTTP 403"
+                ) from exc
+            if exc.response.status_code == 503:
+                _require_verified_503(exc.response)
+                raise VerifiedProviderUnavailableError(
+                    f"{self.provider} returned verified HTTP 503"
+                ) from exc
             raise ProviderError(
                 f"{self.provider} returned HTTP {exc.response.status_code}"
             ) from exc
@@ -208,6 +224,27 @@ def _breaker(settings: Settings, name: str) -> CircuitBreaker:
         recovery_timeout=settings.breaker_recovery_timeout,
         success_threshold=settings.breaker_success_threshold,
     )
+
+
+def _require_verified_503(response: httpx.Response) -> None:
+    """Convert only an authenticated 503 into an eligible failover signal."""
+    from cappo_backend.config import get_settings
+    from cappo_backend.security.http_signatures import (
+        SignatureVerificationError,
+        verify_rfc9421_response,
+    )
+
+    try:
+        verify_rfc9421_response(
+            status_code=response.status_code,
+            headers=response.headers,
+            body=response.content,
+            public_key_hex=get_settings().vnp_federation_public_key,
+        )
+    except SignatureVerificationError as exc:
+        raise ProviderExecutionError(
+            f"{response.status_code} response is not an authenticated failover signal: {exc}"
+        ) from exc
 
 
 def _build_warm_cache(settings: Settings) -> WarmCache:
