@@ -15,9 +15,16 @@ def test_pipeline_doc_uses_canonical_cappo_port_and_unverified_runtime() -> None
         r"(?im)^\s*(?:listener|target|port|PORT)\s*[:=]\s*`?(?:3000|8000)\b",
         text,
     )
-    assert not re.search(
+    runtime_claims = re.finditer(
         r"(?im)^\s*(?:uptime|latency|error rate|health|status|release state)"
-        r"\s*[:=]\s*"
-        r"(?!NOT_VERIFIED\b|UNAVAILABLE\b|PENDING_MEASUREMENT\b|EXAMPLE_ONLY\b).+",
+        r"\s*[:=]\s*(?P<value>.+)$",
         text,
     )
+    allowed_labels = (
+        "NOT_VERIFIED",
+        "UNAVAILABLE",
+        "PENDING_MEASUREMENT",
+        "EXAMPLE_ONLY",
+    )
+    for claim in runtime_claims:
+        assert claim.group("value").strip().startswith(allowed_labels), claim.group(0)

@@ -10,7 +10,7 @@ import pytest
 from cappo_backend.security.edge_gateway import EATVerificationError, EdgeGateway
 from cappo_backend.security.nonce_cache import InMemoryNonceCache
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.canonical import sha256_json, sign_payload
+from cappo_backend.services.canonical import sha256_json, sign_payload_ed25519
 from cappo_backend.services.eat_builder import EATBuilder, eat_canonical_body
 from cappo_backend.services.ei_builder import Ed25519Signer
 
@@ -155,7 +155,7 @@ class TestV3Expiry:
         # Re-sign the tampered body
         body = eat_canonical_body(eat)
         eat["hash"] = sha256_json(body)
-        eat["signature"] = sign_payload(body, SIGNING_KEY)
+        eat["signature"] = sign_payload_ed25519(body, SIGNING_KEY)
 
         with pytest.raises(EATVerificationError, match="expires_at") as exc_info:
             gw.require_eat(eat)
@@ -186,7 +186,7 @@ class TestV4Nonce:
         eat["nonce"] = ""
         body = eat_canonical_body(eat)
         eat["hash"] = sha256_json(body)
-        eat["signature"] = sign_payload(body, SIGNING_KEY)
+        eat["signature"] = sign_payload_ed25519(body, SIGNING_KEY)
 
         with pytest.raises(EATVerificationError, match="nonce") as exc_info:
             gw.require_eat(eat)
@@ -205,7 +205,7 @@ class TestV5Directive:
         eat["authorization"]["directive"] = "DENY"
         body = eat_canonical_body(eat)
         eat["hash"] = sha256_json(body)
-        eat["signature"] = sign_payload(body, SIGNING_KEY)
+        eat["signature"] = sign_payload_ed25519(body, SIGNING_KEY)
 
         with pytest.raises(EATVerificationError, match="directive") as exc_info:
             gw.require_eat(eat)
@@ -277,7 +277,7 @@ class TestV9Version:
         eat["eat_version"] = "2.0"
         body = eat_canonical_body(eat)
         eat["hash"] = sha256_json(body)
-        eat["signature"] = sign_payload(body, SIGNING_KEY)
+        eat["signature"] = sign_payload_ed25519(body, SIGNING_KEY)
 
         with pytest.raises(EATVerificationError, match="eat_version") as exc_info:
             gw.require_eat(eat)
