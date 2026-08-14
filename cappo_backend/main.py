@@ -57,13 +57,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
     settings.validate_production()
 
-    from cappo_backend.services.capi_registration import register_with_capi
+    from cappo_backend.services.capi_registration import maintain_capi_registration
 
-    capi_task = asyncio.create_task(register_with_capi(settings))
+    capi_stop = asyncio.Event()
+    capi_task = asyncio.create_task(maintain_capi_registration(settings, capi_stop))
     try:
         yield
     finally:
-        capi_task.cancel()
+        capi_stop.set()
+        if not capi_task.done():
+            capi_task.cancel()
         try:
             await capi_task
         except asyncio.CancelledError:
