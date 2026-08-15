@@ -39,6 +39,9 @@ def _prod(**overrides) -> Settings:
 
 
 class TestNonProduction:
+    def test_default_beacon_issuer_is_a_canonical_cappo_identifier(self) -> None:
+        assert Settings().capability_beacon_issuer == "https://cappo.veklom.com"
+
     def test_dev_defaults_are_noop(self) -> None:
         # Insecure defaults are fine outside production.
         Settings(environment="development").validate_production()

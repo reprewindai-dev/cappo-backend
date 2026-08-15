@@ -26,6 +26,7 @@ from cappo_backend.security.http_signatures import (
 )
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
+from cappo_backend.services.eee import EEEBuilder, build_terminal_eee
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
 from cappo_backend.services.executor import ExecutorUnavailableError, TerminalExecutionError
@@ -255,6 +256,34 @@ def _build_capi_payload(body: ExecRequest) -> dict[str, Any]:
         "security": body.security,
     }
 
+
+async def _seal_terminal_eee(
+    *,
+    orchestrator: RunOrchestrator,
+    run: Any,
+    result: dict[str, Any] | None,
+    capi_evidence: dict[str, Any],
+    builder: EEEBuilder,
+) -> dict[str, Any]:
+    """Bind a terminal CAPPO run to one signed EEE and the existing PGL seal.
+
+    This is evidence persistence only. It receives a completed or denied run
+    from the sole governed execution path and cannot make an authorization,
+    select a provider, or trigger execution.
+    """
+    from cappo_backend.core.capi_pipeline import seal_evidence_pack
+
+    envelope = build_terminal_eee(run, result=result, builder=builder)
+    committed_result = result if result is not None else {"status": "denied"}
+    seal = await seal_evidence_pack(
+        envelope["envelope_hash"],
+        committed_result,
+        request_evidence=capi_evidence,
+    )
+    seal["eee"] = envelope
+    orchestrator.record_evidence_seal(run, seal)
+    return envelope
+
 @router.post("/exec", response_model=ExecResponse)
 async def governed_exec(
     body: ExecRequest,
@@ -267,7 +296,7 @@ async def governed_exec(
     audit = AuditService(db)
 
     # cAPI PHASE 1: Gatekeeper Enforcement
-    from cappo_backend.core.capi_pipeline import enforce_capi_pipeline, seal_evidence_pack
+    from cappo_backend.core.capi_pipeline import enforce_capi_pipeline
     test_only_echo = settings.environment.lower() == "test" and settings.executor_mode == "echo"
     capi_public_key = "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
 
@@ -298,14 +327,18 @@ async def governed_exec(
     if not test_only_echo:
         if run is None:
             raise RuntimeError("governed execution completed without a run record")
-        seal = await seal_evidence_pack(
-            capi_result["evidence_id"],
-            result,
-            request_evidence=capi_result["evidence"],
+        eee_builder = EEEBuilder(
+            signing_key=settings.ei_signing_key,
+            issuer=settings.capability_beacon_issuer,
+            kid=settings.capability_beacon_kid,
         )
-        # The seal is committed with the existing PGL certificate lifecycle;
-        # no unmigrated cAPI side table is treated as durable evidence.
-        orchestrator.record_evidence_seal(run, seal)
+        await _seal_terminal_eee(
+            orchestrator=orchestrator,
+            run=run,
+            result=result,
+            capi_evidence=capi_result["evidence"],
+            builder=eee_builder,
+        )
     db.commit()
 
     elapsed_ms = (time.monotonic() - start) * 1000

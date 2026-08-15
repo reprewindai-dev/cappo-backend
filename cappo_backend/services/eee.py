@@ -85,6 +85,11 @@ class EEEBuilder:
     def public_key_bytes(self) -> bytes:
         return self._private_key.public_key().public_bytes_raw()
 
+    @property
+    def issuer(self) -> str:
+        """Configured canonical issuer for records signed by this builder."""
+        return self._issuer
+
     def build(self, fields: Mapping[str, Any]) -> dict[str, Any]:
         envelope = dict(fields)
         if envelope.get("issuer") != self._issuer:
@@ -201,12 +206,22 @@ def build_terminal_eee(
     result_map = dict(result or {})
     status = "denied" if denied else "completed" if result is not None else "error"
     budget_granted = int(getattr(run, "approved_budget_cents", 0) or 0)
+    authority_bundle_hash = identity.get("authority_bundle_hash")
+    authority_chain = []
+    if isinstance(authority_bundle_hash, str) and authority_bundle_hash:
+        authority_chain = [{
+            "type": "execution-identity",
+            "artifact_hash": authority_bundle_hash,
+            "issuer": builder.issuer,
+            "granted_at": issued,
+            "expires_at": expires,
+        }]
 
     fields: dict[str, Any] = {
         "eee_version": _SUPPORTED_VERSION,
         "execution_id": execution_id,
         "idempotency_key": request.get("idempotency_key") or execution_id,
-        "issuer": builder._issuer,
+        "issuer": builder.issuer,
         "enforcer": {"name": "cappo", "version": "0.1.0", "build_hash": "unresolved"},
         "participant_identity": {"scheme": "veklom-machine", "identifier": str(actor)},
         "principal": {"scheme": "veklom-tenant", "identifier": str(principal)},
@@ -227,7 +242,7 @@ def build_terminal_eee(
             "framework_version": "0.1.0",
             "config_hash": sha256_json(hashes),
         },
-        "authority_chain": [],
+        "authority_chain": authority_chain,
         "authority_window": {"not_before": issued, "not_after": expires},
         "revocation_check": {"method": "none", "checked_at": now, "result": "unresolved"},
         "policy_bundle_id": "cappo-governance-decision",

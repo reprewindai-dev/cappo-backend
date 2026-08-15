@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import cappo_backend.models  # noqa: F401
+from cappo_backend.api.routers.exec_router import _seal_terminal_eee
 from cappo_backend.config import Settings
 from cappo_backend.core.capi_pipeline import seal_evidence_pack
 from cappo_backend.db.base import Base
@@ -137,6 +138,13 @@ def test_terminal_eee_binds_an_allowed_run_to_its_semantic_execution_id(db: Sess
     assert verification.verdict is VerificationVerdict.VALID_WITH_UNRESOLVED_REFS
     assert envelope["execution_id"] == orchestrator.last_run.run_id
     assert envelope["status"] == "completed"
+    assert envelope["authority_chain"] == [{
+        "type": "execution-identity",
+        "artifact_hash": orchestrator.last_run.execution_identity["authority_bundle_hash"],
+        "issuer": "https://cappo.veklom.com",
+        "granted_at": envelope["authority_window"]["not_before"],
+        "expires_at": envelope["authority_window"]["not_after"],
+    }]
 
 
 def test_terminal_eee_mints_a_signed_denial_without_provider_execution(db: Session) -> None:
@@ -172,3 +180,26 @@ def test_pgl_seals_a_terminal_denial_against_its_pre_execution_certificate(db: S
     assert persisted is not None
     assert persisted.certificate_id == orchestrator.last_run.pgl_identity["pre_execution_certificate_id"]
     assert persisted.payload["evidence_seal"]["eee"]["status"] == "denied"
+
+
+def test_terminal_eee_is_embedded_in_the_existing_pgl_evidence_seal(db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    result = orchestrator.run_governed({"prompt": "allowed", "directive": "ALLOW"})
+    assert orchestrator.last_run is not None
+    builder = EEEBuilder(signing_key="e" * 64, issuer="https://cappo.veklom.com", kid="cappo-1")
+
+    envelope = asyncio.run(
+        _seal_terminal_eee(
+            orchestrator=orchestrator,
+            run=orchestrator.last_run,
+            result=result,
+            capi_evidence={"evidence_id": "sha256:request", "data_hash": "sha256:input"},
+            builder=builder,
+        )
+    )
+
+    event_id = orchestrator.last_run.pgl_identity["capi_evidence_event_id"]
+    persisted = db.get(PGLLedgerEvent, event_id)
+    assert persisted is not None
+    assert persisted.payload["evidence_seal"]["eee"] == envelope
+    assert persisted.payload["evidence_seal"]["evidence_id"] == envelope["envelope_hash"]
