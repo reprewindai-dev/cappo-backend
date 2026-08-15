@@ -28,8 +28,6 @@ from cappo_backend.models.vnp_models import (
     VNPValidator,
 )
 from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
-from cappo_backend.services.vnp_proxy_service import VNPProxyService
-from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
 router = APIRouter(prefix="/v1/vnp", tags=["VNP Protocol"])
 
@@ -248,23 +246,12 @@ async def vnp_proxy_gateway(
     x_vnp_tenant: str = Header(..., min_length=1, max_length=100),
     db: Session = Depends(get_session)
 ) -> dict[str, Any]:
-    """Secure tunnel proxy gateway entry point."""
-    telemetry_service = VNPTelemetryService(db)
-    proxy_service = VNPProxyService(db, telemetry_service)
-
-    tenant_name = x_vnp_tenant
-
-    try:
-        result = await proxy_service.proxy_request(
-            api_did=api_did,
-            payload=request.payload,
-            tenant_name=tenant_name
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=502, detail="VNP proxy dependency failed")
+    """Retired: VNP observes executions; CAPPO owns public consequences."""
+    del api_did, request, x_vnp_tenant, db
+    raise HTTPException(
+        status_code=410,
+        detail="Execution is governed exclusively by POST /v1/exec",
+    )
 
 
 @router.get("/leaderboard")

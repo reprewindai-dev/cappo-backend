@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 class VNPTelemetryService:
     def __init__(self, db: Session, worker_secret: str | None = None) -> None:
         self._db = db
-        self._worker_secret = worker_secret or os.environ.get("VNP_WORKER_SECRET", "vnp-worker-secret")
+        self._worker_secret = (worker_secret or os.environ.get("VNP_WORKER_SECRET", "")).strip()
+        if not self._worker_secret:
+            raise ValueError("VNP_WORKER_SECRET must be configured for signed probe ingestion")
 
     def _verify_signature(self, payload: str, signature: str) -> bool:
         """Verify the HMAC-SHA256 signature of a probe payload."""
@@ -67,15 +69,13 @@ class VNPTelemetryService:
         if not 0 <= throughput_rps <= 10_000_000:
             raise ValueError("throughput_rps must be between 0 and 10000000")
 
-        # Internal probes may omit a signature and are signed with the worker
-        # secret before persistence. External probes must provide a real HMAC;
-        # the old mock-sig bypass is accepted only for non-production tests.
+        # VNP is an observation boundary.  The application process must never
+        # manufacture its own probe evidence; every stored measurement needs a
+        # signature supplied by the independently operated probe worker.
         payload_str = json.dumps(payload_json or {}, sort_keys=True)
         if signature is None:
-            signature = hmac.new(
-                self._worker_secret.encode(), payload_str.encode(), hashlib.sha256
-            ).hexdigest()
-        elif not self._verify_signature(payload_str, signature):
+            raise ValueError("Probe signature is required")
+        if not self._verify_signature(payload_str, signature):
             raise ValueError("Invalid probe signature")
 
         api = self._db.execute(
