@@ -7,16 +7,24 @@ attestation).
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import hashlib
+from datetime import UTC, datetime
+
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from starlette.requests import Request
 
 from cappo_backend.api.routers.exec_router import (
     ExecRequest,
     _build_capi_payload,
     _execute_run,
     _resolve_capi_gatekeeper_public_key,
+    _verify_exec_request_integrity,
 )
 from cappo_backend.config import Settings
 from cappo_backend.models.audit_event import AuditEvent
@@ -183,6 +191,37 @@ class TestCAPIGatekeeperKey:
         assert exc_info.value.status_code == 401
         assert exc_info.value.detail["error"] == "CAPI_SIGNED_SECURITY_REQUIRED"
 
+    def test_rfc9421_integrity_is_checked_before_cappo_authority(self) -> None:
+        private_key = Ed25519PrivateKey.generate()
+        body = b'{"prompt":"governed"}'
+        request = _signed_exec_request(private_key, body)
+
+        asyncio.run(
+            _verify_exec_request_integrity(
+                request,
+                private_key.public_key().public_bytes_raw().hex(),
+            )
+        )
+
+    def test_tampered_exec_request_is_rejected_before_cappo_authority(self) -> None:
+        private_key = Ed25519PrivateKey.generate()
+        request = _signed_exec_request(
+            private_key,
+            b'{"prompt":"governed"}',
+            tamper_body=True,
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(
+                _verify_exec_request_integrity(
+                    request,
+                    private_key.public_key().public_bytes_raw().hex(),
+                )
+            )
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail["error"] == "HTTP_MESSAGE_INTEGRITY_INVALID"
+
 
 def test_runtime_ownership_conflict_is_terminal_http_409(db: Session) -> None:
     class _OwnershipConflictOrchestrator:
@@ -199,3 +238,45 @@ def test_runtime_ownership_conflict_is_terminal_http_409(db: Session) -> None:
         "fail_stop": True,
         "retryable": False,
     }
+
+
+def _signed_exec_request(
+    private_key: Ed25519PrivateKey,
+    signed_body: bytes,
+    *,
+    tamper_body: bool = False,
+) -> Request:
+    actual_body = b'{"prompt":"tampered"}' if tamper_body else signed_body
+    digest = f"sha-256=:{base64.b64encode(hashlib.sha256(signed_body).digest()).decode('ascii')}:"
+    created = int(datetime.now(UTC).timestamp())
+    params = f';created={created};keyid="requester-1"'
+    target = "https://cappo.veklom.com/v1/exec"
+    signature_base = "\n".join(
+        [
+            '"@method": POST',
+            f'"@target-uri": {target}',
+            f'"content-digest": {digest}',
+            f'"@signature-params": ("@method" "@target-uri" "content-digest"){params}',
+        ]
+    )
+    signature = base64.b64encode(private_key.sign(signature_base.encode())).decode()
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": actual_body, "more_body": False}
+
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "https",
+            "server": ("cappo.veklom.com", 443),
+            "path": "/v1/exec",
+            "headers": [
+                (b"host", b"cappo.veklom.com"),
+                (b"content-digest", digest.encode()),
+                (b"signature-input", f'sig1=("@method" "@target-uri" "content-digest"){params}'.encode()),
+                (b"signature", f"sig1=:{signature}:".encode()),
+            ],
+        },
+        receive=receive,
+    )

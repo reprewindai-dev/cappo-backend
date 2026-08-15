@@ -10,6 +10,7 @@ from typing import Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 
 class SignatureVerificationError(RuntimeError):
@@ -32,12 +33,54 @@ def verify_rfc9421_response(
     """
     if status_code != 503:
         raise SignatureVerificationError("only HTTP 503 may be a failover signal")
+    _verify_message(
+        headers=headers,
+        body=body,
+        public_key_hex=public_key_hex,
+        required_components={"@status", "content-digest"},
+        derived={"@status": str(status_code)},
+        max_age_seconds=max_age_seconds,
+    )
+
+
+def verify_rfc9421_request(
+    *,
+    method: str,
+    target_uri: str,
+    headers: Mapping[str, str],
+    body: bytes,
+    public_key_hex: str,
+    max_age_seconds: int = 5,
+) -> None:
+    """Verify the CAPPO consequence-bearing request signature profile.
+
+    Request integrity is independent from semantic authorization.  The caller
+    must run CAPPO's authority evaluation only after this succeeds.
+    """
+    if method.upper() != "POST":
+        raise SignatureVerificationError("only POST may use the CAPPO execution request profile")
+    _verify_message(
+        headers=headers,
+        body=body,
+        public_key_hex=public_key_hex,
+        required_components={"@method", "@target-uri", "content-digest"},
+        derived={"@method": method.upper(), "@target-uri": target_uri},
+        max_age_seconds=max_age_seconds,
+    )
+
+
+def _verify_message(
+    *,
+    headers: Mapping[str, str],
+    body: bytes,
+    public_key_hex: str,
+    required_components: set[str],
+    derived: Mapping[str, str],
+    max_age_seconds: int,
+) -> None:
     if not public_key_hex:
         raise SignatureVerificationError("no federation public key configured")
-    try:
-        public_key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_key_hex))
-    except ValueError as exc:
-        raise SignatureVerificationError("invalid federation public key format") from exc
+    public_key = _load_ed25519_public_key(public_key_hex)
 
     normalized = {key.lower(): value for key, value in headers.items()}
     content_digest = normalized.get("content-digest")
@@ -54,8 +97,9 @@ def verify_rfc9421_response(
     if not input_match:
         raise SignatureVerificationError("invalid Signature-Input format")
     fields = tuple(re.findall(r'"([^"]+)"', input_match.group("fields")))
-    if "@status" not in fields or "content-digest" not in fields:
-        raise SignatureVerificationError("signature must cover @status and content-digest")
+    if not required_components.issubset(fields):
+        required = ", ".join(sorted(required_components))
+        raise SignatureVerificationError(f"signature must cover {required}")
 
     created_match = re.search(r"(?:^|;)created=(\d+)(?:;|$)", input_match.group("params"))
     if not created_match:
@@ -66,8 +110,8 @@ def verify_rfc9421_response(
 
     base_lines: list[str] = []
     for field in fields:
-        if field == "@status":
-            base_lines.append(f'"@status": {status_code}')
+        if field in derived:
+            base_lines.append(f'"{field}": {derived[field]}')
             continue
         value = normalized.get(field.lower())
         if value is None:
@@ -87,3 +131,26 @@ def verify_rfc9421_response(
         public_key.verify(signature_bytes, "\n".join(base_lines).encode())
     except InvalidSignature as exc:
         raise SignatureVerificationError("invalid signature") from exc
+
+
+def _load_ed25519_public_key(encoded_key: str) -> Ed25519PublicKey:
+    """Load the key forms already used by Veklom federation services.
+
+    Existing provider configuration uses raw 32-byte hexadecimal keys, while
+    cAPI/Covenant publishes Ed25519 keys as Base64-encoded SPKI DER.  Both
+    identify the same primitive; accepting those explicit formats keeps the
+    signature profile interoperable without downgrading verification.
+    """
+    try:
+        return Ed25519PublicKey.from_public_bytes(bytes.fromhex(encoded_key))
+    except ValueError:
+        pass
+
+    try:
+        decoded = base64.b64decode(encoded_key, validate=True)
+        public_key = load_der_public_key(decoded)
+    except (TypeError, ValueError) as exc:
+        raise SignatureVerificationError("invalid federation public key format") from exc
+    if not isinstance(public_key, Ed25519PublicKey):
+        raise SignatureVerificationError("federation public key must be Ed25519")
+    return public_key

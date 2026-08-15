@@ -20,6 +20,10 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
+from cappo_backend.security.http_signatures import (
+    SignatureVerificationError,
+    verify_rfc9421_request,
+)
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
@@ -216,6 +220,33 @@ def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -
     return public_key
 
 
+async def _verify_exec_request_integrity(request: Request, public_key: str) -> None:
+    """Fail closed before authority if the signed /v1/exec message was altered.
+
+    RFC 9421 establishes the authenticity and integrity of the transmitted
+    request.  It deliberately does not produce, replace, or widen a CAPPO
+    authority decision.  ``Request.body()`` is cached by Starlette, so this
+    verification uses the same bytes FastAPI parsed into ``ExecRequest``.
+    """
+    try:
+        verify_rfc9421_request(
+            method=request.method,
+            target_uri=str(request.url),
+            headers=request.headers,
+            body=await request.body(),
+            public_key_hex=public_key,
+        )
+    except SignatureVerificationError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "HTTP_MESSAGE_INTEGRITY_INVALID",
+                "detail": str(exc),
+                "terminal": True,
+            },
+        ) from exc
+
+
 def _build_capi_payload(body: ExecRequest) -> dict[str, Any]:
     """Build the signed cAPI intent without recursively hashing its signature."""
     return {
@@ -239,6 +270,12 @@ async def governed_exec(
     from cappo_backend.core.capi_pipeline import enforce_capi_pipeline, seal_evidence_pack
     test_only_echo = settings.environment.lower() == "test" and settings.executor_mode == "echo"
     capi_public_key = "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
+
+    # RFC 9421 request verification precedes all identity, payment, routing,
+    # and semantic-authority work. A valid signature is only an integrity
+    # assertion; the CAPPO pipeline below remains the consequence authority.
+    if not test_only_echo:
+        await _verify_exec_request_integrity(request, capi_public_key)
     
     # We construct the payload expected by cAPI
     capi_payload = _build_capi_payload(body)
