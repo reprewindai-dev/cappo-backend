@@ -152,26 +152,28 @@ def test_primary_serves_when_healthy():
     assert out["response"] == "echo: hi"
 
 
-def test_fails_over_to_fallback_when_primary_errors():
+def test_ordinary_primary_error_does_not_authorize_fallback():
     primary = _provider("primary", BoomExecutor())
     fallback = _provider("fallback", EchoExecutor())
     ex = ResilientExecutor([primary, fallback])
-    out = ex.execute({"prompt": "hey"})
-    assert out["provider"] == "echo"
-    assert out["response"] == "echo: hey"
+    with pytest.raises(ExecutorUnavailableError, match="verified 503"):
+        ex.execute({"prompt": "hey"})
+    assert fallback.breaker.state is CircuitState.CLOSED
 
 
-def test_primary_breaker_trips_then_calls_skip_it():
+def test_primary_breaker_trips_then_cannot_authorize_fallback():
     primary_breaker = CircuitBreaker(name="primary", failure_threshold=1)
     primary = Provider("primary", BoomExecutor(), primary_breaker)
     fallback = _provider("fallback", EchoExecutor())
     ex = ResilientExecutor([primary, fallback])
 
-    ex.execute({"prompt": "1"})  # primary fails -> trips, fallback serves
+    with pytest.raises(ExecutorUnavailableError, match="verified 503"):
+        ex.execute({"prompt": "1"})
     assert primary_breaker.is_open
-    # Subsequent call skips the open primary entirely and still succeeds.
-    out = ex.execute({"prompt": "2"})
-    assert out["response"] == "echo: 2"
+    # An open circuit is not a signed Provider A 503 and must not authorize B.
+    with pytest.raises(ExecutorUnavailableError, match="circuit open"):
+        ex.execute({"prompt": "2"})
+    assert fallback.breaker.state is CircuitState.CLOSED
 
 
 def test_halts_fail_closed_when_all_providers_unavailable():
