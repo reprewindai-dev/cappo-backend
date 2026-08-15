@@ -5,8 +5,6 @@ Exposes the VNP metrics, registry, proxy gateway, and leaderboard.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -18,6 +16,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import get_session
+from cappo_backend.models.pgl_certificate import PGLCertificate
+from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.models.vnp_models import (
     APIState,
     PerformanceLeaderboard,
@@ -27,6 +27,7 @@ from cappo_backend.models.vnp_models import (
     VNPIncident,
     VNPValidator,
 )
+from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 from cappo_backend.services.vnp_proxy_service import VNPProxyService
 from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
@@ -55,34 +56,49 @@ class VNPApiRegistrationRequest(BaseModel):
     x402Ready: bool = False
 
 
-VNP_VERIFICATION_STACK = [
-    {"section": "Physical measurements", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
-    {"section": "Signed telemetry", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
-    {"section": "Route beacons", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
-    {"section": "Robust scoring", "status": "Connected", "backend": "VEKLOM-BYOS-backend"},
-    {"section": "x402 settlement evidence", "status": "Live", "backend": "VEKLOM-BYOS-backend"},
-    {"section": "PGL audit trails", "status": "Connected", "backend": "cappo-backend"},
-    {"section": "Agent/runtime enforcement", "status": "Connected", "backend": "cappo-backend"},
-]
-
 CANONICAL_VNP_REGIONS = ["us-east", "us-west", "eu-west", "ap-southeast", "ap-northeast"]
 
 
 @router.get("/methodology")
-async def get_vnp_methodology() -> dict[str, Any]:
-    """CAPPO-backed VNP v1.0 runtime enforcement manifest."""
+async def get_vnp_methodology(db: Session = Depends(get_session)) -> dict[str, Any]:
+    """Evidence-labelled VNP runtime manifest; never synthesize connectivity."""
+    probe_count = len(db.execute(select(ProbeEvent.id)).scalars().all())
+    telemetry_count = len(db.execute(select(RegionalTelemetry.id)).scalars().all())
+    route_count = len(db.execute(select(RouteSnapshot.id)).scalars().all())
+    pgl_certificate_count = len(db.execute(select(PGLCertificate.certificate_id)).scalars().all())
+    pgl_event_count = len(db.execute(select(PGLLedgerEvent.event_id)).scalars().all())
+    payment_count = len(db.execute(select(X402ConsumedPayment.tx_hash)).scalars().all())
+    measured = probe_count > 0 and telemetry_count > 0
+    pgl_sealed = pgl_certificate_count > 0 and pgl_event_count > 0
+    verification_stack = [
+        {"section": "Physical measurements", "status": "VERIFIED_LIVE" if probe_count else "UNVERIFIED", "backend": "VNP probe store"},
+        {"section": "Signed telemetry", "status": "VERIFIED_LIVE" if measured else "UNVERIFIED", "backend": "VNP telemetry store"},
+        {"section": "Route beacons", "status": "VERIFIED_LIVE" if route_count else "UNVERIFIED", "backend": "VNP route snapshots"},
+        {"section": "Robust scoring", "status": "VERIFIED_LIVE" if measured else "UNVERIFIED", "backend": "VNP telemetry store"},
+        {"section": "x402 settlement evidence", "status": "VERIFIED_LIVE" if payment_count else "UNVERIFIED", "backend": "CAPPO x402 payment store"},
+        {"section": "PGL audit trails", "status": "VERIFIED_LIVE" if pgl_sealed else "UNVERIFIED", "backend": "CAPPO PGL ledger"},
+        {"section": "Agent/runtime enforcement", "status": "CONFIGURED", "backend": "CAPPO /v1/exec"},
+    ]
     return {
         "methodology": "VNP Methodology v1.0",
         "tagline": "Cryptographic API telemetry for the machine-to-machine economy",
         "repo": "reprewindai-dev/cappo-backend",
-        "verification_stack": VNP_VERIFICATION_STACK,
+        "verification_stack": verification_stack,
         "runtime": {
-            "status": "Connected",
+            "status": "VERIFIED_LIVE" if pgl_sealed else "NEEDS_PROOF",
             "access": "Auth Required",
             "endpoint": "/v1/exec",
             "execution_identity": "ExecutionIdentityV1",
-            "pgl_certificates": "Connected",
-            "law0_enforcement": "Connected",
+            "pgl_certificates": "VERIFIED_LIVE" if pgl_sealed else "UNVERIFIED",
+            "law0_enforcement": "CONFIGURED",
+        },
+        "evidence_counts": {
+            "probe_events": probe_count,
+            "regional_telemetry": telemetry_count,
+            "route_snapshots": route_count,
+            "pgl_certificates": pgl_certificate_count,
+            "pgl_events": pgl_event_count,
+            "x402_payments": payment_count,
         },
     }
 
