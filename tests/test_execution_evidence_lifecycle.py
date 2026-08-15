@@ -163,6 +163,41 @@ def test_terminal_eee_mints_a_signed_denial_without_provider_execution(db: Sessi
     assert envelope["actual_effects"] == []
 
 
+def test_terminal_eee_carries_observed_provider_attempts(db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    orchestrator.run_governed({"prompt": "allowed", "directive": "ALLOW"})
+    assert orchestrator.last_run is not None
+    builder = EEEBuilder(signing_key="e" * 64, issuer="https://cappo.veklom.com", kid="cappo-1")
+
+    envelope = build_terminal_eee(
+        orchestrator.last_run,
+        result={
+            "response": "fallback response",
+            "provider": "provider-b",
+            "attempts": [
+                {"attempt_id": "attempt-a", "provider_id": "provider-a", "outcome": "verified_unavailable"},
+                {"attempt_id": "attempt-b", "provider_id": "provider-b", "outcome": "succeeded"},
+            ],
+        },
+        builder=builder,
+    )
+
+    assert envelope["tool_actions"] == [
+        {
+            "tool": "provider:provider-a",
+            "action_hash": envelope["tool_actions"][0]["action_hash"],
+            "decision": "verified_unavailable",
+            "evidence_ref": "attempt-a",
+        },
+        {
+            "tool": "provider:provider-b",
+            "action_hash": envelope["tool_actions"][1]["action_hash"],
+            "decision": "succeeded",
+            "evidence_ref": "attempt-b",
+        },
+    ]
+
+
 def test_pgl_seals_a_terminal_denial_against_its_pre_execution_certificate(db: Session) -> None:
     orchestrator = _orchestrator(db)
     with pytest.raises(GovernanceDeniedError):

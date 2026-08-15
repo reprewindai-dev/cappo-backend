@@ -204,6 +204,7 @@ def build_terminal_eee(
     issued = _canonical_timestamp(identity.get("issued_at"), fallback=started)
     expires = _canonical_timestamp(identity.get("expires_at"), fallback=now)
     result_map = dict(result or {})
+    tool_actions = _provider_attempt_actions(result_map)
     status = "denied" if denied else "completed" if result is not None else "error"
     budget_granted = int(getattr(run, "approved_budget_cents", 0) or 0)
     authority_bundle_hash = identity.get("authority_bundle_hash")
@@ -259,7 +260,7 @@ def build_terminal_eee(
         "input_commitment": hashes.get("input_hash") or sha256_json(request),
         "allowed_effects": allowed_effects,
         "actual_effects": [],
-        "tool_actions": [],
+        "tool_actions": tool_actions,
         "budget": {"granted": {"cost_cents": budget_granted}, "consumed": {"cost_cents": 0}},
         "started_at": started,
         "ended_at": now,
@@ -270,6 +271,37 @@ def build_terminal_eee(
         "timestamps": {"issued_at": now},
     }
     return builder.build(fields)
+
+
+def _provider_attempt_actions(result: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Expose only provider attempts already reported by the governed executor.
+
+    The EEE never invents attempts. A provider identifier, attempt identifier,
+    and outcome must all be present in the attested executor result before an
+    attempt becomes portable evidence.
+    """
+    raw_attempts = result.get("attempts")
+    if not isinstance(raw_attempts, list):
+        return []
+
+    actions: list[dict[str, str]] = []
+    for attempt in raw_attempts:
+        if not isinstance(attempt, Mapping):
+            continue
+        attempt_id = attempt.get("attempt_id")
+        provider_id = attempt.get("provider_id")
+        outcome = attempt.get("outcome")
+        if not all(isinstance(value, str) and value for value in (attempt_id, provider_id, outcome)):
+            continue
+        actions.append(
+            {
+                "tool": f"provider:{provider_id}",
+                "action_hash": sha256_json(dict(attempt)),
+                "decision": outcome,
+                "evidence_ref": attempt_id,
+            }
+        )
+    return actions
 
 
 def _algorithm(name: str):

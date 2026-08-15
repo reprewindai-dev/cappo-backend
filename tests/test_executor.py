@@ -57,6 +57,29 @@ def test_http_executor_success() -> None:
         assert kwargs["headers"]["Authorization"] == "Bearer mock-key"
 
 
+def test_primary_success_records_a_provider_attempt() -> None:
+    primary = MagicMock()
+    primary.execute.return_value = {"response": "primary", "provider": "primary"}
+    executor = ResilientExecutor(
+        providers=[Provider("primary", primary, CircuitBreaker())]
+    )
+
+    result = executor.execute(
+        {
+            "prompt": "hello",
+            "authority_envelope": {"allowed_provider_set": ["primary"]},
+        }
+    )
+
+    assert result["attempts"] == [
+        {
+            "attempt_id": result["attempts"][0]["attempt_id"],
+            "provider_id": "primary",
+            "outcome": "succeeded",
+        }
+    ]
+
+
 def test_verified_503_does_not_fail_over_without_authorized_provider_set() -> None:
     primary = MagicMock()
     primary.execute.side_effect = VerifiedProviderUnavailableError("verified primary 503")

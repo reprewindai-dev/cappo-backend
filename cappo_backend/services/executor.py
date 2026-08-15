@@ -186,9 +186,13 @@ class ResilientExecutor:
                 result = provider.breaker.call(
                     lambda p=provider: p.executor.execute(request)
                 )
-                if attempts:
-                    result = {**result, "attempts": [*attempts, _attempt(provider.name, "succeeded")]}
-                return result
+                return {
+                    **result,
+                    # Every actual provider invocation is an evidence-bearing
+                    # attempt, including a first-provider success.  Fallback
+                    # attempts are appended under the same semantic request.
+                    "attempts": [*attempts, _attempt(provider.name, "succeeded")],
+                }
             except TerminalExecutionError as exc:
                 # 403 is terminal. DO NOT fail over to fallback.
                 logger.warning(
