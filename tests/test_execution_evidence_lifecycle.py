@@ -153,3 +153,22 @@ def test_terminal_eee_mints_a_signed_denial_without_provider_execution(db: Sessi
     assert envelope["execution_id"] == orchestrator.last_run.run_id
     assert envelope["status"] == "denied"
     assert envelope["actual_effects"] == []
+
+
+def test_pgl_seals_a_terminal_denial_against_its_pre_execution_certificate(db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    with pytest.raises(GovernanceDeniedError):
+        orchestrator.run_governed({"prompt": "denied", "directive": "DENY"})
+    assert orchestrator.last_run is not None
+    builder = EEEBuilder(signing_key="e" * 64, issuer="https://cappo.veklom.com", kid="cappo-1")
+    envelope = build_terminal_eee(orchestrator.last_run, result=None, builder=builder)
+
+    event = orchestrator.record_evidence_seal(
+        orchestrator.last_run,
+        {"evidence_id": envelope["envelope_hash"], "seal_hash": envelope["envelope_hash"], "eee": envelope},
+    )
+
+    persisted = db.get(PGLLedgerEvent, event.event_id)
+    assert persisted is not None
+    assert persisted.certificate_id == orchestrator.last_run.pgl_identity["pre_execution_certificate_id"]
+    assert persisted.payload["evidence_seal"]["eee"]["status"] == "denied"

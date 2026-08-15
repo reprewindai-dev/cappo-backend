@@ -531,13 +531,18 @@ class RunOrchestrator:
     def record_evidence_seal(self, run: GovernedRun, seal: dict[str, Any]) -> Any:
         """Durably bind a cAPI request/result seal into the PGL event chain.
 
-        This executes only after a governed run has an attested post-certificate.
-        It does not authorize or execute anything; failure is surfaced to the
-        caller so an unsealed success is never presented as complete evidence.
+        Successful runs anchor to their attested post-certificate. Terminal
+        denials have no execution result or post-certificate, so they anchor
+        to the already-persisted pre-execution certificate. It does not
+        authorize or execute anything; failure is surfaced to the caller so an
+        unsealed terminal outcome is never presented as complete evidence.
         """
-        certificate_id = (run.pgl_identity or {}).get("post_execution_certificate_id")
+        pgl_identity = run.pgl_identity or {}
+        certificate_id = pgl_identity.get("post_execution_certificate_id") or pgl_identity.get(
+            "pre_execution_certificate_id"
+        )
         if not isinstance(certificate_id, str) or not certificate_id:
-            raise RuntimeError("cannot seal evidence without an attested PGL post-certificate")
+            raise RuntimeError("cannot seal evidence without a persisted PGL certificate")
         request_payload = run.request_payload or {}
         nested_agent = request_payload.get("agent")
         agent_id = request_payload.get("agent_id") or request_payload.get("pgl_id")
