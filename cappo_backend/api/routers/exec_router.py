@@ -257,6 +257,15 @@ def _build_capi_payload(body: ExecRequest) -> dict[str, Any]:
     }
 
 
+def _eee_builder(settings: Settings) -> EEEBuilder:
+    """Use CAPPO's published beacon signing identity for EEE records."""
+    return EEEBuilder(
+        signing_key=settings.ei_signing_key,
+        issuer=settings.capability_beacon_issuer,
+        kid=settings.capability_beacon_kid,
+    )
+
+
 async def _seal_terminal_eee(
     *,
     orchestrator: RunOrchestrator,
@@ -321,23 +330,36 @@ async def governed_exec(
 
     _check_payment(db, body.workspace_id, body.action_cost_cents)
     orchestrator = _build_orchestrator(db, settings, audit)
-    result = _execute_run(orchestrator, body.model_dump(), db)
+    try:
+        result = _execute_run(orchestrator, body.model_dump(), db)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        run = orchestrator.last_run
+        if (
+            not test_only_echo
+            and detail.get("error") == "CAPPO_GOVERNANCE_DENIED"
+            and run is not None
+        ):
+            await _seal_terminal_eee(
+                orchestrator=orchestrator,
+                run=run,
+                result=None,
+                capi_evidence=capi_result["evidence"],
+                builder=_eee_builder(settings),
+            )
+            db.commit()
+        raise
 
     run = orchestrator.last_run
     if not test_only_echo:
         if run is None:
             raise RuntimeError("governed execution completed without a run record")
-        eee_builder = EEEBuilder(
-            signing_key=settings.ei_signing_key,
-            issuer=settings.capability_beacon_issuer,
-            kid=settings.capability_beacon_kid,
-        )
         await _seal_terminal_eee(
             orchestrator=orchestrator,
             run=run,
             result=result,
             capi_evidence=capi_result["evidence"],
-            builder=eee_builder,
+            builder=_eee_builder(settings),
         )
     db.commit()
 
