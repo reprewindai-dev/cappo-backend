@@ -1,5 +1,8 @@
-import pytest
+import base64
+
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+import pytest
 
 from cappo_backend.services.canonical import (
     canonical_json,
@@ -62,6 +65,17 @@ def test_sign_verify_ed25519_with_keys():
 
     assert verify_signature_ed25519(payload, signature, public_key) is True
     assert verify_signature_ed25519(payload, signature, public_key.public_bytes_raw()) is True
+
+
+def test_sign_verify_ed25519_with_capi_spki_base64_key():
+    payload = {"test": "data"}
+    private_key = ed25519.Ed25519PrivateKey.generate()
+    signature = sign_payload_ed25519(payload, private_key)
+    public_key_b64 = base64.b64encode(
+        private_key.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+    ).decode("ascii")
+
+    assert verify_signature_ed25519(payload, signature, public_key_b64) is True
 
 
 def test_sign_verify_hmac():

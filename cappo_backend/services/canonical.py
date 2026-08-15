@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
         if not isinstance(signature, str) or not signature:
             return False
         if isinstance(public_key_or_seed, str):
-            public_key = get_ed25519_private_key(public_key_or_seed).public_key()
+            public_key = _public_key_from_config(public_key_or_seed)
         elif isinstance(public_key_or_seed, bytes):
             public_key = ed25519.Ed25519PublicKey.from_public_bytes(public_key_or_seed)
         else:
@@ -97,6 +98,22 @@ def verify_signature_ed25519(payload: Any, signature: str, public_key_or_seed: A
     except Exception:
         logger.debug("Ed25519 signature verification failed", exc_info=True)
         return False
+
+
+def _public_key_from_config(value: str) -> ed25519.Ed25519PublicKey:
+    """Resolve an explicit cAPI SPKI key before legacy seed compatibility.
+
+    cAPI/Covenant publishes its Ed25519 public keys as Base64 SPKI DER.  Older
+    CAPPO development tests use a seed string, so a value that is not a valid
+    Ed25519 SPKI retains that explicitly limited compatibility behavior.
+    """
+    try:
+        candidate = load_der_public_key(base64.b64decode(value, validate=True))
+        if isinstance(candidate, ed25519.Ed25519PublicKey):
+            return candidate
+    except (ValueError, TypeError):
+        pass
+    return get_ed25519_private_key(value).public_key()
 
 
 def sign_payload_hmac(payload: Any, hmac_key: str) -> str:
