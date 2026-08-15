@@ -24,6 +24,7 @@ from cappo_backend.services.eee import (
     build_terminal_eee,
 )
 from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBuilder
+from cappo_backend.services.executor import ExecutorUnavailableError
 from cappo_backend.services.orchestrator import GovernanceDeniedError, RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
 
@@ -196,6 +197,30 @@ def test_terminal_eee_carries_observed_provider_attempts(db: Session) -> None:
             "evidence_ref": "attempt-b",
         },
     ]
+
+
+def test_terminal_eee_marks_post_admission_provider_failure_as_error(db: Session) -> None:
+    class _UnavailableExecutor:
+        def execute(self, _request: dict) -> dict:
+            raise ExecutorUnavailableError("all providers unavailable")
+
+    orchestrator = _orchestrator(db)
+    orchestrator._executor = _UnavailableExecutor()  # noqa: SLF001 - lifecycle fixture
+    with pytest.raises(ExecutorUnavailableError):
+        orchestrator.run_governed({"prompt": "allowed", "directive": "ALLOW"})
+    assert orchestrator.last_run is not None
+    builder = EEEBuilder(signing_key="e" * 64, issuer="https://cappo.veklom.com", kid="cappo-1")
+
+    envelope = build_terminal_eee(orchestrator.last_run, result=None, builder=builder)
+    event = orchestrator.record_evidence_seal(
+        orchestrator.last_run,
+        {"evidence_id": envelope["envelope_hash"], "seal_hash": envelope["envelope_hash"], "eee": envelope},
+    )
+
+    assert envelope["status"] == "error"
+    assert db.get(PGLLedgerEvent, event.event_id).certificate_id == (
+        orchestrator.last_run.pgl_identity["pre_execution_certificate_id"]
+    )
 
 
 def test_pgl_seals_a_terminal_denial_against_its_pre_execution_certificate(db: Session) -> None:

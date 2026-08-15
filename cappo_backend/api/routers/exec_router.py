@@ -335,10 +335,18 @@ async def governed_exec(
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         run = orchestrator.last_run
+        terminal_after_admission = {
+            "EXECUTION_IDENTITY_REQUIRED",
+            "CAPPO_GOVERNANCE_DENIED",
+            "EXECUTION_AUTHORITY_DENIED",
+            "RUNTIME_OWNERSHIP_CONFLICT",
+            "EXECUTOR_UNAVAILABLE",
+        }
         if (
             not test_only_echo
-            and detail.get("error") == "CAPPO_GOVERNANCE_DENIED"
+            and detail.get("error") in terminal_after_admission
             and run is not None
+            and (run.pgl_identity or {}).get("pre_execution_certificate_id")
         ):
             await _seal_terminal_eee(
                 orchestrator=orchestrator,
