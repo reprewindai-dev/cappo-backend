@@ -16,6 +16,12 @@ from cappo_backend.db.base import Base
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.services.audit_service import AuditService
+from cappo_backend.services.eee import (
+    EEEBuilder,
+    EEEVerifier,
+    VerificationVerdict,
+    build_terminal_eee,
+)
 from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBuilder
 from cappo_backend.services.orchestrator import GovernanceDeniedError, RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
@@ -117,3 +123,33 @@ def test_capi_seal_carries_only_committed_request_and_result_evidence() -> None:
         "security_hash": "sha256:security",
     }
     assert seal["result_hash"]
+
+
+def test_terminal_eee_binds_an_allowed_run_to_its_semantic_execution_id(db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    result = orchestrator.run_governed({"prompt": "allowed", "directive": "ALLOW"})
+    assert orchestrator.last_run is not None
+    builder = EEEBuilder(signing_key="e" * 64, issuer="https://cappo.veklom.com", kid="cappo-1")
+
+    envelope = build_terminal_eee(orchestrator.last_run, result=result, builder=builder)
+
+    verification = EEEVerifier({"cappo-1": builder.public_key_bytes}).verify(envelope)
+    assert verification.verdict is VerificationVerdict.VALID_WITH_UNRESOLVED_REFS
+    assert envelope["execution_id"] == orchestrator.last_run.run_id
+    assert envelope["status"] == "completed"
+
+
+def test_terminal_eee_mints_a_signed_denial_without_provider_execution(db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    with pytest.raises(GovernanceDeniedError):
+        orchestrator.run_governed({"prompt": "denied", "directive": "DENY"})
+    assert orchestrator.last_run is not None
+    builder = EEEBuilder(signing_key="e" * 64, issuer="https://cappo.veklom.com", kid="cappo-1")
+
+    envelope = build_terminal_eee(orchestrator.last_run, result=None, builder=builder)
+
+    verification = EEEVerifier({"cappo-1": builder.public_key_bytes}).verify(envelope)
+    assert verification.verdict is VerificationVerdict.VALID_WITH_UNRESOLVED_REFS
+    assert envelope["execution_id"] == orchestrator.last_run.run_id
+    assert envelope["status"] == "denied"
+    assert envelope["actual_effects"] == []

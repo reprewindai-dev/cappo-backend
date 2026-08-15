@@ -19,7 +19,7 @@ import rfc8785
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from cappo_backend.services.canonical import get_ed25519_private_key
+from cappo_backend.services.canonical import get_ed25519_private_key, sha256_json
 
 _SUPPORTED_VERSION = "0.1.0"
 _ALLOWED_HASH_ALGORITHMS = {"SHA-256": hashlib.sha256, "SHA-384": hashlib.sha384}
@@ -166,6 +166,97 @@ class EEEVerifier:
         return False
 
 
+def build_terminal_eee(
+    run: Any,
+    *,
+    result: Mapping[str, Any] | None,
+    builder: EEEBuilder,
+) -> dict[str, Any]:
+    """Build the one signed EEE-Core record for an already terminal CAPPO run.
+
+    This function is deliberately evidence-only: it consumes persisted run
+    state and cannot authorize, route, execute, or settle anything. Unknown
+    execution effects and revocation state are represented conservatively
+    rather than invented.
+    """
+    request = _mapping(getattr(run, "request_payload", None))
+    scope = _mapping(getattr(run, "scope", None))
+    hashes = _mapping(getattr(run, "hashes", None))
+    identity = _mapping(getattr(run, "execution_identity", None))
+    now = _timestamp_value(getattr(run, "updated_at", None) or datetime.now(UTC))
+    started = _timestamp_value(getattr(run, "created_at", None) or datetime.now(UTC))
+    directive = str(getattr(run, "governance_decision", "") or "").upper()
+    denied = directive in {"DENY", "DENIED"}
+    execution_id = str(getattr(run, "run_id"))
+    action = request.get("action") if isinstance(request.get("action"), str) else None
+    tools = scope.get("tools")
+    capability_id = action or (tools[0] if isinstance(tools, list) and tools and isinstance(tools[0], str) else "unknown")
+    allowed_effects = scope.get("allowed_effects")
+    if not _string_list(allowed_effects):
+        allowed_effects = []
+    actor = request.get("agent_id") or request.get("pgl_id") or "unknown"
+    principal = request.get("tenant_id") or getattr(run, "tenant_id", "unknown")
+    issued = _canonical_timestamp(identity.get("issued_at"), fallback=started)
+    expires = _canonical_timestamp(identity.get("expires_at"), fallback=now)
+    result_map = dict(result or {})
+    status = "denied" if denied else "completed" if result is not None else "error"
+    budget_granted = int(getattr(run, "approved_budget_cents", 0) or 0)
+
+    fields: dict[str, Any] = {
+        "eee_version": _SUPPORTED_VERSION,
+        "execution_id": execution_id,
+        "idempotency_key": request.get("idempotency_key") or execution_id,
+        "issuer": builder._issuer,
+        "enforcer": {"name": "cappo", "version": "0.1.0", "build_hash": "unresolved"},
+        "participant_identity": {"scheme": "veklom-machine", "identifier": str(actor)},
+        "principal": {"scheme": "veklom-tenant", "identifier": str(principal)},
+        "capability_id": capability_id,
+        "capability_hash": hashes.get("tool_manifest_hash") or sha256_json(scope),
+        "capability_attenuation": {
+            "resource_allowlist": allowed_effects,
+            "argument_constraints": {},
+            "spend_ceiling": str(budget_granted),
+            "rate_limits": {},
+            "delegation_depth": int(getattr(run, "delegation_depth", 0) or 0),
+            "delegation_depth_max": int(getattr(run, "delegation_depth", 0) or 0),
+        },
+        "runtime_lineage": {
+            "model": result_map.get("model") or "unresolved",
+            "model_version": "unresolved",
+            "framework": "cappo",
+            "framework_version": "0.1.0",
+            "config_hash": sha256_json(hashes),
+        },
+        "authority_chain": [],
+        "authority_window": {"not_before": issued, "not_after": expires},
+        "revocation_check": {"method": "none", "checked_at": now, "result": "unresolved"},
+        "policy_bundle_id": "cappo-governance-decision",
+        "policy_hash": hashes.get("constitution_hash") or sha256_json({"directive": directive}),
+        "policy_decisions": [{
+            "gate": "cappo-governance",
+            "rule_id": directive or "decision-missing",
+            "decision": "deny" if denied else "allow" if result is not None else "deny",
+            "evaluated_at": now,
+            "latency_ms": 0,
+            "reason_code": directive or "DECISION_UNRESOLVED",
+        }],
+        "enforcement_mode": "fail-closed",
+        "input_commitment": hashes.get("input_hash") or sha256_json(request),
+        "allowed_effects": allowed_effects,
+        "actual_effects": [],
+        "tool_actions": [],
+        "budget": {"granted": {"cost_cents": budget_granted}, "consumed": {"cost_cents": 0}},
+        "started_at": started,
+        "ended_at": now,
+        "output_commitment": sha256_json(result_map if result is not None else {"status": status}),
+        "status": status,
+        "violations": [],
+        "validators": [],
+        "timestamps": {"issued_at": now},
+    }
+    return builder.build(fields)
+
+
 def _algorithm(name: str):
     try:
         return _ALLOWED_HASH_ALGORITHMS[name]
@@ -294,3 +385,25 @@ def _string_list(value: Any) -> bool:
 
 def _unique(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _timestamp_value(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _canonical_timestamp(value: Any, *, fallback: str) -> str:
+    if not isinstance(value, str):
+        return fallback
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return fallback
+    if parsed.tzinfo is None:
+        return fallback
+    return _timestamp_value(parsed)
