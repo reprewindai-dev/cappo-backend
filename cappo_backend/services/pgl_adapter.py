@@ -13,6 +13,10 @@ import logging
 from typing import Any, Protocol
 
 from cappo_backend.config import Settings, get_settings
+from cappo_backend.services.gnomledger_pgl_client import (
+    GnomledgerAgentCertificate,
+    GnomledgerPGLClient,
+)
 from cappo_backend.services.pgl_client import (
     PGLCertificate,
     PGLClient,
@@ -20,10 +24,6 @@ from cappo_backend.services.pgl_client import (
     PreCertificateParams,
 )
 from cappo_backend.services.veklom_pgl_client import VeklomAgentCertificate, VeklomPGLClient
-from cappo_backend.services.gnomledger_pgl_client import (
-    GnomledgerAgentCertificate,
-    GnomledgerPGLClient,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,14 @@ class PGLPort(Protocol):
     def get_certificate(self, certificate_id: str) -> Any | None: ...
     def mint_pre_certificate(self, params: PreCertificateParams) -> Any: ...
     def mint_post_certificate(self, params: PostCertificateParams) -> Any: ...
+    def append_evidence_event(
+        self,
+        *,
+        certificate_id: str,
+        event_type: str,
+        evidence: dict[str, Any],
+        agent_id: str | None = None,
+    ) -> Any: ...
 
 
 class VeklomPGLAdapter:
@@ -235,6 +243,25 @@ class VeklomPGLAdapter:
             persisted=True,
         )
 
+    def append_evidence_event(
+        self,
+        *,
+        certificate_id: str,
+        event_type: str,
+        evidence: dict[str, Any],
+        agent_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not agent_id:
+            raise ValueError("agent_id is required to seal evidence in the BYOS PGL")
+        response = self._veklom.record_execution_attestation(
+            agent_id=agent_id,
+            execution_id=certificate_id,
+            outcome={"event_type": event_type, "evidence_seal": evidence},
+        )
+        if not isinstance(response, dict) or not response.get("event_id"):
+            raise RuntimeError("BYOS PGL did not acknowledge the evidence event")
+        return response
+
 
 class GnomledgerPGLAdapter:
     """Adapter that makes GnomledgerPGLClient work with CAPPO orchestrator.
@@ -378,6 +405,26 @@ class GnomledgerPGLAdapter:
             risk_tier="standard",
             persisted=True,
         )
+
+    def append_evidence_event(
+        self,
+        *,
+        certificate_id: str,
+        event_type: str,
+        evidence: dict[str, Any],
+        agent_id: str | None = None,
+    ) -> dict[str, str]:
+        if not agent_id:
+            raise ValueError("agent_id is required to seal evidence in Gnomledger")
+        event_id = self._gnomledger.record_execution_attestation(
+            agent_id=agent_id,
+            event_type=event_type,
+            summary=f"CAPPO evidence seal for certificate {certificate_id}",
+            details={"certificate_id": certificate_id, "evidence_seal": evidence},
+        )
+        if not event_id:
+            raise RuntimeError("Gnomledger did not acknowledge the evidence event")
+        return {"event_id": event_id}
 
 
 def create_pgl_client(

@@ -528,6 +528,52 @@ class RunOrchestrator:
         )
         self._transition(run, RunState.ATTESTED)
 
+    def record_evidence_seal(self, run: GovernedRun, seal: dict[str, Any]) -> Any:
+        """Durably bind a cAPI request/result seal into the PGL event chain.
+
+        This executes only after a governed run has an attested post-certificate.
+        It does not authorize or execute anything; failure is surfaced to the
+        caller so an unsealed success is never presented as complete evidence.
+        """
+        certificate_id = (run.pgl_identity or {}).get("post_execution_certificate_id")
+        if not isinstance(certificate_id, str) or not certificate_id:
+            raise RuntimeError("cannot seal evidence without an attested PGL post-certificate")
+        request_payload = run.request_payload or {}
+        nested_agent = request_payload.get("agent")
+        agent_id = request_payload.get("agent_id") or request_payload.get("pgl_id")
+        if not agent_id and isinstance(nested_agent, dict):
+            agent_id = nested_agent.get("id")
+        event = self._pgl.append_evidence_event(
+            certificate_id=certificate_id,
+            event_type="capi_evidence_sealed",
+            evidence=seal,
+            agent_id=agent_id if isinstance(agent_id, str) else None,
+        )
+        event_id = getattr(event, "event_id", None)
+        if event_id is None and isinstance(event, dict):
+            event_id = event.get("event_id")
+        if not isinstance(event_id, str) or not event_id:
+            raise RuntimeError("PGL did not return a durable evidence event identifier")
+        run.pgl_identity = {
+            **(run.pgl_identity or {}),
+            "capi_evidence_event_id": event_id,
+        }
+        self._audit.record(
+            "capi_evidence_sealed",
+            {
+                "run_id": run.run_id,
+                "execution_id": (run.execution_identity or {}).get("execution_id"),
+                "post_execution_certificate_id": certificate_id,
+                "pgl_event_id": event_id,
+                "evidence_id": seal.get("evidence_id"),
+                "seal_hash": seal.get("seal_hash"),
+            },
+            workspace_id=run.workspace_id,
+            run_id=run.run_id,
+        )
+        self._db.flush()
+        return event
+
     # ------------------------------------------------------------------
     # State management
     # ------------------------------------------------------------------

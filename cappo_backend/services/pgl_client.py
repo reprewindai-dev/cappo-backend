@@ -162,7 +162,36 @@ class PGLClient:
             return None
         return self._db.get(PGLCertificate, certificate_id)
 
-    def _append_ledger_event(self, cert: PGLCertificate, event_type: str) -> PGLLedgerEvent:
+    def append_evidence_event(
+        self,
+        *,
+        certificate_id: str,
+        event_type: str,
+        evidence: dict[str, Any],
+        agent_id: str | None = None,
+    ) -> PGLLedgerEvent:
+        """Append an immutable evidence event to a persisted PGL certificate.
+
+        Evidence is attached to the existing certificate lifecycle chain rather
+        than to an untracked cAPI side table.  The optional ``agent_id`` is
+        part of the adapter protocol for remote ledgers; the local ledger
+        derives its accountable identity from the certificate itself.
+        """
+        del agent_id
+        if self._db is None:
+            raise PGLPersistenceError("cannot seal evidence without a persistent PGL session")
+        cert = self._db.get(PGLCertificate, certificate_id)
+        if cert is None or not cert.persisted:
+            raise PGLPersistenceError("cannot seal evidence for a non-persisted PGL certificate")
+        return self._append_ledger_event(cert, event_type, evidence=evidence)
+
+    def _append_ledger_event(
+        self,
+        cert: PGLCertificate,
+        event_type: str,
+        *,
+        evidence: dict[str, Any] | None = None,
+    ) -> PGLLedgerEvent:
         assert self._db is not None
         previous = (
             self._db.query(PGLLedgerEvent)
@@ -177,6 +206,8 @@ class PGLClient:
             "genome_hash": cert.genome_hash,
             "plan_hash": cert.plan_hash,
         }
+        if evidence is not None:
+            payload["evidence_seal"] = evidence
         event = PGLLedgerEvent(
             certificate_id=cert.certificate_id,
             event_type=event_type,

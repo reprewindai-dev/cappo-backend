@@ -1,49 +1,25 @@
 """cAPI gatekeeper primitives for governed CAPPO execution.
 
-The exec route uses this module before orchestration to create deterministic
-request evidence and to validate optional signed security envelopes. It is
-strict when a client supplies security material, but it does not require public
-frontend callers to already have a signing key because authentication,
-budgeting, EI, and LAW 0 are enforced by the surrounding production pipeline.
+The exec route uses this module after RFC 9421 message verification to create
+deterministic request evidence and validate the existing cAPI security
+envelope. This module is not the public protocol gate and does not grant
+authority; CAPPO's governed execution pipeline retains that responsibility.
 
-Transactional Outbox
-────────────────────
-Evidence persistence and downstream refinery queueing are made atomic through
-a Transactional Outbox pattern:
-
-    CAPPO TRANSACTION
-    │
-    ├── INSERT immutable evidence  (capi_evidence table)
-    └── INSERT refinery_outbox     (refinery_outbox table)
-             │
-           COMMIT
-             │
-             ▼
-    OUTBOX DISPATCHER (outbox_dispatcher.py)
-             │
-             ▼
-    Cloudflare Queue (veklom-async-refinery)
-             │
-             ▼
-    Refinery consumer (RAW → VALIDATED → SILVER → GOLD)
-
-This eliminates the prior failure hole where evidence could be committed but
-the queue push would fail silently. Now evidence and "needs downstream
-processing" are atomic — if the DB commit fails, neither row exists.
-
-Queue jobs are idempotent: the dispatcher uses evidence_hash as a deduplication
-key so double-delivery produces no second computation.
+Durability boundary
+───────────────────
+This module creates canonical request/result seals only.  It does not claim to
+persist them: CAPPO binds a resulting seal to the attested PGL certificate via
+``RunOrchestrator.record_evidence_seal`` inside the governed lifecycle.  That
+keeps the durable evidence record in the canonical PGL chain rather than in an
+unmigrated side table.
 """
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from cappo_backend.services.canonical import sha256_json, verify_signature_ed25519
-
-logger = logging.getLogger(__name__)
 
 
 class CAPIPipelineError(ValueError):
@@ -132,19 +108,14 @@ async def enforce_capi_pipeline(
 async def seal_evidence_pack(
     evidence_id: str,
     result: dict[str, Any],
-    db_session: Any | None = None,
+    *,
+    request_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create the post-execution evidence seal for an accepted cAPI request.
+    """Create the post-execution seal that CAPPO will append to PGL.
 
-    Transactional Outbox
-    ────────────────────
-    When ``db_session`` is provided, this function writes both the evidence seal
-    AND a refinery_outbox row atomically within the same database transaction.
-    The outbox row is picked up by ``outbox_dispatcher.py`` which reliably
-    delivers it to the Cloudflare Queue.
-
-    If ``db_session`` is None (e.g., tests), the seal is returned without
-    persistence — the caller is responsible for handling the outbox write.
+    The seal carries commitments and metadata only; raw request/result payloads
+    are intentionally excluded.  Persistence happens through the existing PGL
+    certificate ledger, not an invented cAPI evidence table.
     """
     if not evidence_id:
         raise CAPIPipelineError("evidence_id is required")
@@ -157,73 +128,7 @@ async def seal_evidence_pack(
         "sealed_at": _now_iso(),
         "seal_version": "capi-evidence-seal-v1",
     }
+    if request_evidence is not None:
+        seal["request_evidence"] = request_evidence
     seal["seal_hash"] = sha256_json({k: v for k, v in seal.items() if k != "sealed_at"})
-
-    if db_session is not None:
-        # ── Transactional Outbox ──────────────────────────────────────────────
-        # Both writes happen inside the SAME transaction.
-        # If either INSERT fails, the ENTIRE transaction rolls back — no orphaned
-        # evidence and no missing outbox row.
-        try:
-            await _write_transactional_outbox(db_session, seal)
-            logger.debug(
-                "evidence=%s outbox_row written atomically", evidence_id
-            )
-        except Exception:
-            # Let the caller's transaction handler decide rollback behaviour.
-            # We re-raise so CAPPO knows persistence failed.
-            logger.exception("Failed to write transactional outbox for evidence=%s", evidence_id)
-            raise
-
     return seal
-
-
-async def _write_transactional_outbox(db_session: Any, seal: dict[str, Any]) -> None:
-    """Write both the evidence seal and a refinery_outbox row within db_session.
-
-    The outbox row schema:
-        id              SERIAL PRIMARY KEY
-        event_id        TEXT UNIQUE NOT NULL    -- deduplication key for queue delivery
-        evidence_hash   TEXT NOT NULL
-        operation       TEXT NOT NULL
-        schema_version  TEXT NOT NULL
-        payload         JSONB NOT NULL
-        attempt         INTEGER DEFAULT 0
-        created_at      TIMESTAMPTZ DEFAULT now()
-        dispatched_at   TIMESTAMPTZ             -- set by dispatcher after delivery
-
-    Jobs are idempotent: the dispatcher uses (event_id, evidence_hash) as the
-    deduplication key. If a job is delivered twice, the second delivery is a
-    no-op on the refinery consumer side.
-    """
-    outbox_row = {
-        "event_id": seal["seal_hash"],          # globally unique per seal
-        "evidence_hash": seal["evidence_id"],
-        "operation": "refinery.ingest",
-        "schema_version": "v1",
-        "payload": seal,
-    }
-
-    # Execute both inserts via the session's execute method.
-    # SQLAlchemy async sessions share the same transaction if autocommit=False.
-    await db_session.execute(
-        """
-        INSERT INTO capi_evidence_seals
-            (evidence_id, result_hash, sealed_at, seal_version, seal_hash)
-        VALUES
-            (:evidence_id, :result_hash, :sealed_at, :seal_version, :seal_hash)
-        ON CONFLICT (evidence_id) DO NOTHING
-        """,
-        seal,
-    )
-
-    await db_session.execute(
-        """
-        INSERT INTO refinery_outbox
-            (event_id, evidence_hash, operation, schema_version, payload)
-        VALUES
-            (:event_id, :evidence_hash, :operation, :schema_version, :payload::jsonb)
-        ON CONFLICT (event_id) DO NOTHING
-        """,
-        {**outbox_row, "payload": __import__("json").dumps(outbox_row["payload"])},
-    )

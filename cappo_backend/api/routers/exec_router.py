@@ -295,11 +295,18 @@ async def governed_exec(
     result = _execute_run(orchestrator, body.model_dump(), db)
 
     run = orchestrator.last_run
-    db.commit()
-    
-    # cAPI PHASE 7-9: Evidence Sealing
     if not test_only_echo:
-        await seal_evidence_pack(capi_result["evidence_id"], result)
+        if run is None:
+            raise RuntimeError("governed execution completed without a run record")
+        seal = await seal_evidence_pack(
+            capi_result["evidence_id"],
+            result,
+            request_evidence=capi_result["evidence"],
+        )
+        # The seal is committed with the existing PGL certificate lifecycle;
+        # no unmigrated cAPI side table is treated as durable evidence.
+        orchestrator.record_evidence_seal(run, seal)
+    db.commit()
 
     elapsed_ms = (time.monotonic() - start) * 1000
     return ExecResponse(
