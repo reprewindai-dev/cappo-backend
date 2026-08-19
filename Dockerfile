@@ -16,9 +16,7 @@ COPY README.md .
 COPY cappo_backend/ /app/cappo_backend/
 
 # Install dependencies and PostgreSQL adapter
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir . && \
-    pip install --no-cache-dir psycopg2-binary
+RUN python -m pip install --no-cache-dir --retries 10 --timeout 60 . psycopg2-binary
 
 # Final image stage
 FROM python:3.11-slim AS runner
