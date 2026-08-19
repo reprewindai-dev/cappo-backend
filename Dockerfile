@@ -1,5 +1,9 @@
 # Multi-stage production-ready Dockerfile
+FROM ghcr.io/astral-sh/uv:0.3.0 AS uv
+
 FROM python:3.11-slim AS builder
+
+COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app
 
@@ -15,9 +19,9 @@ COPY README.md .
 # Create dummy package directory to install dependencies first
 COPY cappo_backend/ /app/cappo_backend/
 
-# Install dependencies and PostgreSQL adapter using robust `uv` package manager
-RUN pip install --no-cache-dir uv==0.3.0 && \
-    uv pip install --system --no-cache . psycopg2-binary
+RUN uv pip install \
+    --system \
+    . psycopg2-binary
 
 # Final image stage
 FROM python:3.11-slim AS runner
