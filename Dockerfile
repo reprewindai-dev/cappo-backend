@@ -15,8 +15,9 @@ COPY README.md .
 # Create dummy package directory to install dependencies first
 COPY cappo_backend/ /app/cappo_backend/
 
-# Install dependencies and PostgreSQL adapter
-RUN python -m pip install --no-cache-dir --retries 10 --timeout 60 . psycopg2-binary
+# Install dependencies and PostgreSQL adapter using robust `uv` package manager
+RUN pip install --no-cache-dir uv==0.3.0 && \
+    uv pip install --system --no-cache . psycopg2-binary
 
 # Final image stage
 FROM python:3.11-slim AS runner
