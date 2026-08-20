@@ -150,6 +150,7 @@ def test_build_executor_single_provider():
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+        allow_legacy_global_provider_config=True,
         llm_provider_name="groq",
         llm_base_url="https://api.groq.com/openai/v1",
         llm_model="llama-3.1-8b-instant",
@@ -165,6 +166,7 @@ def test_build_executor_uses_native_ollama_and_base_url_env(monkeypatch):
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+        allow_legacy_global_provider_config=True,
         llm_provider_name="ollama",
         llm_model="qwen2.5:3b",
     )
@@ -180,6 +182,7 @@ def test_build_executor_with_ollama_fallback_uses_native_adapter():
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+        allow_legacy_global_provider_config=True,
         llm_provider_name="openai",
         llm_base_url="https://api.openai.com/v1",
         llm_api_key="sk-x",
@@ -203,6 +206,7 @@ def test_factory_executor_does_not_fail_over_on_unsigned_503():
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+        allow_legacy_global_provider_config=True,
         llm_provider_name="primary",
         llm_base_url="https://primary.test/v1",
         llm_fallback_provider_name="fallback",
@@ -239,6 +243,7 @@ def test_factory_executor_fails_over_after_signed_503_inside_authorized_set(monk
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+        allow_legacy_global_provider_config=True,
         llm_provider_name="primary",
         llm_base_url="https://primary.test/v1",
         llm_fallback_provider_name="fallback",
@@ -266,6 +271,7 @@ def test_factory_executor_halts_when_all_real_clients_down():
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+        allow_legacy_global_provider_config=True,
         llm_provider_name="primary",
         llm_base_url="https://primary.test/v1",
         llm_fallback_provider_name="fallback",

@@ -55,6 +55,7 @@ def test_ollama_factory_uses_native_executor(monkeypatch) -> None:
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
+            allow_legacy_global_provider_config=True,
         llm_provider_name="ollama",
         llm_model="qwen2.5:3b",
     )
