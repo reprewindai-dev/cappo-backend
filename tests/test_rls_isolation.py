@@ -25,6 +25,8 @@ def pg_engine():
 def pg_session(pg_engine):
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)
     session = SessionLocal()
+    session.execute(text("TRUNCATE TABLE tenant_provider_credentials CASCADE"))
+    session.commit()
     try:
         yield session
     finally:
@@ -74,7 +76,8 @@ def test_rls_insert_violation(pg_session):
     
     with pytest.raises(Exception) as excinfo:
         pg_session.commit()
-    assert "row level security" in str(excinfo.value).lower(), "RLS did not block mismatched insert!"
+    err_msg = str(excinfo.value).lower()
+    assert "row level security" in err_msg or "row-level security" in err_msg, "RLS did not block mismatched insert!"
     pg_session.rollback()
 
 def test_rls_update_delete_isolation(pg_session):
