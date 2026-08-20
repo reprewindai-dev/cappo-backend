@@ -36,15 +36,22 @@ def cache_key(request: dict[str, Any], namespace: str = "cappo") -> str:
     included, so semantically identical requests collide and different tenants
     never do.
     """
+    workspace_id = request.get("workspace_id", "default")
     keyed = {
         "model": request.get("model"),
         "prompt": request.get("prompt", ""),
         "temperature": request.get("temperature"),
         "max_tokens": request.get("max_tokens"),
-        "workspace_id": request.get("workspace_id", "default"),
-        "tenant_id": request.get("tenant_id", "default"),
+        "workspace_id": workspace_id,
+        "tenant_id": request.get("tenant_id"),
+        "scope": request.get("scope"),
+        "constitution_hash": request.get("constitution_hash"),
+        "genome_hash": request.get("genome_hash"),
+        "plan_hash": request.get("plan_hash"),
+        "action": request.get("action"),
+        "execution_mode": request.get("execution_mode"),
     }
-    return f"{namespace}:completion:{sha256_json(keyed)}"
+    return f"{namespace}:{workspace_id}:completion:{sha256_json(keyed)}"
 
 
 @runtime_checkable
@@ -246,6 +253,11 @@ class CachingExecutor:
         return getattr(self._inner, "provider", "cached")
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
+        cache_allowed = request.get("cache_allowed", True)
+        if not cache_allowed:
+            result = self._inner.execute(request)
+            return {**result, "cached": False, "cache_tier": None}
+
         key = cache_key(request, self._namespace)
 
         hit = self._hot.get(key)

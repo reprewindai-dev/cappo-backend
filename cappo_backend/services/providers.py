@@ -60,6 +60,7 @@ class OpenAICompatExecutor:
         timeout: float = DEFAULT_TIMEOUT,
         client: httpx.Client | None = None,
         host_header_override: str | None = None,
+        app: Any = None,
     ) -> None:
         self.provider = name
         self.model = model
@@ -68,6 +69,7 @@ class OpenAICompatExecutor:
         self._timeout = timeout
         self._client = client
         self._host_header_override = host_header_override
+        self._app = app
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         prompt = request.get("prompt", "")
@@ -134,11 +136,7 @@ class OpenAICompatExecutor:
 
     def _http(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(
-                base_url=self._base_url,
-                timeout=self._timeout,
-                follow_redirects=False,
-            )
+            self._client = get_shared_http_client(self._base_url, self._timeout, self._app)
         return self._client
 
 
@@ -161,6 +159,7 @@ class OllamaExecutor:
         client: httpx.Client | None = None,
         name: str = "ollama",
         host_header_override: str | None = None,
+        app: Any = None,
     ) -> None:
         normalized = base_url.rstrip("/")
         if normalized.endswith("/v1"):
@@ -172,6 +171,7 @@ class OllamaExecutor:
         self._timeout = timeout
         self._client = client
         self._host_header_override = host_header_override
+        self._app = app
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         prompt = request.get("prompt", "")
@@ -241,11 +241,7 @@ class OllamaExecutor:
 
     def _http(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(
-                base_url=self._base_url,
-                timeout=self._timeout,
-                follow_redirects=False,
-            )
+            self._client = get_shared_http_client(self._base_url, self._timeout, self._app)
         return self._client
 
 
@@ -298,11 +294,52 @@ def _build_warm_cache(settings: Settings) -> WarmCache:
     return InMemoryWarmCache()
 
 
-def _maybe_wrap_cache(executor: Executor, settings: Settings) -> Executor:
+_shared_http_clients: dict[str, httpx.Client] = {}
+_test_hot_cache = None
+_test_warm_cache = None
+
+def get_shared_http_client(base_url: str, timeout: float, app: Any = None) -> httpx.Client:
+    """Get or create a shared, app-scoped HTTP client for the given base URL."""
+    key = f"{base_url}:{timeout}"
+    if app is not None and hasattr(app, "state"):
+        if not hasattr(app.state, "http_clients"):
+            app.state.http_clients = {}
+        if key not in app.state.http_clients:
+            app.state.http_clients[key] = httpx.Client(
+                base_url=base_url,
+                timeout=timeout,
+                follow_redirects=False,
+            )
+        return app.state.http_clients[key]
+    
+    global _shared_http_clients
+    if key not in _shared_http_clients:
+        _shared_http_clients[key] = httpx.Client(
+            base_url=base_url,
+            timeout=timeout,
+            follow_redirects=False,
+        )
+    return _shared_http_clients[key]
+
+def _get_hot_cache(settings: Settings, app: Any = None) -> HotCache:
+    if app is not None and hasattr(app, "state"):
+        if not hasattr(app.state, "hot_cache"):
+            app.state.hot_cache = HotCache(max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds)
+        return app.state.hot_cache
+    return HotCache(max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds)
+
+def _get_warm_cache(settings: Settings, app: Any = None) -> WarmCache:
+    if app is not None and hasattr(app, "state"):
+        if not hasattr(app.state, "warm_cache"):
+            app.state.warm_cache = _build_warm_cache(settings)
+        return app.state.warm_cache
+    return _build_warm_cache(settings)
+
+def _maybe_wrap_cache(executor: Executor, settings: Settings, app: Any = None) -> Executor:
     if not settings.cache_enabled:
         return executor
-    hot = HotCache(max_size=settings.hot_cache_max_size, ttl=settings.cache_ttl_seconds)
-    warm = _build_warm_cache(settings)
+    hot = _get_hot_cache(settings, app)
+    warm = _get_warm_cache(settings, app)
     return CachingExecutor(
         inner=executor,
         hot=hot,
@@ -335,6 +372,7 @@ def _provider_executor(
     api_key: str | None,
     timeout: float,
     host_header_override: str | None = None,
+    app: Any = None,
 ) -> Executor:
     if name.lower() == "ollama":
         return OllamaExecutor(
@@ -344,6 +382,7 @@ def _provider_executor(
             api_key=api_key,
             timeout=timeout,
             host_header_override=host_header_override,
+            app=app,
         )
     return OpenAICompatExecutor(
         name=name,
@@ -352,13 +391,14 @@ def _provider_executor(
         api_key=api_key,
         timeout=timeout,
         host_header_override=host_header_override,
+        app=app,
     )
 
 
-def build_executor(settings: Settings, db: Session = None, workspace_id: str = None) -> Executor:
+def build_executor(settings: Settings, db: Session = None, workspace_id: str = None, app: Any = None) -> Executor:
     """Construct the execution-layer executor from tenant keys or settings fallback."""
     if settings.executor_mode.lower() == "echo":
-        return _maybe_wrap_cache(EchoExecutor(), settings)
+        return _maybe_wrap_cache(EchoExecutor(), settings, app=app)
 
     providers: list[Provider] = []
     
@@ -418,6 +458,7 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
                     api_key=make_resolver(),
                     timeout=settings.llm_timeout_seconds,
                     host_header_override=host_header_override,
+                    app=app,
                 ),
                 breaker=p_breaker,
             ))
@@ -445,6 +486,7 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
                         api_key=settings.llm_api_key,
                         timeout=settings.llm_timeout_seconds,
                         host_header_override=host_header_override,
+                        app=app,
                     ),
                     breaker=p_breaker,
                 ))
@@ -474,6 +516,7 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
                             api_key=settings.llm_fallback_api_key or None,
                             timeout=settings.llm_timeout_seconds,
                             host_header_override=host_header_override,
+                            app=app,
                         ),
                         breaker=fallback_breaker,
                     )
@@ -500,4 +543,4 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
             )
         ]
 
-    return _maybe_wrap_cache(ResilientExecutor(deduped_providers), settings)
+    return _maybe_wrap_cache(ResilientExecutor(deduped_providers), settings, app=app)

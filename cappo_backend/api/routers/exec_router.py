@@ -97,11 +97,11 @@ def _check_payment(db: Session, workspace_id: str, cost_cents: int) -> None:
             detail={"error": "PAYMENT_REQUIRED", "detail": exc.detail, "reason": exc.reason},
         )
 
-def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, workspace_id: str) -> RunOrchestrator:
+def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, workspace_id: str, app: Any = None) -> RunOrchestrator:
     pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
     signer = create_enterprise_signer_from_settings(settings)
     builder = ExecutionIdentityBuilder(signer=signer)
-    executor = build_executor(settings, db=db, workspace_id=workspace_id)
+    executor = build_executor(settings, db=db, workspace_id=workspace_id, app=app)
     revocation = RevocationService(db, audit)
     # The gateway enforces LAW 0 *inside* the pipeline, before the side effect.
     gateway = MCPGateway(
@@ -374,9 +374,11 @@ async def governed_exec(
         )
 
     _check_payment(db, canonical_workspace, body.action_cost_cents)
-    orchestrator = _build_orchestrator(db, settings, audit, workspace_id=canonical_workspace)
+    orchestrator = _build_orchestrator(db, settings, audit, workspace_id=canonical_workspace, app=request.app)
     try:
-        result = _execute_run(orchestrator, body.model_dump(), db)
+        payload = body.model_dump()
+        payload["workspace_id"] = canonical_workspace
+        result = _execute_run(orchestrator, payload, db)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         run = orchestrator.last_run
