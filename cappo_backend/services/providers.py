@@ -59,6 +59,7 @@ class OpenAICompatExecutor:
         api_key: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         client: httpx.Client | None = None,
+        host_header_override: str | None = None,
     ) -> None:
         self.provider = name
         self.model = model
@@ -66,6 +67,7 @@ class OpenAICompatExecutor:
         self._api_key = api_key
         self._timeout = timeout
         self._client = client
+        self._host_header_override = host_header_override
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         prompt = request.get("prompt", "")
@@ -79,6 +81,8 @@ class OpenAICompatExecutor:
             payload["max_tokens"] = request["max_tokens"]
 
         headers = {"Content-Type": "application/json"}
+        if self._host_header_override:
+            headers["Host"] = self._host_header_override
         api_key = self._api_key() if callable(self._api_key) else self._api_key
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -130,7 +134,11 @@ class OpenAICompatExecutor:
 
     def _http(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(base_url=self._base_url, timeout=self._timeout)
+            self._client = httpx.Client(
+                base_url=self._base_url,
+                timeout=self._timeout,
+                follow_redirects=False,
+            )
         return self._client
 
 
@@ -152,6 +160,7 @@ class OllamaExecutor:
         timeout: float = DEFAULT_TIMEOUT,
         client: httpx.Client | None = None,
         name: str = "ollama",
+        host_header_override: str | None = None,
     ) -> None:
         normalized = base_url.rstrip("/")
         if normalized.endswith("/v1"):
@@ -162,6 +171,7 @@ class OllamaExecutor:
         self._api_key = api_key
         self._timeout = timeout
         self._client = client
+        self._host_header_override = host_header_override
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         prompt = request.get("prompt", "")
@@ -180,6 +190,8 @@ class OllamaExecutor:
             payload["options"] = options
 
         headers = {"Content-Type": "application/json"}
+        if self._host_header_override:
+            headers["Host"] = self._host_header_override
         api_key = self._api_key() if callable(self._api_key) else self._api_key
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -229,7 +241,11 @@ class OllamaExecutor:
 
     def _http(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(base_url=self._base_url, timeout=self._timeout)
+            self._client = httpx.Client(
+                base_url=self._base_url,
+                timeout=self._timeout,
+                follow_redirects=False,
+            )
         return self._client
 
 
@@ -318,6 +334,7 @@ def _provider_executor(
     model: str,
     api_key: str | None,
     timeout: float,
+    host_header_override: str | None = None,
 ) -> Executor:
     if name.lower() == "ollama":
         return OllamaExecutor(
@@ -326,6 +343,7 @@ def _provider_executor(
             model=model,
             api_key=api_key,
             timeout=timeout,
+            host_header_override=host_header_override,
         )
     return OpenAICompatExecutor(
         name=name,
@@ -333,6 +351,7 @@ def _provider_executor(
         model=model,
         api_key=api_key,
         timeout=timeout,
+        host_header_override=host_header_override,
     )
 
 
@@ -351,19 +370,33 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
         
     keys_by_provider = {k.provider.lower(): k for k in tenant_keys}
     
-    from cappo_backend.security.ssrf import is_safe_url
+    from cappo_backend.security.ssrf import validate_endpoint, EndpointClass
 
     # Add BYOK Providers based on Tenant keys (OpenAI, Groq, HuggingFace, Ollama)
     if keys_by_provider:
         for p_name, p_record in keys_by_provider.items():
             base_url = p_record.base_url
+            host_header_override = None
             if base_url:
-                allow_private = (p_name == "ollama")
-                if not is_safe_url(base_url, allow_private=allow_private):
+                endpoint_class = EndpointClass.TENANT_MANAGED_OLLAMA if p_name == "ollama" else EndpointClass.EXTERNAL_PROVIDER
+                try:
+                    base_url, host_header_override = validate_endpoint(base_url, endpoint_class)
+                except Exception:
                     # SSRF violation, skip this provider
                     continue
             else:
-                base_url = f"https://api.{p_name}.com/v1" if p_name != "ollama" else _provider_base_url(settings)
+                if p_name == "ollama":
+                    base_url = _provider_base_url(settings)
+                    try:
+                        base_url, host_header_override = validate_endpoint(base_url, EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA)
+                    except Exception:
+                        continue
+                else:
+                    base_url = f"https://api.{p_name}.com/v1"
+                    try:
+                        base_url, host_header_override = validate_endpoint(base_url, EndpointClass.EXTERNAL_PROVIDER)
+                    except Exception:
+                        continue
                 
             p_breaker = _breaker(settings, p_name)
             _breaker_registry[p_name] = p_breaker
@@ -384,6 +417,7 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
                     model=settings.llm_model,
                     api_key=make_resolver(),
                     timeout=settings.llm_timeout_seconds,
+                    host_header_override=host_header_override,
                 ),
                 breaker=p_breaker,
             ))
@@ -394,17 +428,26 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
             primary_name = settings.llm_provider_name
             p_breaker = _breaker(settings, primary_name)
             _breaker_registry[primary_name] = p_breaker
-            providers.insert(0, Provider(
-                name=primary_name,
-                executor=_provider_executor(
+            url = _provider_base_url(settings)
+            cls = EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA if primary_name == "ollama" else EndpointClass.EXTERNAL_PROVIDER
+            host_header_override = None
+            try:
+                url, host_header_override = validate_endpoint(url, cls)
+            except Exception:
+                pass
+            else:
+                providers.insert(0, Provider(
                     name=primary_name,
-                    base_url=_provider_base_url(settings),
-                    model=settings.llm_model,
-                    api_key=settings.llm_api_key,
-                    timeout=settings.llm_timeout_seconds,
-                ),
-                breaker=p_breaker,
-            ))
+                    executor=_provider_executor(
+                        name=primary_name,
+                        base_url=url,
+                        model=settings.llm_model,
+                        api_key=settings.llm_api_key,
+                        timeout=settings.llm_timeout_seconds,
+                        host_header_override=host_header_override,
+                    ),
+                    breaker=p_breaker,
+                ))
 
     # Global fallback (e.g. Server-provided Ollama) is available to all tenants,
     # but ResilientExecutor will only use it if the task's authority envelope explicitly permits it.
@@ -413,19 +456,28 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
         if fallback_name not in [p.name for p in providers]:
             fallback_breaker = _breaker(settings, fallback_name)
             _breaker_registry[fallback_name] = fallback_breaker
-            providers.append(
-                Provider(
-                    name=fallback_name,
-                    executor=_provider_executor(
+            url = settings.llm_fallback_base_url
+            cls = EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA if fallback_name == "ollama" else EndpointClass.EXTERNAL_PROVIDER
+            host_header_override = None
+            try:
+                url, host_header_override = validate_endpoint(url, cls)
+            except Exception:
+                pass
+            else:
+                providers.append(
+                    Provider(
                         name=fallback_name,
-                        base_url=settings.llm_fallback_base_url,
-                        model=settings.llm_fallback_model or settings.llm_model,
-                        api_key=settings.llm_fallback_api_key or None,
-                        timeout=settings.llm_timeout_seconds,
-                    ),
-                    breaker=fallback_breaker,
+                        executor=_provider_executor(
+                            name=fallback_name,
+                            base_url=url,
+                            model=settings.llm_fallback_model or settings.llm_model,
+                            api_key=settings.llm_fallback_api_key or None,
+                            timeout=settings.llm_timeout_seconds,
+                            host_header_override=host_header_override,
+                        ),
+                        breaker=fallback_breaker,
+                    )
                 )
-            )
 
     # Deduplicate providers by name, keeping the first occurrence
     seen_names = set()

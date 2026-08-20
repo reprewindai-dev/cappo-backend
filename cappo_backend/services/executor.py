@@ -104,7 +104,7 @@ class HTTPExecutor:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         try:
-            with httpx.Client(timeout=self._timeout) as client:
+            with httpx.Client(timeout=self._timeout, follow_redirects=False) as client:
                 resp = client.post(self._api_url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
