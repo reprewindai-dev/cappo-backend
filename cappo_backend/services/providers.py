@@ -295,7 +295,8 @@ def _provider_base_url(settings: Settings) -> str:
             "http://localhost:11434",
         }
         if ollama_base_url and settings.llm_base_url.rstrip("/") in loopback_defaults:
-            base_url = ollama_base_url
+            # Route to the local DAN instead of hitting Ollama directly
+            base_url = "http://127.0.0.1:8002/dan/ollama"
     return base_url.rstrip("/")
 
 
