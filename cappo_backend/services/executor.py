@@ -169,11 +169,16 @@ class ResilientExecutor:
         last_error: Exception | None = None
         attempts: list[dict[str, str]] = []
         allowed_providers = _authorized_provider_set(request)
-        for provider in self._providers:
-            if allowed_providers is not None and provider.name not in allowed_providers:
-                raise ExecutorUnavailableError(
-                    f"provider {provider.name} cannot be used outside the authorized provider set"
-                )
+        
+        eligible_providers = [
+            p for p in self._providers
+            if allowed_providers is None or p.name in allowed_providers
+        ]
+        
+        if not eligible_providers:
+            raise ExecutorUnavailableError("No authorized provider available for this execution")
+
+        for provider in eligible_providers:
             if not provider.breaker.allows_request():
                 logger.warning(
                     "provider skipped: circuit open",

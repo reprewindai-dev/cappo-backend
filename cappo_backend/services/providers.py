@@ -324,43 +324,94 @@ def _provider_executor(
     )
 
 
-def build_executor(settings: Settings) -> Executor:
-    """Construct the execution-layer executor from settings."""
+def build_executor(settings: Settings, db: Session = None, workspace_id: str = None) -> Executor:
+    """Construct the execution-layer executor from tenant keys or settings fallback."""
     if settings.executor_mode.lower() == "echo":
         return _maybe_wrap_cache(EchoExecutor(), settings)
 
-    primary_name = settings.llm_provider_name
-    primary_breaker = _breaker(settings, primary_name)
-    _breaker_registry[primary_name] = primary_breaker
-    providers: list[Provider] = [
-        Provider(
-            name=primary_name,
-            executor=_provider_executor(
-                name=primary_name,
-                base_url=_provider_base_url(settings),
-                model=settings.llm_model,
-                api_key=settings.llm_api_key or None,
-                timeout=settings.llm_timeout_seconds,
-            ),
-            breaker=primary_breaker,
-        )
-    ]
+    providers: list[Provider] = []
+    
+    # 1. Check Tenant Vault if DB is provided
+    tenant_keys = []
+    if db and workspace_id:
+        from cappo_backend.models.tenant_provider_credential import TenantProviderCredential
+        tenant_keys = db.query(TenantProviderCredential).filter(TenantProviderCredential.workspace_id == workspace_id).all()
+        
+    keys_by_provider = {k.provider.lower(): k for k in tenant_keys}
+    
+    from cappo_backend.security.ssrf import is_safe_url
 
-    if settings.llm_fallback_base_url:
-        fallback_name = settings.llm_fallback_provider_name or "fallback"
-        fallback_breaker = _breaker(settings, fallback_name)
-        _breaker_registry[fallback_name] = fallback_breaker
-        providers.append(
-            Provider(
-                name=fallback_name,
+    # Add BYOK Providers based on Tenant keys (OpenAI, Groq, HuggingFace, Ollama)
+    if keys_by_provider:
+        for p_name, p_record in keys_by_provider.items():
+            base_url = p_record.base_url
+            if base_url:
+                allow_private = (p_name == "ollama")
+                if not is_safe_url(base_url, allow_private=allow_private):
+                    # SSRF violation, skip this provider
+                    continue
+            else:
+                base_url = f"https://api.{p_name}.com/v1" if p_name != "ollama" else _provider_base_url(settings)
+                
+            p_breaker = _breaker(settings, p_name)
+            _breaker_registry[p_name] = p_breaker
+            providers.append(Provider(
+                name=p_name,
                 executor=_provider_executor(
-                    name=fallback_name,
-                    base_url=settings.llm_fallback_base_url,
-                    model=settings.llm_fallback_model or settings.llm_model,
-                    api_key=settings.llm_fallback_api_key or None,
+                    name=p_name,
+                    base_url=base_url,
+                    model=settings.llm_model,
+                    api_key=p_record.encrypted_secret,
                     timeout=settings.llm_timeout_seconds,
                 ),
-                breaker=fallback_breaker,
+                breaker=p_breaker,
+            ))
+
+    # 3. If no tenant keys and no DB provided, fallback to global settings ONLY if allowed (for tests)
+    if not keys_by_provider and settings.allow_legacy_global_provider_config:
+        if settings.llm_provider_name:
+            primary_name = settings.llm_provider_name
+            p_breaker = _breaker(settings, primary_name)
+            _breaker_registry[primary_name] = p_breaker
+            providers.insert(0, Provider(
+                name=primary_name,
+                executor=_provider_executor(
+                    name=primary_name,
+                    base_url=_provider_base_url(settings),
+                    model=settings.llm_model,
+                    api_key=settings.llm_api_key,
+                    timeout=settings.llm_timeout_seconds,
+                ),
+                breaker=p_breaker,
+            ))
+
+    # Global fallback (e.g. Server-provided Ollama) is available to all tenants,
+    # but ResilientExecutor will only use it if the task's authority envelope explicitly permits it.
+    if settings.llm_fallback_base_url:
+        fallback_name = settings.llm_fallback_provider_name or "fallback"
+        if fallback_name not in [p.name for p in providers]:
+            fallback_breaker = _breaker(settings, fallback_name)
+            _breaker_registry[fallback_name] = fallback_breaker
+            providers.append(
+                Provider(
+                    name=fallback_name,
+                    executor=_provider_executor(
+                        name=fallback_name,
+                        base_url=settings.llm_fallback_base_url,
+                        model=settings.llm_fallback_model or settings.llm_model,
+                        api_key=settings.llm_fallback_api_key or None,
+                        timeout=settings.llm_timeout_seconds,
+                    ),
+                    breaker=fallback_breaker,
+                )
             )
-        )
-    return _maybe_wrap_cache(ResilientExecutor(providers), settings)
+
+    # Deduplicate providers by name, keeping the first occurrence
+    seen_names = set()
+    deduped_providers = []
+    for p in providers:
+        if p.name not in seen_names:
+            seen_names.add(p.name)
+            deduped_providers.append(p)
+
+    return _maybe_wrap_cache(ResilientExecutor(deduped_providers), settings)

@@ -76,3 +76,5 @@ __all__ = [
     "RetrievalTrace",
     "RuntimePathAssignment",
 ]
+
+from cappo_backend.models.tenant_provider_credential import TenantProviderCredential

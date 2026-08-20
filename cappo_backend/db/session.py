@@ -34,9 +34,19 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 
-def get_session() -> Iterator[Session]:
+from starlette.requests import Request
+from sqlalchemy import text
+
+def get_session(request: Request = None) -> Iterator[Session]:
     """FastAPI dependency that yields a database session."""
     session = SessionLocal()
+    workspace_id = None
+    if request:
+        workspace_id = request.scope.get("auth_workspace")
+    
+    if workspace_id:
+        session.execute(text("SELECT set_config('app.workspace_id', :workspace_id, true)"), {"workspace_id": str(workspace_id)})
+
     try:
         yield session
     finally:

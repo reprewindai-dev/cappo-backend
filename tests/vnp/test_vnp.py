@@ -33,7 +33,8 @@ def test_vnp_control_plane_onboarding(client: TestClient, db: Session):
     assert api.api_did == api_did
 
 
-def test_vnp_signed_telemetry(client: TestClient, db: Session):
+def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
+    monkeypatch.setenv("VNP_WORKER_SECRET", "test-secret")
     # Onboard
     client.post("/v1/vnp/admin/providers", json={"name": "Telemetry Cloud"})
     provider = db.query(VNPProvider).first()

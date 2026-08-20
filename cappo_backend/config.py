@@ -127,6 +127,8 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://127.0.0.1:11434/v1"
     llm_model: str = "qwen2.5:0.5b"
     llm_api_key: str = ""
+    allow_legacy_global_provider_config: bool = False
+    
     # Optional fallback provider; enabled only when a fallback base_url is set.
     llm_fallback_provider_name: str = ""
     llm_fallback_base_url: str = ""
@@ -274,6 +276,12 @@ class Settings(BaseSettings):
                 problems.append(
                     "JWT_AUDIENCE must be set in production when JWT_AUTH_ENABLED is true."
                 )
+
+        if self.allow_legacy_global_provider_config:
+            problems.append(
+                "ALLOW_LEGACY_GLOBAL_PROVIDER_CONFIG must be false in production. "
+                "Global provider fallback violates tenant isolation."
+            )
 
         if self.llm_fallback_base_url and not self.vnp_federation_public_key:
             problems.append(
