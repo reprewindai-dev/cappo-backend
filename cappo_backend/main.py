@@ -79,6 +79,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="CAPPO Runtime", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
+    
+    if settings.redis_url:
+        import redis
+        app.state.redis_client = redis.Redis.from_url(
+            settings.redis_url,
+            socket_timeout=2.0,
+            socket_connect_timeout=2.0,
+            decode_responses=True
+        )
+    else:
+        app.state.redis_client = None
+
     mount_registry = MountRegistry()
     for package in load_packages_from_json(settings.capability_packages_json):
         mount_registry.register_package(package)

@@ -170,6 +170,11 @@ class Settings(BaseSettings):
     upstash_redis_rest_url: str = ""
     upstash_redis_rest_token: str = ""
 
+    # --- Distributed limits ---
+    max_runs_per_hour: int = 1000
+    max_tokens_per_hour: int = 10000000
+    max_node_concurrent_runs: int = 50
+
     # --- x402 Payment Gateway ---
     # Treasury wallet address for receiving USDC payments.
     veklom_evm_address: str = ""

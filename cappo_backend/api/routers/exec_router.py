@@ -89,14 +89,17 @@ class ExecResponse(BaseModel):
 
 # ---------- route ----------
 
-def _check_payment(db: Session, workspace_id: str, cost_cents: int) -> None:
+def _check_payment(db: Session, workspace_id: str, cost_cents: int, settings: Settings, app: Any = None) -> PaymentGate:
+    redis_client = getattr(app.state, "redis_client", None) if app and hasattr(app, "state") else None
+    gate = PaymentGate(db, redis_client=redis_client, settings=settings)
     try:
-        PaymentGate(db).check(workspace_id, cost_cents=cost_cents)
+        gate.check(workspace_id, cost_cents=cost_cents)
     except PaymentRequiredError as exc:
         raise HTTPException(
             status_code=402,
             detail={"error": "PAYMENT_REQUIRED", "detail": exc.detail, "reason": exc.reason},
         )
+    return gate
 
 def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, workspace_id: str, app: Any = None) -> RunOrchestrator:
     pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
@@ -388,12 +391,14 @@ async def governed_exec(
             },
         )
 
-    _check_payment(db, canonical_workspace, body.action_cost_cents)
+    gate = _check_payment(db, canonical_workspace, body.action_cost_cents, settings, request.app)
     orchestrator = _build_orchestrator(db, settings, audit, workspace_id=canonical_workspace, app=request.app)
     try:
         payload = body.model_dump()
         payload["workspace_id"] = canonical_workspace
         result = _execute_run(orchestrator, payload, db)
+        if result and "tokens" in result and isinstance(result["tokens"], int):
+            gate.record_tokens(canonical_workspace, result["tokens"])
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         run = orchestrator.last_run
@@ -426,6 +431,8 @@ async def governed_exec(
             )
             db.commit()
         raise
+    finally:
+        gate.decrement_concurrent()
 
     run = orchestrator.last_run
     if not test_only_echo:

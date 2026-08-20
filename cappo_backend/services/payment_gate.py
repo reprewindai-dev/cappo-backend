@@ -32,8 +32,27 @@ class PaymentRequiredError(Exception):
 
 
 class PaymentGate:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, redis_client: Any | None = None, settings: Any | None = None) -> None:
         self._db = db
+        self._settings = settings
+        if redis_client is not None:
+            self._redis = redis_client
+        else:
+            import os
+            import redis
+            from cappo_backend.config import get_settings
+            
+            s = settings or get_settings()
+            url = getattr(s, "redis_url", None) or os.getenv("REDIS_URL")
+            if url:
+                self._redis = redis.Redis.from_url(
+                    url,
+                    socket_timeout=2.0,
+                    socket_connect_timeout=2.0,
+                    decode_responses=True
+                )
+            else:
+                self._redis = None
 
     def check(self, workspace_id: str, cost_cents: int = 0) -> None:
         """Raise PaymentRequiredError if execution must be blocked.
@@ -51,6 +70,72 @@ class PaymentGate:
                 + (f": {switch.reason}" if switch.reason else ""),
                 reason="kill_switch",
             )
+
+        # Enforce Redis-backed limits
+        if self._redis is not None:
+            import redis
+            try:
+                # 3. Hard Kill Switch check
+                kill_switch_key = f"vnp:kill_switch:workspace:{workspace_id}"
+                if self._redis.exists(kill_switch_key):
+                    raise PaymentRequiredError(
+                        f"Hard kill switch active via Redis for workspace {workspace_id}.",
+                        reason="kill_switch",
+                    )
+
+                # Get settings for limits
+                from cappo_backend.config import get_settings
+                s = self._settings or get_settings()
+                
+                # 1. Workspace Execution Limits (runs and tokens)
+                import time
+                hour_timestamp = int(time.time() // 3600)
+                
+                # Check runs limit
+                runs_key = f"cappo:limit:workspace:{workspace_id}:runs:{hour_timestamp}"
+                current_runs = self._redis.get(runs_key)
+                if current_runs is not None and int(current_runs) >= s.max_runs_per_hour:
+                    raise PaymentRequiredError(
+                        f"Workspace hourly execution limit exceeded ({s.max_runs_per_hour} runs/hour).",
+                        reason="rate_limited",
+                    )
+                
+                # Check tokens limit
+                tokens_key = f"cappo:limit:workspace:{workspace_id}:tokens:{hour_timestamp}"
+                current_tokens = self._redis.get(tokens_key)
+                if current_tokens is not None and int(current_tokens) >= s.max_tokens_per_hour:
+                    raise PaymentRequiredError(
+                        f"Workspace hourly token limit exceeded ({s.max_tokens_per_hour} tokens/hour).",
+                        reason="rate_limited",
+                    )
+                
+                # 2. Node Execution Limit (total concurrent runs across the node)
+                concurrent_key = "cappo:limit:node:concurrent_runs"
+                concurrent = self._redis.incr(concurrent_key)
+                if concurrent > s.max_node_concurrent_runs:
+                    self._redis.decr(concurrent_key)
+                    raise PaymentRequiredError(
+                        f"Node concurrent execution limit exceeded ({s.max_node_concurrent_runs} active runs).",
+                        reason="node_limit_exceeded",
+                    )
+                
+                # Increment hourly runs count
+                self._redis.incr(runs_key)
+                self._redis.expire(runs_key, 5400)
+                
+            except redis.exceptions.RedisError as exc:
+                raise PaymentRequiredError(
+                    f"Redis connectivity error: {str(exc)}. Failing closed for safety.",
+                    reason="redis_unreachable",
+                )
+        else:
+            from cappo_backend.config import get_settings
+            s = self._settings or get_settings()
+            if s.is_production:
+                raise PaymentRequiredError(
+                    "Redis connection is required in production for rate limiting.",
+                    reason="redis_unreachable",
+                )
 
         # --- 2. Free run quota ------------------------------------------------
         quota = self._db.get(FreeRunQuota, workspace_id)
@@ -95,6 +180,24 @@ class PaymentGate:
                     f"cost={cost_cents} cents",
                     reason="budget_exhausted",
                 )
+
+    def decrement_concurrent(self) -> None:
+        if self._redis is not None:
+            try:
+                self._redis.decr("cappo:limit:node:concurrent_runs")
+            except Exception:
+                pass
+
+    def record_tokens(self, workspace_id: str, tokens: int) -> None:
+        if self._redis is not None and tokens > 0:
+            try:
+                import time
+                hour_timestamp = int(time.time() // 3600)
+                tokens_key = f"cappo:limit:workspace:{workspace_id}:tokens:{hour_timestamp}"
+                self._redis.incrby(tokens_key, tokens)
+                self._redis.expire(tokens_key, 5400)
+            except Exception:
+                pass
 
     # -- kill switch management ------------------------------------------------
 
