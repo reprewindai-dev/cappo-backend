@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5:0.5b"
     llm_api_key: str = ""
     allow_legacy_global_provider_config: bool = False
+
+    # Master key for encrypting/decrypting BYOK tenant credentials.
+    # Must be set in production to a strong, unique value.
+    vault_master_key: str = "dev-insecure-vault-master-key-change-me"
     
     # Optional fallback provider; enabled only when a fallback base_url is set.
     llm_fallback_provider_name: str = ""
@@ -286,6 +290,15 @@ class Settings(BaseSettings):
         if self.llm_fallback_base_url and not self.vnp_federation_public_key:
             problems.append(
                 "VNP_FEDERATION_PUBLIC_KEY must be set in production to verify 503 fallback signatures."
+            )
+
+        if self.vault_master_key == "dev-insecure-vault-master-key-change-me" or not self.vault_master_key.strip():
+            problems.append(
+                "VAULT_MASTER_KEY must be set to a strong, unique secret key in production."
+            )
+        elif len(self.vault_master_key.strip()) < 32:
+            problems.append(
+                "VAULT_MASTER_KEY must be at least 32 characters long in production."
             )
 
         if problems:

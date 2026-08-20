@@ -32,6 +32,8 @@ from cappo_backend.services.executor import (
     ResilientExecutor,
     TerminalExecutionError,
     VerifiedProviderUnavailableError,
+    ProviderCredentialRejectedError,
+    ProviderPolicyRejectedError,
 )
 
 if TYPE_CHECKING:
@@ -77,8 +79,9 @@ class OpenAICompatExecutor:
             payload["max_tokens"] = request["max_tokens"]
 
         headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        api_key = self._api_key() if callable(self._api_key) else self._api_key
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
         try:
             response = self._http().post("/chat/completions", json=payload, headers=headers)
@@ -86,9 +89,15 @@ class OpenAICompatExecutor:
             data = response.json()
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 403:
-                raise TerminalExecutionError(
-                    f"Authority Denied (403): {self.provider} returned HTTP 403"
-                ) from exc
+                resp_text = exc.response.text.lower()
+                if any(x in resp_text for x in ("key", "token", "auth", "credential")):
+                    raise ProviderCredentialRejectedError(
+                        f"Authority Denied (403): Provider credential rejected: {exc.response.text}"
+                    ) from exc
+                else:
+                    raise ProviderPolicyRejectedError(
+                        f"Authority Denied (403): Provider policy/model access rejected: {exc.response.text}"
+                    ) from exc
             if exc.response.status_code == 503:
                 _require_verified_503(exc.response)
                 raise VerifiedProviderUnavailableError(
@@ -171,8 +180,9 @@ class OllamaExecutor:
             payload["options"] = options
 
         headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        api_key = self._api_key() if callable(self._api_key) else self._api_key
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
         try:
             response = self._http().post("/api/chat", json=payload, headers=headers)
@@ -180,9 +190,15 @@ class OllamaExecutor:
             data = response.json()
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 403:
-                raise TerminalExecutionError(
-                    f"Authority Denied (403): {self.provider} returned HTTP 403"
-                ) from exc
+                resp_text = exc.response.text.lower()
+                if any(x in resp_text for x in ("key", "token", "auth", "credential")):
+                    raise ProviderCredentialRejectedError(
+                        f"Authority Denied (403): Provider credential rejected: {exc.response.text}"
+                    ) from exc
+                else:
+                    raise ProviderPolicyRejectedError(
+                        f"Authority Denied (403): Provider policy/model access rejected: {exc.response.text}"
+                    ) from exc
             if exc.response.status_code == 503:
                 _require_verified_503(exc.response)
                 raise VerifiedProviderUnavailableError(
@@ -351,13 +367,22 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
                 
             p_breaker = _breaker(settings, p_name)
             _breaker_registry[p_name] = p_breaker
+            def make_resolver(rec=p_record):
+                def resolve():
+                    if not rec.encrypted_secret:
+                        return ""
+                    from cappo_backend.security.vault import decrypt_secret
+                    associated_data = f"{rec.workspace_id}:{rec.provider}:{rec.credential_profile}:{rec.key_version}"
+                    return decrypt_secret(settings.vault_master_key, rec.encrypted_secret, associated_data)
+                return resolve
+
             providers.append(Provider(
                 name=p_name,
                 executor=_provider_executor(
                     name=p_name,
                     base_url=base_url,
                     model=settings.llm_model,
-                    api_key=p_record.encrypted_secret,
+                    api_key=make_resolver(),
                     timeout=settings.llm_timeout_seconds,
                 ),
                 breaker=p_breaker,
@@ -409,5 +434,18 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
         if p.name not in seen_names:
             seen_names.add(p.name)
             deduped_providers.append(p)
+
+    if not deduped_providers:
+        from cappo_backend.services.executor import AuthorizedProviderNotConfiguredError
+        class DisabledExecutor:
+            def execute(self, request: dict[str, Any]) -> dict[str, Any]:
+                raise AuthorizedProviderNotConfiguredError("No configured providers are available in this workspace")
+        deduped_providers = [
+            Provider(
+                name="disabled",
+                executor=DisabledExecutor(),
+                breaker=_breaker(settings, "disabled"),
+            )
+        ]
 
     return _maybe_wrap_cache(ResilientExecutor(deduped_providers), settings)

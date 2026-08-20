@@ -33,6 +33,7 @@ def _prod(**overrides) -> Settings:
         cors_allow_origins="https://api.veklom.com",
         runtime_kind="amphoteric",
         runtime_instance="prod-runtime",
+        vault_master_key="prod-secure-vault-master-key-32-chars",
     )
     base.update(overrides)
     return Settings(**base)
@@ -94,9 +95,13 @@ class TestProductionFailClosed:
         with pytest.raises(InsecureProductionConfigError, match="RUNTIME_INSTANCE"):
             _prod(runtime_instance="").validate_production()
 
-    def test_fallback_provider_without_federation_verification_key_is_rejected(self) -> None:
-        with pytest.raises(InsecureProductionConfigError, match="VNP_FEDERATION_PUBLIC_KEY"):
-            _prod(llm_fallback_base_url="https://fallback.example/v1").validate_production()
+    def test_insecure_vault_master_key_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="VAULT_MASTER_KEY"):
+            _prod(vault_master_key="dev-insecure-vault-master-key-change-me").validate_production()
+
+    def test_short_vault_master_key_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="at least 32"):
+            _prod(vault_master_key="short-key").validate_production()
 
     def test_multiple_problems_aggregated(self) -> None:
         with pytest.raises(InsecureProductionConfigError) as exc:

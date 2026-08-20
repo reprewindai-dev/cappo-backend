@@ -29,7 +29,12 @@ from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.eee import EEEBuilder, build_terminal_eee
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
-from cappo_backend.services.executor import ExecutorUnavailableError, TerminalExecutionError
+from cappo_backend.services.executor import (
+    ExecutorUnavailableError,
+    TerminalExecutionError,
+    ProviderCredentialRejectedError,
+    ProviderPolicyRejectedError,
+)
 from cappo_backend.services.orchestrator import (
     GovernanceDeniedError,
     MissingGovernanceDecisionError,
@@ -161,12 +166,22 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
                 "fail_closed": True,
             },
         )
+    except (ProviderCredentialRejectedError, ProviderPolicyRejectedError) as exc:
+        db.commit()
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": getattr(exc, "error_code", "PROVIDER_ERROR"),
+                "detail": str(exc),
+                "terminal": True,
+            },
+        )
     except TerminalExecutionError as exc:
         db.commit()
         raise HTTPException(
             status_code=403,
             detail={
-                "error": "EXECUTION_AUTHORITY_DENIED",
+                "error": getattr(exc, "error_code", "EXECUTION_AUTHORITY_DENIED"),
                 "detail": str(exc),
                 "terminal": True,
             },
@@ -187,7 +202,7 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
         raise HTTPException(
             status_code=503,
             detail={
-                "error": "EXECUTOR_UNAVAILABLE",
+                "error": "PROVIDER_UNAVAILABLE",
                 "detail": str(exc),
                 "retryable": True,
             },
@@ -370,7 +385,12 @@ async def governed_exec(
             "CAPPO_GOVERNANCE_DENIED",
             "EXECUTION_AUTHORITY_DENIED",
             "RUNTIME_OWNERSHIP_CONFLICT",
-            "EXECUTOR_UNAVAILABLE",
+            "PROVIDER_UNAVAILABLE",
+            "AUTHORITY_CONTEXT_MISSING",
+            "PROVIDER_NOT_AUTHORIZED",
+            "AUTHORIZED_PROVIDER_NOT_CONFIGURED",
+            "PROVIDER_CREDENTIAL_REJECTED",
+            "PROVIDER_POLICY_REJECTED",
         }
         if (
             not test_only_echo
