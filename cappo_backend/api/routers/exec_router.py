@@ -34,6 +34,7 @@ from cappo_backend.services.executor import (
     TerminalExecutionError,
     ProviderCredentialRejectedError,
     ProviderPolicyRejectedError,
+    ProviderRateLimitedError,
 )
 from cappo_backend.services.orchestrator import (
     GovernanceDeniedError,
@@ -165,6 +166,20 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
                 "detail": str(exc),
                 "fail_closed": True,
             },
+        )
+    except ProviderRateLimitedError as exc:
+        db.commit()
+        headers = {}
+        if exc.retry_after:
+            headers["Retry-After"] = str(exc.retry_after)
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "PROVIDER_RATE_LIMITED",
+                "detail": str(exc),
+                "retryable": True,
+            },
+            headers=headers,
         )
     except (ProviderCredentialRejectedError, ProviderPolicyRejectedError) as exc:
         db.commit()
@@ -394,6 +409,7 @@ async def governed_exec(
             "PROVIDER_CREDENTIAL_REJECTED",
             "PROVIDER_POLICY_REJECTED",
             "LOCAL_AUTHORIZER_UNAVAILABLE",
+            "PROVIDER_RATE_LIMITED",
         }
         if (
             not test_only_echo

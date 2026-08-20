@@ -34,6 +34,7 @@ from cappo_backend.services.executor import (
     VerifiedProviderUnavailableError,
     ProviderCredentialRejectedError,
     ProviderPolicyRejectedError,
+    ProviderRateLimitedError,
 )
 
 if TYPE_CHECKING:
@@ -89,33 +90,57 @@ class OpenAICompatExecutor:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        try:
-            response = self._http().post("/chat/completions", json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 403:
-                resp_text = exc.response.text.lower()
-                if any(x in resp_text for x in ("key", "token", "auth", "credential")):
-                    raise ProviderCredentialRejectedError(
-                        f"Authority Denied (403): Provider credential rejected: {exc.response.text}"
+        max_retries = 3
+        backoff_factor = 1.5
+        retry_delay = 1.0
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = self._http().post("/chat/completions", json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                break
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429 and attempt < max_retries:
+                    retry_after = exc.response.headers.get("Retry-After")
+                    delay = retry_delay * (backoff_factor ** attempt)
+                    if retry_after:
+                        try:
+                            delay = float(retry_after)
+                        except ValueError:
+                            pass
+                    delay = min(delay, 5.0)
+                    import time
+                    time.sleep(delay)
+                    continue
+                
+                if exc.response.status_code == 429:
+                    raise ProviderRateLimitedError(
+                        f"Provider {self.provider} rate limited: {exc.response.text}",
+                        retry_after=exc.response.headers.get("Retry-After")
                     ) from exc
-                else:
-                    raise ProviderPolicyRejectedError(
-                        f"Authority Denied (403): Provider policy/model access rejected: {exc.response.text}"
+                if exc.response.status_code == 403:
+                    resp_text = exc.response.text.lower()
+                    if any(x in resp_text for x in ("key", "token", "auth", "credential")):
+                        raise ProviderCredentialRejectedError(
+                            f"Authority Denied (403): Provider credential rejected: {exc.response.text}"
+                        ) from exc
+                    else:
+                        raise ProviderPolicyRejectedError(
+                            f"Authority Denied (403): Provider policy/model access rejected: {exc.response.text}"
+                        ) from exc
+                if exc.response.status_code == 503:
+                    _require_verified_503(exc.response)
+                    raise VerifiedProviderUnavailableError(
+                        f"{self.provider} returned verified HTTP 503"
                     ) from exc
-            if exc.response.status_code == 503:
-                _require_verified_503(exc.response)
-                raise VerifiedProviderUnavailableError(
-                    f"{self.provider} returned verified HTTP 503"
+                raise ProviderError(
+                    f"{self.provider} returned HTTP {exc.response.status_code}"
                 ) from exc
-            raise ProviderError(
-                f"{self.provider} returned HTTP {exc.response.status_code}"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise ProviderError(f"{self.provider} request failed: {exc}") from exc
-        except ValueError as exc:
-            raise ProviderError(f"{self.provider} returned invalid JSON") from exc
+            except httpx.HTTPError as exc:
+                raise ProviderError(f"{self.provider} request failed: {exc}") from exc
+            except ValueError as exc:
+                raise ProviderError(f"{self.provider} returned invalid JSON") from exc
 
         return self._parse(data, payload["model"])
 
@@ -206,33 +231,57 @@ class OllamaExecutor:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        try:
-            response = self._http().post("/api/chat", json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 403:
-                resp_text = exc.response.text.lower()
-                if any(x in resp_text for x in ("key", "token", "auth", "credential")):
-                    raise ProviderCredentialRejectedError(
-                        f"Authority Denied (403): Provider credential rejected: {exc.response.text}"
+        max_retries = 3
+        backoff_factor = 1.5
+        retry_delay = 1.0
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = self._http().post("/api/chat", json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                break
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429 and attempt < max_retries:
+                    retry_after = exc.response.headers.get("Retry-After")
+                    delay = retry_delay * (backoff_factor ** attempt)
+                    if retry_after:
+                        try:
+                            delay = float(retry_after)
+                        except ValueError:
+                            pass
+                    delay = min(delay, 5.0)
+                    import time
+                    time.sleep(delay)
+                    continue
+                
+                if exc.response.status_code == 429:
+                    raise ProviderRateLimitedError(
+                        f"Provider {self.provider} rate limited: {exc.response.text}",
+                        retry_after=exc.response.headers.get("Retry-After")
                     ) from exc
-                else:
-                    raise ProviderPolicyRejectedError(
-                        f"Authority Denied (403): Provider policy/model access rejected: {exc.response.text}"
+                if exc.response.status_code == 403:
+                    resp_text = exc.response.text.lower()
+                    if any(x in resp_text for x in ("key", "token", "auth", "credential")):
+                        raise ProviderCredentialRejectedError(
+                            f"Authority Denied (403): Provider credential rejected: {exc.response.text}"
+                        ) from exc
+                    else:
+                        raise ProviderPolicyRejectedError(
+                            f"Authority Denied (403): Provider policy/model access rejected: {exc.response.text}"
+                        ) from exc
+                if exc.response.status_code == 503:
+                    _require_verified_503(exc.response)
+                    raise VerifiedProviderUnavailableError(
+                        f"{self.provider} returned verified HTTP 503"
                     ) from exc
-            if exc.response.status_code == 503:
-                _require_verified_503(exc.response)
-                raise VerifiedProviderUnavailableError(
-                    f"{self.provider} returned verified HTTP 503"
+                raise ProviderError(
+                    f"{self.provider} returned HTTP {exc.response.status_code}"
                 ) from exc
-            raise ProviderError(
-                f"{self.provider} returned HTTP {exc.response.status_code}"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise ProviderError(f"{self.provider} request failed: {exc}") from exc
-        except ValueError as exc:
-            raise ProviderError(f"{self.provider} returned invalid JSON") from exc
+            except httpx.HTTPError as exc:
+                raise ProviderError(f"{self.provider} request failed: {exc}") from exc
+            except ValueError as exc:
+                raise ProviderError(f"{self.provider} returned invalid JSON") from exc
 
         try:
             content = data["message"]["content"]

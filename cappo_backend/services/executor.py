@@ -80,6 +80,15 @@ class LocalAuthorizerUnavailableError(TerminalExecutionError):
     error_code: str = "LOCAL_AUTHORIZER_UNAVAILABLE"
 
 
+class ProviderRateLimitedError(TerminalExecutionError):
+    """Raised when the provider is rate limited (HTTP 429)."""
+    error_code: str = "PROVIDER_RATE_LIMITED"
+
+    def __init__(self, message: str, retry_after: str | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class HTTPExecutor:
     """OpenAI-compatible HTTP provider executor."""
 
@@ -108,28 +117,56 @@ class HTTPExecutor:
         headers = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        max_retries = 3
+        backoff_factor = 1.5
+        retry_delay = 1.0
+
         try:
-            with httpx.Client(timeout=self._timeout, follow_redirects=False) as client:
-                resp = client.post(self._api_url, json=payload, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-                tokens = data.get("usage", {}).get("total_tokens", 0)
-                return {
-                    "response": content,
-                    "model": self.model,
-                    "provider": self.provider,
-                    "tokens": tokens,
-                }
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 403:
-                resp_text = exc.response.text.lower()
-                if any(x in resp_text for x in ("key", "token", "auth", "credential")):
-                    raise ProviderCredentialRejectedError(f"Authority Denied (403): Provider credential rejected: {exc.response.text}") from exc
-                else:
-                    raise ProviderPolicyRejectedError(f"Authority Denied (403): Provider policy/model rejected: {exc.response.text}") from exc
-            raise ProviderExecutionError(str(exc)) from exc
+            for attempt in range(max_retries + 1):
+                try:
+                    with httpx.Client(timeout=self._timeout, follow_redirects=False) as client:
+                        resp = client.post(self._api_url, json=payload, headers=headers)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        tokens = data.get("usage", {}).get("total_tokens", 0)
+                        return {
+                            "response": content,
+                            "model": self.model,
+                            "provider": self.provider,
+                            "tokens": tokens,
+                        }
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 429 and attempt < max_retries:
+                        retry_after = exc.response.headers.get("Retry-After")
+                        delay = retry_delay * (backoff_factor ** attempt)
+                        if retry_after:
+                            try:
+                                delay = float(retry_after)
+                            except ValueError:
+                                pass
+                        delay = min(delay, 5.0)
+                        import time
+                        time.sleep(delay)
+                        continue
+
+                    if exc.response.status_code == 429:
+                        raise ProviderRateLimitedError(
+                            f"Provider {self.provider} rate limited: {exc.response.text}",
+                            retry_after=exc.response.headers.get("Retry-After")
+                        ) from exc
+                    if exc.response.status_code == 403:
+                        resp_text = exc.response.text.lower()
+                        if any(x in resp_text for x in ("key", "token", "auth", "credential")):
+                            raise ProviderCredentialRejectedError(f"Authority Denied (403): Provider credential rejected: {exc.response.text}") from exc
+                        else:
+                            raise ProviderPolicyRejectedError(f"Authority Denied (403): Provider policy/model rejected: {exc.response.text}") from exc
+                    raise ProviderExecutionError(str(exc)) from exc
+                except httpx.HTTPError as exc:
+                    raise ProviderExecutionError(str(exc)) from exc
         except Exception as exc:
+            if isinstance(exc, (TerminalExecutionError, ProviderExecutionError)):
+                raise
             raise ProviderExecutionError(f"External provider call failed: {exc}") from exc
 
 
