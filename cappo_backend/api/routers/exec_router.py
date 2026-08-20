@@ -328,8 +328,38 @@ async def governed_exec(
             # If security fails, we don't even reach orchestration
             raise HTTPException(status_code=401, detail=f"cAPI Gatekeeper Reject: {str(e)}")
 
-    _check_payment(db, body.workspace_id, body.action_cost_cents)
-    orchestrator = _build_orchestrator(db, settings, audit, workspace_id=body.workspace_id)
+    # P0-1: Canonical workspace is established from the authenticated scope only.
+    # body.workspace_id is an optional hint; it may never choose or override authority.
+    canonical_workspace = request.scope.get("auth_workspace")
+    if not canonical_workspace:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "WORKSPACE_CONTEXT_MISSING",
+                "detail": (
+                    "No authenticated workspace context. The credential must resolve "
+                    "to a workspace before execution begins."
+                ),
+            },
+        )
+
+    # If the caller supplied workspace_id in the body, it must agree with the
+    # authenticated canonical workspace. It may never override it.
+    body_workspace = getattr(body, "workspace_id", None)
+    if body_workspace and body_workspace != "default" and body_workspace != canonical_workspace:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "WORKSPACE_MISMATCH",
+                "detail": (
+                    "Request body workspace_id does not match the authenticated workspace. "
+                    "The credential determines workspace; callers may not override it."
+                ),
+            },
+        )
+
+    _check_payment(db, canonical_workspace, body.action_cost_cents)
+    orchestrator = _build_orchestrator(db, settings, audit, workspace_id=canonical_workspace)
     try:
         result = _execute_run(orchestrator, body.model_dump(), db)
     except HTTPException as exc:

@@ -45,8 +45,16 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
     api = db.query(APIState).first()
 
     from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
+    import hashlib, hmac, json as _json
 
     service = VNPTelemetryService(db)
+
+    # Build probe payload and sign it as a probe worker would
+    payload_json = {"sample": "data"}
+    payload_str = _json.dumps(payload_json, sort_keys=True)
+    probe_signature = hmac.new(
+        b"test-secret", payload_str.encode(), hashlib.sha256
+    ).hexdigest()
 
     # Ingest with raw event tracking
     service.ingest_probe(
@@ -55,7 +63,8 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
         latency_ms=150,
         status_code=200,
         worker_id="worker-001",
-        payload_json={"sample": "data"},
+        payload_json=payload_json,
+        signature=probe_signature,
     )
     db.commit()
 

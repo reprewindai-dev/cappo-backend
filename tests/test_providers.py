@@ -162,12 +162,19 @@ def test_build_executor_single_provider():
 
 
 def test_build_executor_uses_native_ollama_and_base_url_env(monkeypatch):
+    # Post-P0-0: The DAN self-proxy (OLLAMA_BASE_URL → DAN sidecar) has been
+    # removed. OLLAMA_BASE_URL no longer influences executor routing; that
+    # decoupling is intentional and documented here as a regression guard.
+    # P0-6 will introduce OLLAMA_UPSTREAM_URL / OllamaEndpointResolver for
+    # topology-aware local routing.
+    # The executor uses llm_base_url directly, ignoring OLLAMA_BASE_URL.
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://10.42.0.12:11434")
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
         allow_legacy_global_provider_config=True,
         llm_provider_name="ollama",
+        llm_base_url="http://127.0.0.1:11434/v1",
         llm_model="qwen2.5:3b",
     )
 
@@ -175,7 +182,9 @@ def test_build_executor_uses_native_ollama_and_base_url_env(monkeypatch):
     provider_executor = ex._providers[0].executor
 
     assert isinstance(provider_executor, OllamaExecutor)
-    assert provider_executor._base_url == "http://10.42.0.12:11434"
+    # OllamaExecutor normalizes llm_base_url by stripping /v1.
+    # The OLLAMA_BASE_URL env var ("http://10.42.0.12:11434") is NOT used.
+    assert provider_executor._base_url == "http://127.0.0.1:11434"
 
 
 def test_build_executor_with_ollama_fallback_uses_native_adapter():

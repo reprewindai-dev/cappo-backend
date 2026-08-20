@@ -78,18 +78,42 @@ def prod_settings() -> Settings:
 @pytest.fixture
 def client(db: Session, settings: Settings) -> TestClient:
     """TestClient with DI overrides for db session and settings."""
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class InjectWorkspaceMiddleware(BaseHTTPMiddleware):
+        """Pre-inject auth_workspace so exec/revocation/ledger endpoints have the
+        workspace context they require.  The workspace is taken from the
+        X-Workspace-ID header when present (so capability-mount ownership tests
+        work correctly); otherwise it falls back to the test sentinel value.
+        auth_principal is set as a fallback only — AuthMiddleware will overwrite
+        it when auth_enabled=True so real key-fingerprint ownership tests still
+        distinguish between callers."""
+
+        async def dispatch(self, request, call_next):
+            if "X-No-Workspace" not in request.headers:
+                workspace = request.headers.get("X-Workspace-ID") or "test-workspace"
+                request.scope["auth_workspace"] = workspace
+            if "auth_principal" not in request.scope:
+                request.scope["auth_principal"] = "test:principal"
+            return await call_next(request)
+
     def _override_session() -> Iterator[Session]:
         yield db
 
     app.dependency_overrides[get_session] = _override_session
     from cappo_backend.config import get_settings as _gs
     from cappo_backend.main import create_app
-    
+
     # Create a fresh app instance with test settings so middlewares get the right config
     test_app = create_app(settings)
     test_app.dependency_overrides[get_session] = _override_session
     test_app.dependency_overrides[_gs] = lambda: settings
-    
+
+    # Add workspace injection outermost so it runs before AuthMiddleware.
+    # AuthMiddleware will overwrite auth_principal (not auth_workspace) when
+    # auth_enabled=True, preserving the ownership-binding test semantics.
+    test_app.add_middleware(InjectWorkspaceMiddleware)
+
     # Provide default auth header to avoid breaking existing tests
     test_client = TestClient(test_app)
     api_key = next(iter(settings.api_key_set)) if settings.api_key_set else "test-key"

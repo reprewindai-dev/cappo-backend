@@ -90,8 +90,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 workspace = payload.get("workspace_id") or payload.get("workspace") or payload.get(
                     "tenant_id"
                 )
-                if workspace:
-                    request.scope["auth_workspace"] = str(workspace)
+                if workspace and str(workspace).strip():
+                    request.scope["auth_workspace"] = str(workspace).strip()
+                # If JWT carries no workspace claim, auth_workspace is absent.
+                # Tenant-sensitive routes will fail with WORKSPACE_CONTEXT_MISSING.
             except jwt.ExpiredSignatureError:
                 return JSONResponse({"error": "TOKEN_EXPIRED"}, status_code=401)
             except jwt.InvalidTokenError:
@@ -100,9 +102,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if token not in self._settings.api_key_set:
                 return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
             request.scope["auth_principal"] = f"api-key:{_token_fingerprint(token)}"
-            workspace = request.headers.get("X-Workspace-ID")
-            if workspace:
-                request.scope["auth_workspace"] = workspace.strip()
+            # API keys do NOT resolve their workspace from the X-Workspace-ID header.
+            # The workspace must be bound server-side to the credential. Until per-key
+            # workspace binding is implemented, auth_workspace is intentionally absent
+            # so tenant-sensitive routes fail closed (WORKSPACE_CONTEXT_MISSING) rather
+            # than silently using a body-supplied "default".
+            #
+            # X-Workspace-ID is preserved only for future use as a membership selector
+            # once server-side key→workspace binding is stored. It never creates membership.
+            workspace_hint = request.headers.get("X-Workspace-ID", "").strip()
+            if workspace_hint:
+                request.scope["auth_workspace_hint"] = workspace_hint
+            # auth_workspace is NOT set here.
 
         operator_key = request.headers.get("x-uacp-internal-key")
         if operator_key and operator_key in self._settings.api_key_set:

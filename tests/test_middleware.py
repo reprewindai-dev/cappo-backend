@@ -7,6 +7,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from cappo_backend.config import Settings
 from cappo_backend.config import get_settings as _get_settings
@@ -17,9 +18,22 @@ from cappo_backend.models.governed_run import GovernedRun
 _KEY = "test-mw-key"
 
 
+class _InjectWorkspaceMiddleware(BaseHTTPMiddleware):
+    """Test precondition: inject auth_workspace/auth_principal so exec behavior
+    tests bypass the P0-1 workspace-context guard. These tests exercise exec
+    behavior, not the auth boundary itself."""
+
+    async def dispatch(self, request, call_next):
+        request.scope["auth_workspace"] = "test-workspace"
+        request.scope["auth_principal"] = "test:principal"
+        return await call_next(request)
+
+
 @pytest.fixture
 def auth_entitlement_client(db: Session) -> Iterator[TestClient]:
-    """Client wired to a create_app instance with auth enabled, using in-memory DB."""
+    """Client wired to a create_app instance with auth enabled, using in-memory DB.
+    InjectWorkspaceMiddleware runs *after* AuthMiddleware so the workspace guard
+    in exec_router is satisfied for downstream behavior tests."""
     settings = Settings(
         database_url="sqlite:///:memory:",
         ei_signing_key="test-signing-key",
@@ -31,6 +45,10 @@ def auth_entitlement_client(db: Session) -> Iterator[TestClient]:
         runtime_instance="test-runtime",
     )
     test_app = create_app(settings=settings)
+    # Workspace injection must run after AuthMiddleware validates the key so that
+    # tests for missing/invalid keys still see 401 before the workspace is set.
+    # We inject via a middleware added last (innermost in Starlette's wrap order).
+    test_app.add_middleware(_InjectWorkspaceMiddleware)
 
     def _override_session() -> Iterator[Session]:
         yield db
@@ -74,12 +92,17 @@ def test_valid_key_reaches_exec(auth_entitlement_client: TestClient) -> None:
 
 
 def test_exec_open_when_auth_disabled(client: TestClient) -> None:
+    # client fixture (conftest) already injects auth_workspace via
+    # InjectWorkspaceMiddleware; this test just verifies that auth_enabled=False
+    # does not block the exec route.
     resp = client.post("/v1/exec", json={"prompt": "hello", "directive": "ALLOW"})
     assert resp.status_code == 200
 
 
 def test_middleware_order_kill_switch_precedence(client: TestClient, db: Session) -> None:
-    client.put("/v1/kill-switch/default", json={"active": True})
+    # The exec router checks canonical_workspace (= auth_workspace = "test-workspace")
+    # against the payment gate, so the kill switch must be set for that workspace.
+    client.put("/v1/kill-switch/test-workspace", json={"active": True})
 
     resp = client.post("/v1/exec", json={"prompt": "hello"})
     assert resp.status_code == 402

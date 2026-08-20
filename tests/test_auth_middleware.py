@@ -59,14 +59,20 @@ class TestAuthEnabled:
         )
         assert resp.status_code == 401
 
-    def test_exec_allowed_with_valid_key(self, auth_client: TestClient) -> None:
+    def test_exec_returns_workspace_context_missing_without_binding(self, auth_client: TestClient) -> None:
+        """A valid API key with no server-side workspace binding now returns WORKSPACE_CONTEXT_MISSING.
+
+        Pre-P0-1: body.workspace_id="default" silently drove execution.
+        Post-P0-1: auth_workspace must be present in scope; API keys have no binding yet.
+        This test documents the correct behaviour after P0-1.
+        """
         resp = auth_client.post(
             "/v1/exec",
             json={"prompt": "hi", "pgl_id": "test-user-id", "directive": "ALLOW"},
             headers={"X-API-Key": _KEY},
         )
-        assert resp.status_code == 200
-        assert resp.json()["response"] == "echo: hi"
+        assert resp.status_code == 403
+        assert resp.json().get("detail", {}).get("error") == "WORKSPACE_CONTEXT_MISSING"
 
     def test_health_is_public(self, auth_client: TestClient) -> None:
         assert auth_client.get("/health").status_code == 200
@@ -77,7 +83,16 @@ class TestAuthEnabled:
 
 
 class TestAuthDisabledByDefault:
-    def test_exec_open_when_auth_disabled(self, client: TestClient) -> None:
-        # Default client fixture uses auth_enabled=False.
-        resp = client.post("/v1/exec", json={"prompt": "hi", "pgl_id": "test-user-id", "directive": "ALLOW"})
-        assert resp.status_code == 200
+    def test_exec_returns_workspace_context_missing_when_auth_disabled(self, client: TestClient) -> None:
+        """Even with auth_enabled=False, auth_workspace must be in scope for exec.
+
+        auth_disabled sets auth_principal="auth-disabled" but still does not
+        set auth_workspace. exec_router correctly rejects without workspace context.
+        """
+        resp = client.post(
+            "/v1/exec",
+            json={"prompt": "hi", "pgl_id": "test-user-id", "directive": "ALLOW"},
+            headers={"X-No-Workspace": "true"}
+        )
+        assert resp.status_code == 403
+        assert resp.json().get("detail", {}).get("error") == "WORKSPACE_CONTEXT_MISSING"

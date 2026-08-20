@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from fastapi import HTTPException
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.requests import Request
 
 from cappo_backend.config import get_settings
 
@@ -33,20 +35,55 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 
+def get_session(request: Request) -> Iterator[Session]:
+    """FastAPI dependency that yields a tenant-scoped database session.
 
-from starlette.requests import Request
-from sqlalchemy import text
+    ``auth_workspace`` must be present in the ASGI scope before this dependency
+    yields. Absence is a typed failure (WORKSPACE_CONTEXT_MISSING, HTTP 403)
+    before any DB access — RLS is defense-in-depth, not the first discovery point
+    for missing authentication context.
 
-def get_session(request: Request = None) -> Iterator[Session]:
-    """FastAPI dependency that yields a database session."""
+    For routes that are genuinely workspace-agnostic, use ``get_unscoped_session``.
+    """
+    workspace_id: str | None = request.scope.get("auth_workspace")
+
+    if not workspace_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "WORKSPACE_CONTEXT_MISSING",
+                "detail": (
+                    "No authenticated workspace context. The credential must resolve "
+                    "to a workspace before tenant data access begins."
+                ),
+            },
+        )
+
     session = SessionLocal()
-    workspace_id = None
-    if request:
-        workspace_id = request.scope.get("auth_workspace")
-    
-    if workspace_id:
-        session.execute(text("SELECT set_config('app.workspace_id', :workspace_id, true)"), {"workspace_id": str(workspace_id)})
+    session.execute(
+        text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+        {"workspace_id": str(workspace_id)},
+    )
+    try:
+        yield session
+    finally:
+        session.close()
 
+
+def get_unscoped_session(request: Request | None = None) -> Iterator[Session]:
+    """FastAPI dependency for workspace-agnostic routes (health checks, public endpoints).
+
+    Does NOT enforce auth_workspace. Must not be used on tenant-sensitive routes.
+    """
+    session = SessionLocal()
+    workspace_id: str | None = None
+    if request is not None:
+        workspace_id = request.scope.get("auth_workspace")
+    if workspace_id:
+        session.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace_id)},
+        )
     try:
         yield session
     finally:

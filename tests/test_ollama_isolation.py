@@ -51,12 +51,17 @@ def test_native_ollama_request_transmits_keep_alive_zero() -> None:
 
 
 def test_ollama_factory_uses_native_executor(monkeypatch) -> None:
+    # Post-P0-0: OLLAMA_BASE_URL no longer redirects through the DAN proxy.
+    # The DAN self-proxy routing was a prototype that has been removed.
+    # The executor now uses llm_base_url directly; OLLAMA_BASE_URL has no
+    # routing effect (P0-6 will introduce OLLAMA_UPSTREAM_URL for that).
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
     settings = Settings(
         _env_file=None,
         executor_mode="openai",
-            allow_legacy_global_provider_config=True,
+        allow_legacy_global_provider_config=True,
         llm_provider_name="ollama",
+        llm_base_url="http://127.0.0.1:11434/v1",
         llm_model="qwen2.5:3b",
     )
 
@@ -64,7 +69,9 @@ def test_ollama_factory_uses_native_executor(monkeypatch) -> None:
     provider_executor = executor._providers[0].executor
 
     assert isinstance(provider_executor, OllamaExecutor)
-    assert provider_executor._base_url == "http://ollama.internal:11434"
+    # OllamaExecutor strips the /v1 suffix from llm_base_url.
+    # OLLAMA_BASE_URL ("http://ollama.internal:11434") is ignored for routing.
+    assert provider_executor._base_url == "http://127.0.0.1:11434"
 
 
 def test_middleware_signal_is_not_promoted_to_sanitized_proof() -> None:

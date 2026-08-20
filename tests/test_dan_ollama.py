@@ -1,7 +1,14 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from cappo_backend.main import app
-from biscuit_auth import KeyPair, Biscuit, BlockBuilder
+# PROTOTYPE TEST — corresponds to dan_router.py prototype (NOT wired to production app).
+# biscuit_auth is not in the production dependency manifest.
+# This test is skipped until after P0-11 when LocalExecutionAuthorizer work begins.
+import pytest
+
+pytest.importorskip("biscuit_auth", reason="biscuit_auth not in production deps; skipped until after P0-11")
+
+
 from cappo_backend.api.routers.dan_router import ROOT_KEYPAIR
 
 @pytest.mark.anyio
