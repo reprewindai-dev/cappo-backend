@@ -75,6 +75,11 @@ class ProviderPolicyRejectedError(TerminalExecutionError):
     error_code: str = "PROVIDER_POLICY_REJECTED"
 
 
+class LocalAuthorizerUnavailableError(TerminalExecutionError):
+    """Raised when local Ollama is enabled but the local authorizer is not implemented."""
+    error_code: str = "LOCAL_AUTHORIZER_UNAVAILABLE"
+
+
 class HTTPExecutor:
     """OpenAI-compatible HTTP provider executor."""
 

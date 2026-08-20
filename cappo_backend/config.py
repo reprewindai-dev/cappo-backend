@@ -129,6 +129,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     allow_legacy_global_provider_config: bool = False
 
+    # P0-6 Local Ollama topology settings
+    local_ollama_enabled: bool = False
+    ollama_upstream_url: str = ""
+
     # Master key for encrypting/decrypting BYOK tenant credentials.
     # Must be set in production to a strong, unique value.
     vault_master_key: str = "dev-insecure-vault-master-key-change-me"

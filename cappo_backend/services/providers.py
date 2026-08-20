@@ -160,6 +160,8 @@ class OllamaExecutor:
         name: str = "ollama",
         host_header_override: str | None = None,
         app: Any = None,
+        is_local: bool = False,
+        local_ollama_enabled: bool = False,
     ) -> None:
         normalized = base_url.rstrip("/")
         if normalized.endswith("/v1"):
@@ -172,8 +174,16 @@ class OllamaExecutor:
         self._client = client
         self._host_header_override = host_header_override
         self._app = app
+        self._is_local = is_local
+        self._local_ollama_enabled = local_ollama_enabled
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
+        if self._is_local:
+            from cappo_backend.services.executor import LocalAuthorizerUnavailableError
+            if not self._local_ollama_enabled:
+                raise LocalAuthorizerUnavailableError("Local Ollama is disabled in settings.")
+            raise LocalAuthorizerUnavailableError("Local authorizer is unavailable. Fail closed.")
+
         prompt = request.get("prompt", "")
         payload: dict[str, Any] = {
             "model": request.get("model") or self.model,
@@ -373,6 +383,8 @@ def _provider_executor(
     timeout: float,
     host_header_override: str | None = None,
     app: Any = None,
+    is_local: bool = False,
+    local_ollama_enabled: bool = False,
 ) -> Executor:
     if name.lower() == "ollama":
         return OllamaExecutor(
@@ -383,6 +395,8 @@ def _provider_executor(
             timeout=timeout,
             host_header_override=host_header_override,
             app=app,
+            is_local=is_local,
+            local_ollama_enabled=local_ollama_enabled,
         )
     return OpenAICompatExecutor(
         name=name,
@@ -393,6 +407,18 @@ def _provider_executor(
         host_header_override=host_header_override,
         app=app,
     )
+
+
+def OllamaEndpointResolver(upstream_url: str, settings: Settings, allow_disabled: bool = False) -> str:
+    """Resolve the local Ollama upstream URL under VEKLOM_MANAGED_LOCAL_OLLAMA constraints."""
+    if not settings.local_ollama_enabled and not allow_disabled:
+        raise ValueError("Local Ollama is not enabled in settings.")
+    if not upstream_url:
+        raise ValueError("OLLAMA_UPSTREAM_URL is empty.")
+    
+    from cappo_backend.security.ssrf import validate_endpoint, EndpointClass
+    validated_url, _ = validate_endpoint(upstream_url, EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA)
+    return validated_url
 
 
 def build_executor(settings: Settings, db: Session = None, workspace_id: str = None, app: Any = None) -> Executor:
@@ -469,14 +495,24 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
             primary_name = settings.llm_provider_name
             p_breaker = _breaker(settings, primary_name)
             _breaker_registry[primary_name] = p_breaker
-            url = _provider_base_url(settings)
-            cls = EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA if primary_name == "ollama" else EndpointClass.EXTERNAL_PROVIDER
+            url = None
             host_header_override = None
-            try:
-                url, host_header_override = validate_endpoint(url, cls)
-            except Exception:
-                pass
+            is_local = (primary_name == "ollama")
+            
+            if is_local:
+                try:
+                    url = OllamaEndpointResolver(settings.ollama_upstream_url or settings.llm_base_url, settings, allow_disabled=True)
+                    url, host_header_override = validate_endpoint(url, EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA)
+                except Exception:
+                    url = None
             else:
+                url = _provider_base_url(settings)
+                try:
+                    url, host_header_override = validate_endpoint(url, EndpointClass.EXTERNAL_PROVIDER)
+                except Exception:
+                    url = None
+                    
+            if url:
                 providers.insert(0, Provider(
                     name=primary_name,
                     executor=_provider_executor(
@@ -487,6 +523,8 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
                         timeout=settings.llm_timeout_seconds,
                         host_header_override=host_header_override,
                         app=app,
+                        is_local=is_local,
+                        local_ollama_enabled=settings.local_ollama_enabled,
                     ),
                     breaker=p_breaker,
                 ))
@@ -498,14 +536,24 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
         if fallback_name not in [p.name for p in providers]:
             fallback_breaker = _breaker(settings, fallback_name)
             _breaker_registry[fallback_name] = fallback_breaker
-            url = settings.llm_fallback_base_url
-            cls = EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA if fallback_name == "ollama" else EndpointClass.EXTERNAL_PROVIDER
+            url = None
             host_header_override = None
-            try:
-                url, host_header_override = validate_endpoint(url, cls)
-            except Exception:
-                pass
+            is_local = (fallback_name == "ollama")
+            
+            if is_local:
+                try:
+                    url = OllamaEndpointResolver(settings.ollama_upstream_url or settings.llm_fallback_base_url, settings, allow_disabled=True)
+                    url, host_header_override = validate_endpoint(url, EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA)
+                except Exception:
+                    url = None
             else:
+                url = settings.llm_fallback_base_url
+                try:
+                    url, host_header_override = validate_endpoint(url, EndpointClass.EXTERNAL_PROVIDER)
+                except Exception:
+                    url = None
+                    
+            if url:
                 providers.append(
                     Provider(
                         name=fallback_name,
@@ -517,6 +565,8 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
                             timeout=settings.llm_timeout_seconds,
                             host_header_override=host_header_override,
                             app=app,
+                            is_local=is_local,
+                            local_ollama_enabled=settings.local_ollama_enabled,
                         ),
                         breaker=fallback_breaker,
                     )

@@ -393,6 +393,7 @@ async def governed_exec(
             "AUTHORIZED_PROVIDER_NOT_CONFIGURED",
             "PROVIDER_CREDENTIAL_REJECTED",
             "PROVIDER_POLICY_REJECTED",
+            "LOCAL_AUTHORIZER_UNAVAILABLE",
         }
         if (
             not test_only_echo
