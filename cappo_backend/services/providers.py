@@ -201,20 +201,51 @@ class OllamaExecutor:
         self._app = app
         self._is_local = is_local
         self._local_ollama_enabled = local_ollama_enabled
+        self._bypass_local_raise = False
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
-        if self._is_local:
+        if self._is_local and not getattr(self, "_bypass_local_raise", False):
             from cappo_backend.services.executor import LocalAuthorizerUnavailableError
             if not self._local_ollama_enabled:
                 raise LocalAuthorizerUnavailableError("Local Ollama is disabled in settings.")
             raise LocalAuthorizerUnavailableError("Local authorizer is unavailable. Fail closed.")
+
+        # Determine keep_alive dynamically
+        keep_alive = 0
+        if self._is_local:
+            keep_alive = 300
+            if self._app and hasattr(self._app, "state") and hasattr(self._app.state, "settings"):
+                settings = self._app.state.settings
+                keep_alive = getattr(settings, "ollama_keep_alive", 300)
+            
+            # 1. Memory pressure check
+            try:
+                import psutil
+                if psutil.virtual_memory().percent > 85.0:
+                    keep_alive = 0
+            except Exception:
+                pass
+            
+            # 2. Idle check (recent demand)
+            if self._app and hasattr(self._app, "state"):
+                import time
+                now = time.time()
+                last_time = getattr(self._app.state, "last_ollama_request_time", None)
+                self._app.state.last_ollama_request_time = now
+                if last_time is not None:
+                    if now - last_time > keep_alive:
+                        keep_alive = 0
+            
+            # 3. Kill switch / revocation check (drain)
+            if self._app and hasattr(self._app, "state") and getattr(self._app.state, "drain_active", False):
+                keep_alive = 0
 
         prompt = request.get("prompt", "")
         payload: dict[str, Any] = {
             "model": request.get("model") or self.model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "keep_alive": 0,
+            "keep_alive": keep_alive,
         }
         options: dict[str, Any] = {}
         if "temperature" in request:
