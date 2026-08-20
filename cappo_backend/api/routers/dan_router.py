@@ -1,3 +1,15 @@
+# PROTOTYPE — NOT WIRED TO PRODUCTION APPLICATION
+#
+# This file is a DAN/Biscuit capability-routing prototype. It is NOT imported
+# by main.py and is NOT part of the deployed application.
+#
+# Biscuit (biscuit_auth) is not in the production dependency manifest.
+# This module was removed from main.py as part of P0-0 (restore clean deployable
+# baseline). The implementation is preserved in git history and this file for
+# future reference when LocalExecutionAuthorizer / LeaseVerifier work begins
+# after P0-11.
+#
+# DO NOT re-import this file in main.py without completing P0-1 through P0-11 first.
 import base64
 import httpx
 from fastapi import APIRouter, Request, Header, HTTPException

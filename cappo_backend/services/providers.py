@@ -284,20 +284,15 @@ _breaker_registry: dict[str, CircuitBreaker] = {}
 
 
 def _provider_base_url(settings: Settings) -> str:
-    """Resolve the configured provider base URL without committing topology."""
-    base_url = settings.llm_base_url
-    if settings.llm_provider_name.lower() == "ollama":
-        ollama_base_url = os.getenv("OLLAMA_BASE_URL")
-        loopback_defaults = {
-            "http://127.0.0.1:11434/v1",
-            "http://localhost:11434/v1",
-            "http://127.0.0.1:11434",
-            "http://localhost:11434",
-        }
-        if ollama_base_url and settings.llm_base_url.rstrip("/") in loopback_defaults:
-            # Route to the local DAN instead of hitting Ollama directly
-            base_url = "http://127.0.0.1:8002/dan/ollama"
-    return base_url.rstrip("/")
+    """Resolve the configured provider base URL.
+
+    Returns the configured LLM_BASE_URL without any topology routing.
+    The OLLAMA_BASE_URL variable is read but its self-proxy semantics have been
+    removed (DAN router was a prototype that has been unwired). Topology
+    abstraction for local Ollama is implemented in P0-6 via OLLAMA_UPSTREAM_URL
+    and OllamaEndpointResolver.
+    """
+    return settings.llm_base_url.rstrip("/")
 
 
 def _provider_executor(
