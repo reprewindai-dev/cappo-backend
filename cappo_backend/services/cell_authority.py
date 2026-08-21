@@ -14,15 +14,12 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from cappo_backend.models.execution_identity import ExecutionIdentity
-from cappo_backend.services.canonical import (
-    get_ed25519_private_key,
-    sign_payload_ed25519,
-)
+from cappo_backend.services.canonical import get_ed25519_private_key, sign_payload_ed25519
 
 
 class CellAuthorityError(RuntimeError):
@@ -68,6 +65,24 @@ def semantic_intent_digest(intent: GitHubFileUpdateIntent) -> str:
     return "sha256:" + hashlib.sha256(_canonical_json_bytes(intent.model_dump(mode="json"))).hexdigest()
 
 
+def _sha256_digest(value: str, *, name: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized.startswith("sha256:") or len(normalized) != 71:
+        raise CellAuthorityError(f"{name} must be sha256:<64 hex>")
+    try:
+        int(normalized[7:], 16)
+    except ValueError as exc:
+        raise CellAuthorityError(f"{name} must contain a hexadecimal sha256 digest") from exc
+    return normalized
+
+
+def _image_digest(image: str) -> str:
+    value = image.strip()
+    if "@sha256:" not in value:
+        raise CellAuthorityError("CAPPO_GOVERNED_CELL_IMAGE must be pinned with @sha256:<digest>")
+    return _sha256_digest(value.rsplit("@", 1)[1], name="governed-cell image digest")
+
+
 def cell_authority_public_key_b64url(signing_key: str) -> str:
     """Return the raw public Ed25519 key Lockerphycer must pin for this signer."""
     from cryptography.hazmat.primitives import serialization
@@ -87,21 +102,34 @@ class CellAuthorityBuilder:
         self.key_id = os.environ.get("CAPPO_CELL_AUTHORITY_KID", "").strip()
         self.runtime_instance = os.environ.get("CAPPO_LOCKERPHYCER_CELL_INSTANCE", "").strip()
         self.ttl_seconds = int(os.environ.get("CAPPO_CELL_AUTHORITY_TTL_SECONDS", "30"))
+        self.runtime_image = os.environ.get("CAPPO_GOVERNED_CELL_IMAGE", "").strip()
+        isolation = os.environ.get("CAPPO_GOVERNED_CELL_ISOLATION", "os-enforced").strip().lower()
+        if isolation not in {"os-enforced", "microvm"}:
+            raise CellAuthorityError("CAPPO_GOVERNED_CELL_ISOLATION must be os-enforced or microvm")
+        self.required_isolation: Literal["os-enforced", "microvm"] = isolation  # type: ignore[assignment]
+        self.runtime_image_digest = _image_digest(self.runtime_image)
+        self.runtime_kernel_digest: str | None = None
+        if self.required_isolation == "microvm":
+            self.runtime_kernel_digest = _sha256_digest(
+                os.environ.get("CAPPO_GOVERNED_CELL_KERNEL_SHA256", ""),
+                name="CAPPO_GOVERNED_CELL_KERNEL_SHA256",
+            )
+        self.network_policy_digest = os.environ.get(
+            "CAPPO_GOVERNED_CELL_NETWORK_POLICY_DIGEST",
+            "network:none",
+        ).strip()
+
         if not self.key_id:
             raise CellAuthorityError("CAPPO_CELL_AUTHORITY_KID is required when governed cells are enabled")
         if not self.runtime_instance:
             raise CellAuthorityError("CAPPO_LOCKERPHYCER_CELL_INSTANCE is required when governed cells are enabled")
+        if not self.network_policy_digest:
+            raise CellAuthorityError("CAPPO_GOVERNED_CELL_NETWORK_POLICY_DIGEST is required")
         if not 1 <= self.ttl_seconds <= 300:
             raise CellAuthorityError("CAPPO_CELL_AUTHORITY_TTL_SECONDS must be between 1 and 300")
 
     def build_from_execution_request(self, request: dict[str, Any], db: Any) -> dict[str, Any]:
-        """Build from the persisted EI that CAPPO already minted before execution.
-
-        The executor-facing request contains only a small routing envelope. We do
-        not trust caller fields to recreate authority. Instead, resolve the
-        persisted signed ExecutionIdentity by execution_id and use that identity's
-        runtime ownership, subject, scope, expiry, and policy binding.
-        """
+        """Build from the persisted EI that CAPPO already minted before execution."""
         authority = request.get("authority_envelope")
         if not isinstance(authority, dict):
             raise CellAuthorityError("CAPPO executor request is missing its authority envelope")
@@ -180,7 +208,6 @@ class CellAuthorityBuilder:
             "grant_id": f"cell-{uuid.uuid4()}",
             "subject_id": str(identity.get("subject") or identity.get("issuer") or "unknown"),
             "delegation_id": request.get("delegation_id"),
-            # Authenticated workspace is canonicalized before RunOrchestrator.
             "tenant_id": str(run.workspace_id),
             "workspace_id": str(run.workspace_id),
             "capability_id": intent.operation,
@@ -190,8 +217,11 @@ class CellAuthorityBuilder:
             "assignment_id": str(ownership.get("assignment_id") or ""),
             "runtime_kind": "lockerphycer-cell",
             "runtime_instance": self.runtime_instance,
+            "required_isolation": self.required_isolation,
+            "runtime_image_digest": self.runtime_image_digest,
+            "runtime_kernel_digest": self.runtime_kernel_digest,
+            "network_policy_digest": self.network_policy_digest,
             "policy_digest": str(identity.get("policy_hash") or identity.get("seked_attestation_hash") or ""),
-            # Attenuate to the one provider needed for this effect.
             "allowed_provider_set": ["github"],
             "budget_ceiling": int(run.approved_budget_cents or 0),
             "evidence_profile": "pgl-required",
