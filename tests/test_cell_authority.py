@@ -17,6 +17,10 @@ from cappo_backend.services.cell_authority import (
 )
 
 
+IMAGE_DIGEST = "sha256:" + "b" * 64
+KERNEL_DIGEST = "sha256:" + "c" * 64
+
+
 def _effect(**updates):
     value = {
         "provider": "github",
@@ -78,10 +82,17 @@ class _FakeDB:
         return self.record
 
 
-def _builder(monkeypatch, ttl="30"):
+def _builder(monkeypatch, ttl="30", *, isolation="os-enforced"):
     monkeypatch.setenv("CAPPO_CELL_AUTHORITY_KID", "cappo-cell-v1")
     monkeypatch.setenv("CAPPO_LOCKERPHYCER_CELL_INSTANCE", "lockerphycer-host-a")
     monkeypatch.setenv("CAPPO_CELL_AUTHORITY_TTL_SECONDS", ttl)
+    monkeypatch.setenv("CAPPO_GOVERNED_CELL_IMAGE", f"lockerphycer-executor@{IMAGE_DIGEST}")
+    monkeypatch.setenv("CAPPO_GOVERNED_CELL_ISOLATION", isolation)
+    monkeypatch.setenv("CAPPO_GOVERNED_CELL_NETWORK_POLICY_DIGEST", "network:none")
+    if isolation == "microvm":
+        monkeypatch.setenv("CAPPO_GOVERNED_CELL_KERNEL_SHA256", KERNEL_DIGEST)
+    else:
+        monkeypatch.delenv("CAPPO_GOVERNED_CELL_KERNEL_SHA256", raising=False)
     settings = Settings(ei_signing_key="unit-test-cell-authority-key")
     return CellAuthorityBuilder(settings), settings
 
@@ -99,6 +110,10 @@ def test_persisted_execution_identity_mints_exact_signed_cell_authority(monkeypa
     assert envelope["authority_epoch"] == 7
     assert envelope["runtime_kind"] == "lockerphycer-cell"
     assert envelope["runtime_instance"] == "lockerphycer-host-a"
+    assert envelope["required_isolation"] == "os-enforced"
+    assert envelope["runtime_image_digest"] == IMAGE_DIGEST
+    assert envelope["runtime_kernel_digest"] is None
+    assert envelope["network_policy_digest"] == "network:none"
     assert envelope["workspace_id"] == "workspace-1"
     assert envelope["tenant_id"] == "workspace-1"
     assert envelope["allowed_provider_set"] == ["github"]
@@ -116,6 +131,33 @@ def test_persisted_execution_identity_mints_exact_signed_cell_authority(monkeypa
         signed["proof"]["signature_b64url"],
         public_raw,
     ) is True
+
+
+def test_microvm_authority_binds_kernel_and_rootfs_measurements(monkeypatch):
+    builder, settings = _builder(monkeypatch, isolation="microvm")
+    signed = builder.build_from_execution_request(_request(), _FakeDB(_identity()))
+    envelope = signed["envelope"]
+
+    assert envelope["required_isolation"] == "microvm"
+    assert envelope["runtime_image_digest"] == IMAGE_DIGEST
+    assert envelope["runtime_kernel_digest"] == KERNEL_DIGEST
+    assert envelope["network_policy_digest"] == "network:none"
+
+    public_raw = base64.urlsafe_b64decode(
+        cell_authority_public_key_b64url(settings.ei_signing_key) + "=="
+    )
+    assert verify_signature_ed25519(envelope, signed["proof"]["signature_b64url"], public_raw)
+
+
+def test_microvm_authority_fails_closed_without_kernel_measurement(monkeypatch):
+    monkeypatch.setenv("CAPPO_CELL_AUTHORITY_KID", "cappo-cell-v1")
+    monkeypatch.setenv("CAPPO_LOCKERPHYCER_CELL_INSTANCE", "lockerphycer-host-a")
+    monkeypatch.setenv("CAPPO_GOVERNED_CELL_IMAGE", f"lockerphycer-rootfs@{IMAGE_DIGEST}")
+    monkeypatch.setenv("CAPPO_GOVERNED_CELL_ISOLATION", "microvm")
+    monkeypatch.delenv("CAPPO_GOVERNED_CELL_KERNEL_SHA256", raising=False)
+
+    with pytest.raises(CellAuthorityError, match="KERNEL_SHA256"):
+        CellAuthorityBuilder(Settings(ei_signing_key="unit-test-cell-authority-key"))
 
 
 def test_cell_authority_never_outlives_parent_execution_identity(monkeypatch):
