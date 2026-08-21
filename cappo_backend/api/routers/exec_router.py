@@ -11,6 +11,7 @@ bypass is gone.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -70,7 +71,12 @@ class ExecRequest(BaseModel):
     risk_tier: str | None = None
     security: dict[str, Any] | None = None
     execution_mode: str = "live"
-
+    # Consequence-specific fields. They are inert unless CAPPO authorizes a
+    # matching action and the governed-cell dispatcher is enabled.
+    request_id: str | None = None
+    idempotency_key: str | None = None
+    effect: dict[str, Any] | None = None
+    cell_limits: dict[str, Any] | None = None
 
 
 class ExecResponse(BaseModel):
@@ -101,11 +107,28 @@ def _check_payment(db: Session, workspace_id: str, cost_cents: int, settings: Se
         )
     return gate
 
+
 def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, workspace_id: str, app: Any = None) -> RunOrchestrator:
     pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
     signer = create_enterprise_signer_from_settings(settings)
     builder = ExecutionIdentityBuilder(signer=signer)
     executor = build_executor(settings, db=db, workspace_id=workspace_id, app=app)
+
+    # Governed cells are an execution-security boundary, not a second authority.
+    # The wrapper is called only after the normal RunOrchestrator LAW 0 and
+    # runtime-ownership gates. GitHub mutations never fall back around it.
+    governed_cell_enabled = os.environ.get("CAPPO_GOVERNED_CELL_ENABLED", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    if governed_cell_enabled:
+        from cappo_backend.services.governed_cell_executor import GovernedCellDispatchExecutor
+
+        executor = GovernedCellDispatchExecutor(
+            inner=executor,
+            settings=settings,
+            db=db,
+        )
+
     revocation = RevocationService(db, audit)
     # The gateway enforces LAW 0 *inside* the pipeline, before the side effect.
     gateway = MCPGateway(
@@ -134,6 +157,7 @@ def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, wo
         runtime_kind=settings.runtime_kind,
         runtime_instance=settings.runtime_instance,
     )
+
 
 def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Session) -> dict[str, Any]:
     try:
@@ -226,6 +250,7 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
             },
         )
 
+
 def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -> str:
     """Return the configured cAPI verification key or fail closed when needed."""
     public_key = settings.capi_gatekeeper_public_key.strip()
@@ -258,8 +283,8 @@ async def _verify_exec_request_integrity(request: Request, public_key: str) -> N
     """Fail closed before authority if the signed /v1/exec message was altered.
 
     RFC 9421 establishes the authenticity and integrity of the transmitted
-    request.  It deliberately does not produce, replace, or widen a CAPPO
-    authority decision.  ``Request.body()`` is cached by Starlette, so this
+    request. It deliberately does not produce, replace, or widen a CAPPO
+    authority decision. ``Request.body()`` is cached by Starlette, so this
     verification uses the same bytes FastAPI parsed into ``ExecRequest``.
     """
     try:
@@ -326,6 +351,7 @@ async def _seal_terminal_eee(
     orchestrator.record_evidence_seal(run, seal)
     return envelope
 
+
 @router.post("/exec", response_model=ExecResponse)
 async def governed_exec(
     body: ExecRequest,
@@ -347,10 +373,10 @@ async def governed_exec(
     # assertion; the CAPPO pipeline below remains the consequence authority.
     if not test_only_echo:
         await _verify_exec_request_integrity(request, capi_public_key)
-    
+
     # We construct the payload expected by cAPI
     capi_payload = _build_capi_payload(body)
-    
+
     # Run the strict cAPI pipeline (Phases 1-6)
     if test_only_echo:
         capi_result = {"evidence_id": "test-only"}
@@ -415,6 +441,7 @@ async def governed_exec(
             "PROVIDER_POLICY_REJECTED",
             "LOCAL_AUTHORIZER_UNAVAILABLE",
             "PROVIDER_RATE_LIMITED",
+            "GOVERNED_CELL_EXECUTION_DENIED",
         }
         if (
             not test_only_echo
