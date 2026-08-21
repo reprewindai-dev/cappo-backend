@@ -7,9 +7,9 @@ authority; CAPPO's governed execution pipeline retains that responsibility.
 
 Durability boundary
 ───────────────────
-This module creates canonical request/result seals only.  It does not claim to
+This module creates canonical request/result seals only. It does not claim to
 persist them: CAPPO binds a resulting seal to the attested PGL certificate via
-``RunOrchestrator.record_evidence_seal`` inside the governed lifecycle.  That
+``RunOrchestrator.record_evidence_seal`` inside the governed lifecycle. That
 keeps the durable evidence record in the canonical PGL chain rather than in an
 unmigrated side table.
 """
@@ -105,6 +105,49 @@ async def enforce_capi_pipeline(
     }
 
 
+def _governed_compute_summary(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract only durable, non-secret consequence facts for the PGL seal."""
+
+    if result.get("provider") != "lockerphycer-governed-cell":
+        return None
+    cell = result.get("governed_cell")
+    effect = result.get("effect")
+    if not isinstance(cell, dict) or not isinstance(effect, dict):
+        return None
+
+    cell_fields = (
+        "cell_id",
+        "runtime",
+        "authority_digest",
+        "started_at",
+        "completed_at",
+        "network_mode",
+        "credential_mode",
+        "teardown_confirmed",
+    )
+    effect_fields = (
+        "provider",
+        "operation",
+        "repository",
+        "branch",
+        "path",
+        "before_sha",
+        "after_blob_sha",
+        "commit_sha",
+        "effect_digest",
+        "mutation_succeeded",
+        "credential_revoked",
+        "security_status",
+    )
+    return {
+        "profile": "veklom-governed-compute-p0",
+        "cell": {key: cell.get(key) for key in cell_fields},
+        "effect": {key: effect.get(key) for key in effect_fields},
+        "security_status": result.get("security_status"),
+        "credential_revocation_confirmed": result.get("credential_revocation_confirmed"),
+    }
+
+
 async def seal_evidence_pack(
     evidence_id: str,
     result: dict[str, Any],
@@ -113,9 +156,10 @@ async def seal_evidence_pack(
 ) -> dict[str, Any]:
     """Create the post-execution seal that CAPPO will append to PGL.
 
-    The seal carries commitments and metadata only; raw request/result payloads
-    are intentionally excluded.  Persistence happens through the existing PGL
-    certificate ledger, not an invented cAPI evidence table.
+    Raw request/result payloads remain excluded. For a governed-cell consequence,
+    a narrow allowlisted summary of the physical cell and resulting target state
+    is included so the PGL event preserves more than an opaque result hash.
+    Persistence happens through the existing PGL certificate ledger.
     """
     if not evidence_id:
         raise CAPIPipelineError("evidence_id is required")
@@ -130,5 +174,8 @@ async def seal_evidence_pack(
     }
     if request_evidence is not None:
         seal["request_evidence"] = request_evidence
+    governed_summary = _governed_compute_summary(result)
+    if governed_summary is not None:
+        seal["governed_compute"] = governed_summary
     seal["seal_hash"] = sha256_json({k: v for k, v in seal.items() if k != "sealed_at"})
     return seal
