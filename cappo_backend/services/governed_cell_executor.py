@@ -88,10 +88,22 @@ class LockerphycerCellExecutor:
         effect = request.get("effect")
         if not isinstance(effect, dict):
             raise GovernedCellExecutionError("governed GitHub execution requires an exact effect object")
+        envelope = authority.get("envelope") if isinstance(authority, dict) else None
+        if not isinstance(envelope, dict):
+            raise GovernedCellExecutionError("CAPPO cell authority envelope is missing")
 
-        # The untrusted workload receives only the proposed effect as stdin. It
-        # gets no provider credential and no network. The host broker later
-        # revalidates the exact signed effect before any GitHub call.
+        required_isolation = envelope.get("required_isolation")
+        if required_isolation not in {"os-enforced", "microvm"}:
+            raise GovernedCellExecutionError("CAPPO cell authority has invalid required isolation")
+        configured_digest = self.image.rsplit("@", 1)[-1]
+        if envelope.get("runtime_image_digest") != configured_digest:
+            raise GovernedCellExecutionError("configured executor image does not match signed CAPPO authority")
+        if required_isolation == "microvm" and not envelope.get("runtime_kernel_digest"):
+            raise GovernedCellExecutionError("hard-isolated authority is missing its signed kernel measurement")
+
+        # The untrusted workload receives only the proposed effect. It receives no
+        # provider credential and no routable network. The host broker is a later,
+        # separate stage after successful teardown of the hostile workload.
         cell_result = self._post(
             "/v1/cells/run",
             {
@@ -112,6 +124,10 @@ class LockerphycerCellExecutor:
             raise GovernedCellExecutionError("governed cell did not prove network-none mode")
         if cell_result.get("credential_mode") != "brokered_only":
             raise GovernedCellExecutionError("governed cell credential mode is not broker-only")
+        if cell_result.get("isolation_class") != required_isolation:
+            raise GovernedCellExecutionError("governed cell isolation class does not match signed authority")
+        if required_isolation == "microvm" and not cell_result.get("runtime_measurement"):
+            raise GovernedCellExecutionError("microVM execution did not provide a runtime measurement")
 
         try:
             proposed_effect = json.loads(cell_result.get("stdout") or "")
@@ -126,14 +142,18 @@ class LockerphycerCellExecutor:
         )
         if effect_result.get("mutation_succeeded") is not True:
             raise GovernedCellExecutionError("GitHub effect was not confirmed")
+        if effect_result.get("originating_cell_id") != cell_result.get("cell_id"):
+            raise GovernedCellExecutionError("brokered effect is not bound to the completed cell")
+        if effect_result.get("required_isolation") != required_isolation:
+            raise GovernedCellExecutionError("brokered effect isolation evidence does not match authority")
 
-        # If revocation cannot be positively confirmed, preserve the real effect
-        # in the normal CAPPO/PGL result path and mark the security incident. It
-        # would be incorrect to throw away consequence evidence after mutation.
+        # A target can accept a real consequence even when later evidence or
+        # credential-revocation confirmation is incomplete. Never erase that fact;
+        # propagate the incident into PGL instead of turning it into a retryable
+        # execution failure.
         revocation_confirmed = effect_result.get("credential_revoked") is True
-        security_status = effect_result.get("security_status") or (
-            "COMPLETE" if revocation_confirmed else "REVOCATION_NOT_CONFIRMED"
-        )
+        target_result_confirmed = effect_result.get("target_result_confirmed") is True
+        security_status = effect_result.get("security_status") or "UNVERIFIED"
 
         return {
             "response": json.dumps(effect_result, sort_keys=True, separators=(",", ":")),
@@ -143,6 +163,9 @@ class LockerphycerCellExecutor:
             "governed_cell": {
                 "cell_id": cell_result.get("cell_id"),
                 "runtime": cell_result.get("runtime"),
+                "isolation_class": cell_result.get("isolation_class"),
+                "runtime_measurement": cell_result.get("runtime_measurement"),
+                "network_policy_digest": cell_result.get("network_policy_digest"),
                 "authority_digest": cell_result.get("authority_digest"),
                 "started_at": cell_result.get("started_at"),
                 "completed_at": cell_result.get("completed_at"),
@@ -153,13 +176,21 @@ class LockerphycerCellExecutor:
             "effect": effect_result,
             "security_status": security_status,
             "credential_revocation_confirmed": revocation_confirmed,
+            "target_result_confirmed": target_result_confirmed,
         }
 
 
 class GovernedCellDispatchExecutor:
     """Route only cell-qualified consequences to Lockerphycer; never fallback."""
 
-    def __init__(self, *, inner: Executor, settings: Any, db: Any, cell: LockerphycerCellExecutor | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        inner: Executor,
+        settings: Any,
+        db: Any,
+        cell: LockerphycerCellExecutor | None = None,
+    ) -> None:
         self.inner = inner
         self.db = db
         self.authority = CellAuthorityBuilder(settings)
