@@ -1,6 +1,6 @@
 """CAPPO issuance of one-time Lockerphycer governed-cell authority.
 
-CAPPO remains the sole consequence authority.  This module attenuates a governed
+CAPPO remains the sole consequence authority. This module attenuates a governed
 run into an exact, short-lived, audience-bound envelope that Lockerphycer can
 verify independently before spawning a cell or brokering an external effect.
 """
@@ -13,10 +13,12 @@ import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.services.canonical import (
     get_ed25519_private_key,
     sign_payload_ed25519,
@@ -78,7 +80,7 @@ def cell_authority_public_key_b64url(signing_key: str) -> str:
 
 
 class CellAuthorityBuilder:
-    """Attenuate one governed run into one Lockerphycer action authority."""
+    """Attenuate one already-governed CAPPO execution into a cell authority."""
 
     def __init__(self, settings: Any) -> None:
         self.settings = settings
@@ -91,6 +93,43 @@ class CellAuthorityBuilder:
             raise CellAuthorityError("CAPPO_LOCKERPHYCER_CELL_INSTANCE is required when governed cells are enabled")
         if not 1 <= self.ttl_seconds <= 300:
             raise CellAuthorityError("CAPPO_CELL_AUTHORITY_TTL_SECONDS must be between 1 and 300")
+
+    def build_from_execution_request(self, request: dict[str, Any], db: Any) -> dict[str, Any]:
+        """Build from the persisted EI that CAPPO already minted before execution.
+
+        The executor-facing request contains only a small routing envelope. We do
+        not trust caller fields to recreate authority. Instead, resolve the
+        persisted signed ExecutionIdentity by execution_id and use that identity's
+        runtime ownership, subject, scope, expiry, and policy binding.
+        """
+        authority = request.get("authority_envelope")
+        if not isinstance(authority, dict):
+            raise CellAuthorityError("CAPPO executor request is missing its authority envelope")
+        execution_id = authority.get("execution_id")
+        if not isinstance(execution_id, str) or not execution_id:
+            raise CellAuthorityError("CAPPO executor request is missing execution_id")
+
+        record = db.get(ExecutionIdentity, execution_id)
+        if record is None or not isinstance(record.identity_json, dict):
+            raise CellAuthorityError("persisted CAPPO execution identity was not found")
+        identity = record.identity_json
+        if identity.get("execution_id") != execution_id:
+            raise CellAuthorityError("persisted CAPPO execution identity does not match execution_id")
+
+        canonical_workspace = str(getattr(record, "tenant_id", "") or request.get("workspace_id") or "")
+        if not canonical_workspace:
+            raise CellAuthorityError("canonical workspace is missing from persisted CAPPO identity")
+        if request.get("workspace_id") != canonical_workspace:
+            raise CellAuthorityError("executor workspace does not match persisted CAPPO identity")
+
+        run = SimpleNamespace(
+            request_payload=request,
+            execution_identity=identity,
+            run_id=execution_id,
+            workspace_id=canonical_workspace,
+            approved_budget_cents=int(request.get("budget_approved_cents") or 0),
+        )
+        return self.build(run)
 
     def build(self, run: Any) -> dict[str, Any]:
         request = run.request_payload or {}
