@@ -15,10 +15,10 @@ from cappo_backend.models.governed_run import GovernedRun
 
 router = APIRouter(prefix="/api/v1/benchmarks", tags=["API Benchmarks"])
 
-def _percentile(values: list[float], percentile: float) -> float:
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if len(values) < 20:
+        return None
     ordered = sorted(values)
-    if not ordered:
-        return 0.0
     index = min(len(ordered) - 1, round((len(ordered) - 1) * percentile))
     return round(ordered[index], 1)
 
@@ -74,12 +74,15 @@ async def get_leaderboard(db: Session = Depends(get_session)):
             "p50": _percentile(latencies, 0.50),
             "p95": _percentile(latencies, 0.95),
             "p99": _percentile(latencies, 0.99),
-            "uptime24h": round(success_rate, 2),
-            "status": "Measured" if values["failures"] == 0 else "Degraded",
+            "successRatePercent": round(success_rate, 2),
+            "measuredFrom": "governed_runs",
             "sampleCount": total_runs,
         })
 
-    return sorted(leaderboard, key=lambda item: (-item["uptime24h"], item["p50"], item["id"]))
+    return sorted(
+        leaderboard,
+        key=lambda item: (-item["successRatePercent"], item["p50"] or float("inf"), item["id"]),
+    )
 
 
 @router.get("/staking/markets")

@@ -43,12 +43,47 @@ def test_leaderboard_endpoint_uses_recorded_run_data(
             "id": "recorded-provider",
             "name": "recorded-provider",
             "provider": "recorded-provider",
-            "p50": 120.0,
-            "p95": 240.0,
-            "p99": 240.0,
-            "uptime24h": 50.0,
-            "status": "Degraded",
+            "p50": None,
+            "p95": None,
+            "p99": None,
+            "successRatePercent": 50.0,
+            "measuredFrom": "governed_runs",
             "sampleCount": 2,
+        }
+    ]
+
+
+def test_leaderboard_percentiles_require_twenty_samples(
+    client: TestClient, db: Session
+) -> None:
+    db.add_all(
+        [
+            GovernedRun(
+                workspace_id="test-workspace",
+                tenant_id="test-workspace",
+                state="executed",
+                request_payload={},
+                result_payload={"provider": "well-sampled", "latency_ms": 120},
+            )
+            for _ in range(20)
+        ]
+    )
+    db.commit()
+
+    resp = client.get("/api/v1/benchmarks/leaderboard")
+
+    assert resp.status_code == 200
+    assert resp.json() == [
+        {
+            "id": "well-sampled",
+            "name": "well-sampled",
+            "provider": "well-sampled",
+            "p50": 120.0,
+            "p95": 120.0,
+            "p99": 120.0,
+            "successRatePercent": 100.0,
+            "measuredFrom": "governed_runs",
+            "sampleCount": 20,
         }
     ]
 

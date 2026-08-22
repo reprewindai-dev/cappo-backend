@@ -1,4 +1,4 @@
-"""add the VNP performance leaderboard table
+"""bring the VNP schema under migration control
 
 Revision ID: b7d1e4f6a902
 Revises: 9978153219c2
@@ -6,8 +6,22 @@ Revises: 9978153219c2
 
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
+
+from cappo_backend.models.vnp_models import (
+    APIState,
+    ComplianceAuditLog,
+    PerformanceLeaderboard,
+    ProbeEvent,
+    RegionalTelemetry,
+    RouteSnapshot,
+    VNPIncident,
+    VNPProvider,
+    VNPSDKCredential,
+    VNPTransaction,
+    VNPUser,
+    VNPValidator,
+)
 
 revision: str = "b7d1e4f6a902"
 down_revision: Union[str, None] = "9978153219c2"
@@ -15,36 +29,28 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+_VNP_TABLES = (
+    VNPUser.__table__,
+    VNPProvider.__table__,
+    APIState.__table__,
+    ProbeEvent.__table__,
+    RouteSnapshot.__table__,
+    VNPSDKCredential.__table__,
+    VNPValidator.__table__,
+    VNPIncident.__table__,
+    RegionalTelemetry.__table__,
+    VNPTransaction.__table__,
+    PerformanceLeaderboard.__table__,
+    ComplianceAuditLog.__table__,
+)
+
+
 def upgrade() -> None:
-    op.create_table(
-        "vnp_performance_leaderboard",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("api_id", sa.Uuid(), nullable=False),
-        sa.Column("monthly_composite_score", sa.Numeric(5, 2), nullable=False),
-        sa.Column("rank_index", sa.Integer(), nullable=False),
-        sa.Column("telemetry_samples_count", sa.Integer(), nullable=False),
-        sa.Column("best_performing_region", sa.String(length=50), nullable=True),
-        sa.Column("is_active_champion", sa.Boolean(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["api_id"],
-            ["vnp_api_state.id"],
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("api_id"),
-    )
-    op.create_index(
-        "idx_leaderboard_score_rank",
-        "vnp_performance_leaderboard",
-        ["monthly_composite_score", "rank_index"],
-        unique=False,
-    )
+    bind = op.get_bind()
+    for table in _VNP_TABLES:
+        table.create(bind=bind, checkfirst=True)
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "idx_leaderboard_score_rank",
-        table_name="vnp_performance_leaderboard",
-    )
-    op.drop_table("vnp_performance_leaderboard")
+    for table in reversed(_VNP_TABLES):
+        table.drop(bind=op.get_bind(), checkfirst=True)
