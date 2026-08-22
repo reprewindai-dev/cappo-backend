@@ -189,7 +189,11 @@ def build_terminal_eee(
     hashes = _mapping(getattr(run, "hashes", None))
     identity = _mapping(getattr(run, "execution_identity", None))
     now = _timestamp_value(getattr(run, "updated_at", None) or datetime.now(UTC))
-    started = _timestamp_value(getattr(run, "created_at", None) or datetime.now(UTC))
+    started = _timestamp_value(
+        getattr(run, "execution_started_at", None)
+        or getattr(run, "created_at", None)
+        or datetime.now(UTC)
+    )
     directive = str(getattr(run, "governance_decision", "") or "").upper()
     denied = directive in {"DENY", "DENIED"}
     execution_id = str(getattr(run, "run_id"))

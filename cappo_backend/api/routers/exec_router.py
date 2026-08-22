@@ -31,7 +31,7 @@ from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
 from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
-from cappo_backend.models.vnp_models import APIState, ProbeEvent, RegionalTelemetry
+from cappo_backend.models.vnp_models import APIState, ProbeEvent
 from cappo_backend.security.http_signatures import (
     SignatureVerificationError,
     verify_rfc9421_request,
@@ -39,7 +39,7 @@ from cappo_backend.security.http_signatures import (
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
-from cappo_backend.services.capability_beacon import active_signing_seed
+from cappo_backend.services.capability_beacon import active_signing_seed, verification_keys
 from cappo_backend.services.eee import (
     EEEBuilder,
     EEEVerifier,
@@ -142,6 +142,39 @@ class ExecutionMeasurementResponse(BaseModel):
     resulting_state: dict[str, Any]
     observations: list[dict[str, Any]]
     aggregates: list[dict[str, Any]]
+
+
+def _execution_probe_aggregates(probes: list[ProbeEvent]) -> list[dict[str, Any]]:
+    """Derive immutable aggregates solely from the execution-bound probes."""
+    by_region: dict[str, list[ProbeEvent]] = {}
+    for probe in probes:
+        by_region.setdefault(probe.region, []).append(probe)
+
+    def percentile(values: list[int], fraction: float) -> int:
+        ordered = sorted(values)
+        index = min(len(ordered) - 1, max(0, int((len(ordered) - 1) * fraction + 0.5)))
+        return ordered[index]
+
+    aggregates = []
+    for region, region_probes in sorted(by_region.items()):
+        latencies = [probe.latency_ms for probe in region_probes]
+        successes = sum(1 for probe in region_probes if 200 <= probe.status_code < 300)
+        throughputs = [
+            int(((probe.payload_json or {}).get("_signed_observation") or {}).get("throughput_rps", 0))
+            for probe in region_probes
+        ]
+        success_percent = successes * 100.0 / len(region_probes)
+        aggregates.append({
+            "region": region,
+            "p50_latency_ms": percentile(latencies, 0.50),
+            "p95_latency_ms": percentile(latencies, 0.95),
+            "p99_latency_ms": percentile(latencies, 0.99),
+            "error_rate_percent": 100.0 - success_percent,
+            "uptime_percent": success_percent,
+            "throughput_rps": max(throughputs),
+            "measured_at": max(probe.created_at for probe in region_probes).isoformat(),
+        })
+    return aggregates
 
 
 # ---------- route ----------
@@ -473,8 +506,7 @@ def get_execution_evidence(
             detail={"error": "EVIDENCE_NOT_FOUND", "execution_id": execution_id},
         )
 
-    builder = _eee_builder(settings)
-    report = EEEVerifier({settings.capability_beacon_kid: builder.public_key_bytes}).verify(envelope)
+    report = EEEVerifier(verification_keys(settings)).verify(envelope)
     if envelope.get("execution_id") != execution_id:
         raise HTTPException(
             status_code=409,
@@ -559,12 +591,7 @@ def get_execution_measurements(
             },
         )
     probes = execution_probes
-    telemetry = db.execute(
-        select(RegionalTelemetry)
-        .where(RegionalTelemetry.api_id == api.id)
-        .order_by(RegionalTelemetry.measured_at.desc())
-    ).scalars().all()
-    if not probes or not telemetry:
+    if not probes:
         raise HTTPException(
             status_code=404,
             detail={"error": "MEASUREMENT_NOT_FOUND", "execution_id": execution_id},
@@ -589,19 +616,7 @@ def get_execution_measurements(
             }
             for probe in probes
         ],
-        aggregates=[
-            {
-                "region": row.region,
-                "p50_latency_ms": row.p50_latency_ms,
-                "p95_latency_ms": row.p95_latency_ms,
-                "p99_latency_ms": row.p99_latency_ms,
-                "error_rate_percent": float(row.error_rate_percent),
-                "uptime_percent": float(row.uptime_percent),
-                "throughput_rps": row.throughput_rps,
-                "measured_at": row.measured_at.isoformat(),
-            }
-            for row in telemetry
-        ],
+        aggregates=_execution_probe_aggregates(probes),
     )
 
 
@@ -801,6 +816,7 @@ async def governed_exec(
                 **lease_result,
                 "action": body.action,
                 "execution_id": mount_record.token.execution_id,
+                "expires_at": mount_record.token.expires_at.isoformat(),
             }
         result = _execute_run(orchestrator, payload, db)
         if result and "tokens" in result and isinstance(result["tokens"], int):

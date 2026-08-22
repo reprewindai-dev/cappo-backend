@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -19,7 +20,7 @@ from cappo_backend.core.capi_pipeline import seal_evidence_pack
 from cappo_backend.db.base import Base
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
-from cappo_backend.models.vnp_models import APIState
+from cappo_backend.models.vnp_models import APIState, RegionalTelemetry
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eee import (
@@ -29,7 +30,7 @@ from cappo_backend.services.eee import (
     build_terminal_eee,
 )
 from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBuilder
-from cappo_backend.services.executor import ExecutorUnavailableError
+from cappo_backend.services.executor import CapabilityLeaseExpiredError, ExecutorUnavailableError
 from cappo_backend.services.orchestrator import GovernanceDeniedError, RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
 from cappo_backend.services.vnp_telemetry_service import (
@@ -148,6 +149,7 @@ def test_terminal_eee_binds_an_allowed_run_to_its_semantic_execution_id(db: Sess
     assert verification.verdict is VerificationVerdict.VALID_WITH_UNRESOLVED_REFS
     assert envelope["execution_id"] == orchestrator.last_run.run_id
     assert envelope["status"] == "completed"
+    assert envelope["started_at"] >= envelope["authority_window"]["not_before"]
     assert envelope["authority_chain"] == [{
         "type": "execution-identity",
         "artifact_hash": orchestrator.last_run.execution_identity["authority_bundle_hash"],
@@ -323,6 +325,47 @@ def test_eee_builder_signs_with_the_advertised_rotating_beacon_key(settings: Set
     assert builder.public_key_bytes == expected.public_key_bytes
 
 
+def test_execution_evidence_accepts_an_envelope_signed_before_key_rotation(
+    client, db: Session, settings: Settings
+) -> None:
+    orchestrator = _orchestrator(db)
+    result = orchestrator.run_governed({"prompt": "allowed", "directive": "ALLOW", "workspace_id": "test-workspace"})
+    assert orchestrator.last_run is not None
+    old_builder = EEEBuilder(signing_key="old-seed", issuer=settings.capability_beacon_issuer, kid="old")
+    asyncio.run(_seal_terminal_eee(orchestrator=orchestrator, run=orchestrator.last_run, result=result, capi_evidence={"evidence_id": "sha256:request"}, builder=old_builder))
+    db.commit()
+    settings.capability_beacon_kid = "current"
+    settings.capability_beacon_keys_json = '{"old":"old-seed","current":"current-seed"}'
+
+    response = client.get(f"/v1/executions/{orchestrator.last_run.run_id}/evidence")
+
+    assert response.status_code == 200
+    assert response.json()["proof_state"] == "verified_with_unresolved_refs"
+
+
+def test_expired_capability_lease_is_rechecked_before_executor_side_effect(db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    calls = []
+
+    class _RecordingExecutor:
+        def execute(self, request: dict) -> dict:
+            calls.append(request)
+            return {"response": "should not execute"}
+
+    orchestrator._executor = _RecordingExecutor()  # noqa: SLF001 - lifecycle fixture
+    with pytest.raises(CapabilityLeaseExpiredError):
+        orchestrator.run_governed({
+            "prompt": "allowed",
+            "directive": "ALLOW",
+            "capability_authority": {
+                "decision": "allow",
+                "expires_at": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+            },
+        })
+
+    assert calls == []
+
+
 def test_execution_evidence_fails_closed_when_missing(client) -> None:
     response = client.get("/v1/executions/missing-execution/evidence")
 
@@ -406,7 +449,7 @@ def test_execution_measurement_returns_only_signed_vnp_observations(client, db: 
     }
     signature = hmac.new(
         b"worker-secret",
-        canonical_probe_observation(payload=payload, worker_id="worker-1", region="us-east", latency_ms=17, status_code=200, throughput_rps=9).encode(),
+        canonical_probe_observation(api_did=api.api_did, payload=payload, worker_id="worker-1", region="us-east", latency_ms=17, status_code=200, throughput_rps=9).encode(),
         hashlib.sha256,
     ).hexdigest()
     VNPTelemetryService(db, worker_secret="worker-secret").ingest_probe(
@@ -435,6 +478,16 @@ def test_execution_measurement_returns_only_signed_vnp_observations(client, db: 
     assert body["observations"][0]["latency_ms"] == 17
     assert body["observations"][0]["signature"] == signature
     assert body["aggregates"][0]["region"] == "us-east"
+    assert body["aggregates"][0]["throughput_rps"] == 9
+
+    mutable_rollup = db.query(RegionalTelemetry).filter_by(api_id=api.id, region="us-east").one()
+    mutable_rollup.p50_latency_ms = 9999
+    mutable_rollup.throughput_rps = 9999
+    db.commit()
+
+    repeated = client.get(f"/v1/executions/{orchestrator.last_run.run_id}/measurements")
+    assert repeated.status_code == 200
+    assert repeated.json()["aggregates"] == body["aggregates"]
 
 
 def test_execution_measurement_does_not_invent_absent_vnp_proof(client, db: Session) -> None:
@@ -472,7 +525,7 @@ def test_execution_measurement_rejects_a_probe_for_a_different_result_state(
         "result_state_hash": "sha256:stale-result",
     }
     signature = hmac.new(
-        b"worker-secret", canonical_probe_observation(payload=payload, worker_id="worker-1", region="us-east", latency_ms=17, status_code=200, throughput_rps=0).encode(), hashlib.sha256
+        b"worker-secret", canonical_probe_observation(api_did=api.api_did, payload=payload, worker_id="worker-1", region="us-east", latency_ms=17, status_code=200, throughput_rps=0).encode(), hashlib.sha256
     ).hexdigest()
     VNPTelemetryService(db, worker_secret="worker-secret").ingest_probe(
         api_did=api.api_did,

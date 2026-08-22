@@ -14,7 +14,7 @@ A failed mint blocks further execution (``InvalidTransitionError`` or
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -28,7 +28,7 @@ from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eat_builder import EATBuilder
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
-from cappo_backend.services.executor import Executor
+from cappo_backend.services.executor import CapabilityLeaseExpiredError, Executor
 from cappo_backend.services.pgl_client import PGLClient, PostCertificateParams, PreCertificateParams
 from cappo_backend.services.run_state import RunState, assert_transition
 
@@ -384,6 +384,15 @@ class RunOrchestrator:
         """
         self._enforce_law0(run)
         self._enforce_runtime_ownership(run)
+        authority = (run.request_payload or {}).get("capability_authority") or {}
+        expires_at = authority.get("expires_at") if isinstance(authority, dict) else None
+        if isinstance(expires_at, str):
+            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=UTC)
+            if datetime.now(UTC) >= expiry:
+                raise CapabilityLeaseExpiredError("Capability lease expired before execution")
+        run.execution_started_at = datetime.now(UTC)
         self._transition(run, RunState.EXECUTING)
         result = self._executor.execute(
             _execution_request(run.request_payload or {}, run.execution_identity or {})

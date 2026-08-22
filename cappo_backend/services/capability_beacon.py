@@ -63,6 +63,15 @@ def published_keys(settings: Settings | None = None) -> list[dict[str, str]]:
     ]
 
 
+def verification_keys(settings: Settings | None = None) -> dict[str, bytes]:
+    """Return every configured beacon public key, including rotated keys."""
+    settings = settings or get_settings()
+    return {
+        kid: base64.urlsafe_b64decode(_public_key(seed) + "===")
+        for kid, seed in _key_seeds(settings).items()
+    }
+
+
 def _parse_expiry(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:

@@ -31,11 +31,12 @@ logger = logging.getLogger(__name__)
 
 
 def canonical_probe_observation(
-    *, payload: dict[str, Any], worker_id: str, region: str,
+    *, api_did: str, payload: dict[str, Any], worker_id: str, region: str,
     latency_ms: int, status_code: int, throughput_rps: int,
 ) -> str:
     return json.dumps(
         {
+            "api_did": api_did,
             "payload": payload,
             "worker_id": worker_id,
             "region": region,
@@ -90,7 +91,7 @@ class VNPTelemetryService:
         # manufacture its own probe evidence; every stored measurement needs a
         # signature supplied by the independently operated probe worker.
         payload_str = canonical_probe_observation(
-            payload=payload_json or {}, worker_id=worker_id, region=region,
+            api_did=api_did, payload=payload_json or {}, worker_id=worker_id, region=region,
             latency_ms=latency_ms, status_code=status_code, throughput_rps=throughput_rps,
         )
         if signature is None:
@@ -113,7 +114,10 @@ class VNPTelemetryService:
             latency_ms=latency_ms,
             status_code=status_code,
             signature=signature,
-            payload_json=payload_json or {}
+            payload_json={
+                **(payload_json or {}),
+                "_signed_observation": {"throughput_rps": throughput_rps},
+            },
         )
         self._db.add(probe_event)
 

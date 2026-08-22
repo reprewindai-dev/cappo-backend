@@ -56,7 +56,7 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
 
     # Build probe payload and sign it as a probe worker would
     payload_json = {"sample": "data"}
-    payload_str = canonical_probe_observation(payload=payload_json, worker_id="worker-001", region="eu-west", latency_ms=150, status_code=200, throughput_rps=0)
+    payload_str = canonical_probe_observation(api_did=api.api_did, payload=payload_json, worker_id="worker-001", region="eu-west", latency_ms=150, status_code=200, throughput_rps=0)
     probe_signature = hmac.new(
         b"test-secret", payload_str.encode(), hashlib.sha256
     ).hexdigest()
@@ -82,6 +82,31 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
     # Verify aggregates
     telemetry = db.query(RegionalTelemetry).filter_by(api_id=api.id, region="eu-west").first()
     assert telemetry.p50_latency_ms == 150
+
+
+def test_vnp_probe_signature_is_bound_to_api_did(client: TestClient, db: Session, monkeypatch):
+    monkeypatch.setenv("VNP_WORKER_SECRET", "test-secret")
+    provider = VNPProvider(name="Telemetry Cloud", did="did:vnp:provider:telemetry")
+    source = APIState(provider=provider, api_did="did:vnp:api:source", name="Source", endpoint="https://source.test", version="v1")
+    target = APIState(provider=provider, api_did="did:vnp:api:target", name="Target", endpoint="https://target.test", version="v1")
+    db.add_all([provider, source, target])
+    db.flush()
+
+    import hashlib
+    import hmac
+
+    import pytest
+
+    from cappo_backend.services.vnp_telemetry_service import (
+        VNPTelemetryService,
+        canonical_probe_observation,
+    )
+
+    canonical = canonical_probe_observation(api_did=source.api_did, payload={}, worker_id="worker-1", region="us-east", latency_ms=10, status_code=200, throughput_rps=1)
+    signature = hmac.new(b"test-secret", canonical.encode(), hashlib.sha256).hexdigest()
+
+    with pytest.raises(ValueError, match="Invalid probe signature"):
+        VNPTelemetryService(db).ingest_probe(api_did=target.api_did, region="us-east", latency_ms=10, status_code=200, signature=signature, throughput_rps=1)
 
 
 def test_vnp_incidents(client: TestClient, db: Session):

@@ -50,6 +50,11 @@ class TerminalExecutionError(RuntimeError):
     error_code: str = "EXECUTION_AUTHORITY_DENIED"
 
 
+class CapabilityLeaseExpiredError(TerminalExecutionError):
+    """Raised when a lease expires after admission but before the side effect."""
+    error_code: str = "CAPABILITY_LEASE_EXPIRED"
+
+
 class AuthorityContextMissingError(TerminalExecutionError):
     """Raised when allowed_provider_set is None / missing context."""
     error_code: str = "AUTHORITY_CONTEXT_MISSING"
