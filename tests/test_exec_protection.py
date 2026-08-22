@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -45,6 +46,16 @@ class TestGovernedExecPath:
         assert body["response"] == "echo: hello"
         assert body["run_id"] is not None
         assert body["execution_id"] is not None
+        assert body["links"] == {
+            "evidence": {
+                "href": f"/v1/executions/{body['execution_id']}/evidence",
+                "method": "GET",
+            },
+            "measurements": {
+                "href": f"/v1/executions/{body['execution_id']}/measurements",
+                "method": "GET",
+            },
+        }
 
     def test_missing_governance_directive_fails_closed(
         self, client: TestClient, db: Session
@@ -53,6 +64,39 @@ class TestGovernedExecPath:
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "CAPPO_GOVERNANCE_DECISION_REQUIRED"
         assert resp.json()["detail"]["fail_closed"] is True
+
+    def test_stale_target_observation_is_rejected_before_execution(
+        self, client: TestClient, settings: Settings
+    ) -> None:
+        observer = Ed25519PrivateKey.generate()
+        settings.vnp_federation_public_key = observer.public_key().public_bytes_raw().hex()
+        observation = {
+            "target_id": "repo:owner/project@main",
+            "observed_state_hash": "sha256:current",
+            "observed_at": datetime.now(UTC).isoformat(timespec="milliseconds").replace(
+                "+00:00", "Z"
+            ),
+        }
+        signature = observer.sign(
+            json.dumps(observation, sort_keys=True, separators=(",", ":")).encode()
+        ).hex()
+
+        response = client.post(
+            "/v1/exec",
+            json={
+                "prompt": "update repository",
+                "pgl_id": "test-user-id",
+                "directive": "ALLOW",
+                "target_precondition": {
+                    **observation,
+                    "expected_state_hash": "sha256:expected-old",
+                    "signature": signature,
+                },
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["error"] == "STALE_TARGET"
 
     def test_governance_deny_fails_closed(self, client: TestClient, db: Session) -> None:
         resp = client.post(

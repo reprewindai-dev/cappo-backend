@@ -3,20 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
+import json
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import cappo_backend.api.routers.exec_router as exec_router_module
 import cappo_backend.models  # noqa: F401
-from cappo_backend.api.routers.exec_router import _seal_terminal_eee
+from cappo_backend.api.routers.exec_router import _eee_builder, _seal_terminal_eee
 from cappo_backend.config import Settings
 from cappo_backend.core.capi_pipeline import seal_evidence_pack
 from cappo_backend.db.base import Base
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
+from cappo_backend.models.vnp_models import APIState
 from cappo_backend.services.audit_service import AuditService
+from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eee import (
     EEEBuilder,
     EEEVerifier,
@@ -27,6 +33,7 @@ from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBu
 from cappo_backend.services.executor import ExecutorUnavailableError
 from cappo_backend.services.orchestrator import GovernanceDeniedError, RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
+from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
 
 class _Executor:
@@ -263,3 +270,205 @@ def test_terminal_eee_is_embedded_in_the_existing_pgl_evidence_seal(db: Session)
     assert persisted is not None
     assert persisted.payload["evidence_seal"]["eee"] == envelope
     assert persisted.payload["evidence_seal"]["evidence_id"] == envelope["envelope_hash"]
+
+
+def test_execution_evidence_is_retrievable_from_its_canonical_link(
+    client, db: Session, settings: Settings
+) -> None:
+    orchestrator = _orchestrator(db)
+    result = orchestrator.run_governed(
+        {
+            "prompt": "allowed",
+            "directive": "ALLOW",
+            "workspace_id": "test-workspace",
+        }
+    )
+    assert orchestrator.last_run is not None
+    builder = _eee_builder(settings)
+    envelope = asyncio.run(
+        _seal_terminal_eee(
+            orchestrator=orchestrator,
+            run=orchestrator.last_run,
+            result=result,
+            capi_evidence={"evidence_id": "sha256:request", "data_hash": "sha256:input"},
+            builder=builder,
+        )
+    )
+    db.commit()
+
+    response = client.get(f"/v1/executions/{orchestrator.last_run.run_id}/evidence")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["execution_id"] == orchestrator.last_run.run_id
+    assert body["proof_state"] == "verified_with_unresolved_refs"
+    assert body["eee"] == envelope
+    assert body["pgl"]["event_id"] == orchestrator.last_run.pgl_identity["capi_evidence_event_id"]
+    assert body["pgl"]["persisted"] is True
+
+
+def test_execution_evidence_fails_closed_when_missing(client) -> None:
+    response = client.get("/v1/executions/missing-execution/evidence")
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "EVIDENCE_NOT_FOUND"
+
+
+def test_execution_evidence_retrieves_the_exact_remote_gnomledger_event(
+    client, db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    orchestrator = _orchestrator(db)
+    result = orchestrator.run_governed(
+        {"prompt": "allowed", "directive": "ALLOW", "workspace_id": "test-workspace"}
+    )
+    assert orchestrator.last_run is not None
+    builder = _eee_builder(settings)
+    envelope = asyncio.run(
+        _seal_terminal_eee(
+            orchestrator=orchestrator,
+            run=orchestrator.last_run,
+            result=result,
+            capi_evidence={"evidence_id": "sha256:request", "data_hash": "sha256:input"},
+            builder=builder,
+        )
+    )
+    event_id = orchestrator.last_run.pgl_identity["capi_evidence_event_id"]
+    local_event = db.get(PGLLedgerEvent, event_id)
+    assert local_event is not None
+    db.delete(local_event)
+    db.commit()
+    settings.gnomledger_url = "https://gnomledger.example"
+
+    class _RemoteClient:
+        def __init__(self, _settings: Settings) -> None:
+            pass
+
+        def get_ledger_event(self, requested_event_id: str) -> dict:
+            assert requested_event_id == event_id
+            return {
+                "event_id": event_id,
+                "event_type": "custom",
+                "details": {
+                    "semantic_event_type": "capi_evidence_sealed",
+                    "certificate_id": "post-event-1",
+                    "evidence_seal": {"eee": envelope},
+                },
+                "prev_event_hash": "previous-hash",
+                "event_hash": "event-hash",
+                "persisted": True,
+                "created_at": "2026-08-22T00:00:00Z",
+            }
+
+    monkeypatch.setattr(exec_router_module, "GnomledgerPGLClient", _RemoteClient)
+
+    response = client.get(f"/v1/executions/{orchestrator.last_run.run_id}/evidence")
+
+    assert response.status_code == 200
+    assert response.json()["eee"] == envelope
+    assert response.json()["pgl"]["event_hash"] == "event-hash"
+
+
+def test_execution_measurement_returns_only_signed_vnp_observations(client, db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    orchestrator.run_governed(
+        {"prompt": "allowed", "directive": "ALLOW", "workspace_id": "test-workspace"}
+    )
+    assert orchestrator.last_run is not None
+    api = APIState(
+        api_did="did:vnp:api:test-provider",
+        name="test-provider",
+        endpoint="https://provider.example/v1",
+        version="v1",
+    )
+    db.add(api)
+    db.flush()
+    payload = {
+        "observer": "vnp-worker",
+        "sequence": 1,
+        "execution_id": orchestrator.last_run.run_id,
+        "result_state_hash": sha256_json(orchestrator.last_run.result_payload),
+    }
+    signature = hmac.new(
+        b"worker-secret",
+        json.dumps(payload, sort_keys=True).encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    VNPTelemetryService(db, worker_secret="worker-secret").ingest_probe(
+        api_did=api.api_did,
+        region="us-east",
+        latency_ms=17,
+        status_code=200,
+        worker_id="worker-1",
+        signature=signature,
+        payload_json=payload,
+        throughput_rps=9,
+    )
+    db.commit()
+
+    response = client.get(f"/v1/executions/{orchestrator.last_run.run_id}/measurements")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["execution_id"] == orchestrator.last_run.run_id
+    assert body["proof_state"] == "verified"
+    assert body["vnp_api_did"] == api.api_did
+    assert body["resulting_state"] == {
+        "hash": payload["result_state_hash"],
+        "independently_observed": True,
+    }
+    assert body["observations"][0]["latency_ms"] == 17
+    assert body["observations"][0]["signature"] == signature
+    assert body["aggregates"][0]["region"] == "us-east"
+
+
+def test_execution_measurement_does_not_invent_absent_vnp_proof(client, db: Session) -> None:
+    orchestrator = _orchestrator(db)
+    orchestrator.run_governed(
+        {"prompt": "allowed", "directive": "ALLOW", "workspace_id": "test-workspace"}
+    )
+    assert orchestrator.last_run is not None
+    db.commit()
+
+    response = client.get(f"/v1/executions/{orchestrator.last_run.run_id}/measurements")
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "MEASUREMENT_NOT_FOUND"
+
+
+def test_execution_measurement_rejects_a_probe_for_a_different_result_state(
+    client, db: Session
+) -> None:
+    orchestrator = _orchestrator(db)
+    orchestrator.run_governed(
+        {"prompt": "allowed", "directive": "ALLOW", "workspace_id": "test-workspace"}
+    )
+    assert orchestrator.last_run is not None
+    api = APIState(
+        api_did="did:vnp:api:test-provider",
+        name="test-provider",
+        endpoint="https://provider.example/v1",
+        version="v1",
+    )
+    db.add(api)
+    db.flush()
+    payload = {
+        "execution_id": orchestrator.last_run.run_id,
+        "result_state_hash": "sha256:stale-result",
+    }
+    signature = hmac.new(
+        b"worker-secret", json.dumps(payload, sort_keys=True).encode(), hashlib.sha256
+    ).hexdigest()
+    VNPTelemetryService(db, worker_secret="worker-secret").ingest_probe(
+        api_did=api.api_did,
+        region="us-east",
+        latency_ms=17,
+        status_code=200,
+        signature=signature,
+        payload_json=payload,
+    )
+    db.commit()
+
+    response = client.get(f"/v1/executions/{orchestrator.last_run.run_id}/measurements")
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["error"] == "STALE_RESULT_OBSERVATION"

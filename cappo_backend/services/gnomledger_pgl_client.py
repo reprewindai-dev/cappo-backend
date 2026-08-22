@@ -131,3 +131,18 @@ class GnomledgerPGLClient:
         except httpx.HTTPError as e:
             logger.error("HTTP error recording execution attestation to Gnomledger for %s: %s", agent_id, e)
             raise
+
+    def get_ledger_event(self, event_id: str) -> dict[str, Any]:
+        """Retrieve one exact authenticated Gnomledger event by its durable ID."""
+        url = f"{self.base_url}/api/v1/ledger/events/{event_id}"
+        try:
+            with httpx.Client() as client:
+                response = client.get(url, headers=self._get_headers(), timeout=10.0)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPError as e:
+            logger.error("HTTP error fetching ledger event %s from Gnomledger: %s", event_id, e)
+            raise
+        if not isinstance(data, dict) or data.get("event_id") != event_id:
+            raise RuntimeError("Gnomledger returned an invalid ledger event response")
+        return data

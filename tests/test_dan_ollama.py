@@ -1,7 +1,7 @@
 import pytest
 pytestmark = pytest.mark.skip(reason="dan_router is not wired to the production app in P0")
 
-
+pytest.importorskip("biscuit_auth", reason="DAN prototype dependency is intentionally not production-installed")
 from cappo_backend.api.routers.dan_router import ROOT_KEYPAIR
 
 @pytest.mark.anyio

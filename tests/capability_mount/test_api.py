@@ -142,6 +142,93 @@ def test_mount_lifecycle_and_ttl_cap(client: TestClient) -> None:
     ]
 
 
+def test_capability_lease_is_consumed_by_governed_execution_and_replay_is_denied(
+    client: TestClient,
+) -> None:
+    prepare(client)
+    mounted = client.post("/v1/capability/mounts", json=mount_payload())
+    assert mounted.status_code == 200
+    lease = mounted.json()
+    mount_id = lease["mount"]["id"]
+    authority = {
+        "mount_id": mount_id,
+        "token_id": lease["token"]["token_id"],
+        "nonce": lease["token"]["nonce"],
+    }
+    execution = {
+        "prompt": "read the approved contact",
+        "pgl_id": "test-user-id",
+        "directive": "ALLOW",
+        "action": "contact.read",
+        "scope": {"tools": ["contact.read"], "allowed_effects": ["contact.read"]},
+        "capability_lease": authority,
+    }
+
+    allowed = client.post("/v1/exec", json=execution)
+
+    assert allowed.status_code == 200
+    assert allowed.json()["execution_id"]
+    assert allowed.json()["capability_lease"]["mount_id"] == mount_id
+    assert allowed.json()["capability_lease"]["decision"] == "allow"
+
+    replay = client.post("/v1/exec", json=execution)
+
+    assert replay.status_code == 403
+    assert replay.json()["detail"]["error"] == "CAPABILITY_LEASE_DENIED"
+    assert replay.json()["detail"]["reason"] == "token_replay"
+
+
+def test_governed_execution_denies_egress_outside_the_capability_lease(
+    client: TestClient,
+) -> None:
+    prepare(client)
+    lease = client.post("/v1/capability/mounts", json=mount_payload()).json()
+    response = client.post(
+        "/v1/exec",
+        json={
+            "prompt": "send data to an unapproved destination",
+            "pgl_id": "test-user-id",
+            "directive": "ALLOW",
+            "action": "network.egress:unapproved.example:443",
+            "scope": {"tools": ["network.egress:unapproved.example:443"]},
+            "capability_lease": {
+                "mount_id": lease["mount"]["id"],
+                "token_id": lease["token"]["token_id"],
+                "nonce": lease["token"]["nonce"],
+            },
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["error"] == "CAPABILITY_LEASE_DENIED"
+    assert response.json()["detail"]["reason"] == "not_in_capability_profile"
+
+
+def test_write_capability_requires_an_observed_target_precondition(client: TestClient) -> None:
+    prepare(client)
+    payload = mount_payload()
+    payload["requested_action_scope"]["blocked"] = []
+    lease = client.post("/v1/capability/mounts", json=payload).json()
+    response = client.post(
+        "/v1/exec",
+        json={
+            "prompt": "write a draft",
+            "pgl_id": "test-user-id",
+            "directive": "ALLOW",
+            "action": "draft.write",
+            "scope": {"tools": ["draft.write"], "allowed_effects": ["draft.write"]},
+            "capability_lease": {
+                "mount_id": lease["mount"]["id"],
+                "token_id": lease["token"]["token_id"],
+                "nonce": lease["token"]["nonce"],
+            },
+        },
+    )
+
+    assert response.status_code == 428
+    assert response.json()["detail"]["error"] == "TARGET_PRECONDITION_REQUIRED"
+
+
 def test_raw_approval_and_suppression_assertions_fail_closed(client: TestClient) -> None:
     prepare(client)
     response = client.post("/v1/capability/mounts", json=mount_payload())

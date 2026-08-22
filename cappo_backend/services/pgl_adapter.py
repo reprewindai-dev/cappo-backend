@@ -352,12 +352,22 @@ class GnomledgerPGLAdapter:
                 event_type="pre_execution_authorization",
                 summary=f"Execution authorization for run {params.run_id}",
                 details={
+                    "schema_version": "pgl.pre_execution_authorization.v1",
                     "run_id": params.run_id,
+                    "workspace_id": params.workspace_id,
+                    "agent_id": agent.agent_id,
                     "genome_hash": params.genome_hash,
+                    "constitution_hash": params.constitution_hash,
+                    "plan_hash": params.plan_hash,
                     "input_hash": params.input_hash,
                     "decision_frame_hash": params.decision_frame_hash,
+                    "governance_decision": params.governance_decision,
+                    "risk_tier": params.risk_tier,
                     "approved_budget_cents": params.approved_budget_cents,
                     "reserve_cents": params.reserve_cents,
+                    "actor_id": params.actor_id,
+                    "provenance": params.provenance or {},
+                    "standards_compliance": [],
                 }
             )
             
@@ -380,10 +390,16 @@ class GnomledgerPGLAdapter:
                 event_type="post_execution_attestation",
                 summary=f"Execution attestation for run {params.run_id}",
                 details={
+                    "schema_version": "pgl.post_execution_attestation.v1",
                     "run_id": params.run_id,
-                    "execution_id": params.pre_certificate_id,
+                    "agent_id": params.agent_id or params.run_id,
+                    "pre_authorization_event_id": params.pre_certificate_id,
                     "outcome_hash": params.outcome_hash,
                     "output_hash": params.output_hash,
+                    "governance_decision": params.governance_decision,
+                    "actor_id": params.actor_id,
+                    "provenance": params.provenance or {},
+                    "standards_compliance": [],
                 }
             )
         except Exception as e:
@@ -418,9 +434,13 @@ class GnomledgerPGLAdapter:
             raise ValueError("agent_id is required to seal evidence in Gnomledger")
         event_id = self._gnomledger.record_execution_attestation(
             agent_id=agent_id,
-            event_type=event_type,
+            event_type="custom",
             summary=f"CAPPO evidence seal for certificate {certificate_id}",
-            details={"certificate_id": certificate_id, "evidence_seal": evidence},
+            details={
+                "semantic_event_type": event_type,
+                "certificate_id": certificate_id,
+                "evidence_seal": evidence,
+            },
         )
         if not event_id:
             raise RuntimeError("Gnomledger did not acknowledge the evidence event")

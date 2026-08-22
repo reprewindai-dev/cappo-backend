@@ -11,31 +11,49 @@ bypass is gone.
 
 from __future__ import annotations
 
+import json
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cappo_backend.api.routers.capability_mount_router import get_registry
+from cappo_backend.capability_mount.models import Decision
+from cappo_backend.capability_mount.service import MountRegistry
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
+from cappo_backend.models.governed_run import GovernedRun
+from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
+from cappo_backend.models.vnp_models import APIState, ProbeEvent, RegionalTelemetry
 from cappo_backend.security.http_signatures import (
     SignatureVerificationError,
     verify_rfc9421_request,
 )
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
-from cappo_backend.services.eee import EEEBuilder, build_terminal_eee
+from cappo_backend.services.canonical import sha256_json
+from cappo_backend.services.eee import (
+    EEEBuilder,
+    EEEVerifier,
+    VerificationVerdict,
+    build_terminal_eee,
+)
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
 from cappo_backend.services.executor import (
     ExecutorUnavailableError,
-    TerminalExecutionError,
     ProviderCredentialRejectedError,
     ProviderPolicyRejectedError,
     ProviderRateLimitedError,
+    TerminalExecutionError,
 )
+from cappo_backend.services.gnomledger_pgl_client import GnomledgerPGLClient
 from cappo_backend.services.orchestrator import (
     GovernanceDeniedError,
     MissingGovernanceDecisionError,
@@ -51,6 +69,20 @@ router = APIRouter(prefix="/v1")
 
 
 # ---------- request/response shapes ----------
+
+class CapabilityLeaseInput(BaseModel):
+    mount_id: str
+    token_id: str
+    nonce: str
+
+
+class TargetPrecondition(BaseModel):
+    target_id: str
+    expected_state_hash: str
+    observed_state_hash: str
+    observed_at: str
+    signature: str
+
 
 class ExecRequest(BaseModel):
     prompt: str
@@ -70,6 +102,8 @@ class ExecRequest(BaseModel):
     risk_tier: str | None = None
     security: dict[str, Any] | None = None
     execution_mode: str = "live"
+    capability_lease: CapabilityLeaseInput | None = None
+    target_precondition: TargetPrecondition | None = None
 
 
 
@@ -85,6 +119,25 @@ class ExecResponse(BaseModel):
     run_id: str | None = None
     execution_id: str | None = None
     links: dict[str, Any] | None = None
+    capability_lease: dict[str, Any] | None = None
+
+
+class ExecutionEvidenceResponse(BaseModel):
+    execution_id: str
+    proof_state: str
+    verification_reasons: list[str]
+    eee: dict[str, Any]
+    pgl: dict[str, Any]
+
+
+class ExecutionMeasurementResponse(BaseModel):
+    execution_id: str
+    proof_state: str
+    vnp_api_did: str
+    provider: str
+    resulting_state: dict[str, Any]
+    observations: list[dict[str, Any]]
+    aggregates: list[dict[str, Any]]
 
 
 # ---------- route ----------
@@ -299,6 +352,245 @@ def _eee_builder(settings: Settings) -> EEEBuilder:
     )
 
 
+def _verify_target_precondition(precondition: TargetPrecondition, settings: Settings) -> None:
+    """Verify an independently signed target observation, then enforce equality."""
+    if not settings.vnp_federation_public_key:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "TARGET_OBSERVER_KEY_UNAVAILABLE", "fail_closed": True},
+        )
+    observation = {
+        "target_id": precondition.target_id,
+        "observed_state_hash": precondition.observed_state_hash,
+        "observed_at": precondition.observed_at,
+    }
+    canonical = json.dumps(observation, sort_keys=True, separators=(",", ":")).encode()
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(
+            bytes.fromhex(settings.vnp_federation_public_key)
+        )
+        public_key.verify(bytes.fromhex(precondition.signature), canonical)
+    except (InvalidSignature, ValueError) as exc:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "TARGET_OBSERVATION_SIGNATURE_INVALID", "fail_closed": True},
+        ) from exc
+    try:
+        observed_at = datetime.fromisoformat(precondition.observed_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "TARGET_OBSERVATION_TIME_INVALID", "fail_closed": True},
+        ) from exc
+    now = datetime.now(UTC)
+    if observed_at.tzinfo is None or observed_at < now - timedelta(
+        seconds=settings.capability_beacon_ttl_seconds
+    ) or observed_at > now + timedelta(seconds=30):
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "TARGET_OBSERVATION_EXPIRED", "fail_closed": True},
+        )
+    if precondition.expected_state_hash != precondition.observed_state_hash:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "STALE_TARGET",
+                "target_id": precondition.target_id,
+                "expected_state_hash": precondition.expected_state_hash,
+                "observed_state_hash": precondition.observed_state_hash,
+            },
+        )
+
+
+@router.get("/executions/{execution_id}/evidence", response_model=ExecutionEvidenceResponse)
+def get_execution_evidence(
+    execution_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ExecutionEvidenceResponse:
+    """Return the signed EEE and exact persisted PGL link for one execution."""
+    workspace_id = request.scope.get("auth_workspace")
+    run = db.get(GovernedRun, execution_id)
+    if run is None or not workspace_id or run.workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "EVIDENCE_NOT_FOUND", "execution_id": execution_id},
+        )
+
+    event_id = (run.pgl_identity or {}).get("capi_evidence_event_id")
+    event = db.get(PGLLedgerEvent, event_id) if isinstance(event_id, str) else None
+    remote_event: dict[str, Any] | None = None
+    if event is None and isinstance(event_id, str) and settings.gnomledger_url:
+        try:
+            remote_event = GnomledgerPGLClient(settings).get_ledger_event(event_id)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "EVIDENCE_STORE_UNAVAILABLE",
+                    "execution_id": execution_id,
+                    "fail_closed": True,
+                },
+            ) from exc
+    remote_details = remote_event.get("details") if isinstance(remote_event, dict) else None
+    seal = (
+        event.payload.get("evidence_seal")
+        if event is not None
+        else remote_details.get("evidence_seal")
+        if isinstance(remote_details, dict)
+        else None
+    )
+    envelope = seal.get("eee") if isinstance(seal, dict) else None
+    is_local_seal = event is not None and event.event_type == "capi_evidence_sealed"
+    is_remote_seal = (
+        isinstance(remote_event, dict)
+        and remote_event.get("event_type") == "custom"
+        and isinstance(remote_details, dict)
+        and remote_details.get("semantic_event_type") == "capi_evidence_sealed"
+    )
+    if not (is_local_seal or is_remote_seal) or not isinstance(envelope, dict):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "EVIDENCE_NOT_FOUND", "execution_id": execution_id},
+        )
+
+    builder = _eee_builder(settings)
+    report = EEEVerifier({settings.capability_beacon_kid: builder.public_key_bytes}).verify(envelope)
+    proof_state = {
+        VerificationVerdict.VALID: "verified",
+        VerificationVerdict.VALID_WITH_UNRESOLVED_REFS: "verified_with_unresolved_refs",
+        VerificationVerdict.INVALID: "failed",
+        VerificationVerdict.UNSUPPORTED_VERSION: "unknown",
+    }[report.verdict]
+    return ExecutionEvidenceResponse(
+        execution_id=execution_id,
+        proof_state=proof_state,
+        verification_reasons=report.reasons,
+        eee=envelope,
+        pgl={
+            "event_id": event.event_id if event is not None else remote_event["event_id"],
+            "certificate_id": (
+                event.certificate_id
+                if event is not None
+                else remote_details.get("certificate_id")
+            ),
+            "event_hash": event.event_hash if event is not None else remote_event.get("event_hash"),
+            "previous_event_hash": (
+                event.previous_event_hash
+                if event is not None
+                else remote_event.get("prev_event_hash")
+            ),
+            "persisted": True,
+            "created_at": (
+                event.created_at.isoformat()
+                if event is not None
+                else remote_event.get("created_at")
+            ),
+        },
+    )
+
+
+@router.get("/executions/{execution_id}/measurements", response_model=ExecutionMeasurementResponse)
+def get_execution_measurements(
+    execution_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+) -> ExecutionMeasurementResponse:
+    """Return independently signed VNP observations associated with the executed provider."""
+    workspace_id = request.scope.get("auth_workspace")
+    run = db.get(GovernedRun, execution_id)
+    if run is None or not workspace_id or run.workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "MEASUREMENT_NOT_FOUND", "execution_id": execution_id},
+        )
+
+    provider = (run.result_payload or {}).get("provider")
+    api = (
+        db.execute(select(APIState).where(APIState.name == provider)).scalar_one_or_none()
+        if isinstance(provider, str) and provider
+        else None
+    )
+    if api is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "MEASUREMENT_NOT_FOUND", "execution_id": execution_id},
+        )
+
+    provider_probes = db.execute(
+        select(ProbeEvent)
+        .where(ProbeEvent.api_id == api.id)
+        .order_by(ProbeEvent.created_at.desc())
+        .limit(100)
+    ).scalars().all()
+    execution_probes = [
+        probe
+        for probe in provider_probes
+        if (probe.payload_json or {}).get("execution_id") == execution_id
+    ]
+    result_state_hash = sha256_json(run.result_payload or {})
+    stale_probes = [
+        probe
+        for probe in execution_probes
+        if (probe.payload_json or {}).get("result_state_hash") != result_state_hash
+    ]
+    if stale_probes:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "STALE_RESULT_OBSERVATION",
+                "execution_id": execution_id,
+                "expected_result_state_hash": result_state_hash,
+            },
+        )
+    probes = execution_probes
+    telemetry = db.execute(
+        select(RegionalTelemetry)
+        .where(RegionalTelemetry.api_id == api.id)
+        .order_by(RegionalTelemetry.measured_at.desc())
+    ).scalars().all()
+    if not probes or not telemetry:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "MEASUREMENT_NOT_FOUND", "execution_id": execution_id},
+        )
+
+    return ExecutionMeasurementResponse(
+        execution_id=execution_id,
+        proof_state="verified",
+        vnp_api_did=api.api_did,
+        provider=provider,
+        resulting_state={"hash": result_state_hash, "independently_observed": True},
+        observations=[
+            {
+                "probe_id": str(probe.id),
+                "worker_id": probe.worker_id,
+                "region": probe.region,
+                "latency_ms": probe.latency_ms,
+                "status_code": probe.status_code,
+                "signature": probe.signature,
+                "payload": probe.payload_json,
+                "observed_at": probe.created_at.isoformat(),
+            }
+            for probe in probes
+        ],
+        aggregates=[
+            {
+                "region": row.region,
+                "p50_latency_ms": row.p50_latency_ms,
+                "p95_latency_ms": row.p95_latency_ms,
+                "p99_latency_ms": row.p99_latency_ms,
+                "error_rate_percent": float(row.error_rate_percent),
+                "uptime_percent": float(row.uptime_percent),
+                "throughput_rps": row.throughput_rps,
+                "measured_at": row.measured_at.isoformat(),
+            }
+            for row in telemetry
+        ],
+    )
+
+
 async def _seal_terminal_eee(
     *,
     orchestrator: RunOrchestrator,
@@ -332,6 +624,7 @@ async def governed_exec(
     request: Request,
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    mount_registry: MountRegistry = Depends(get_registry),
 ) -> ExecResponse:
     """Single governed execution entry path (Option A)."""
     start = time.monotonic()
@@ -391,6 +684,58 @@ async def governed_exec(
             },
         )
 
+    if body.target_precondition is not None:
+        _verify_target_precondition(body.target_precondition, settings)
+
+    lease_result: dict[str, Any] | None = None
+    if body.capability_lease is not None:
+        principal = request.scope.get("auth_principal")
+        if not isinstance(principal, str) or not principal:
+            raise HTTPException(status_code=401, detail={"error": "AUTHENTICATION_REQUIRED"})
+        if not body.action:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "CAPABILITY_LEASE_DENIED", "reason": "action_required"},
+            )
+        mount_record, _mount_state = mount_registry.status(
+            body.capability_lease.mount_id,
+            owner_principal=principal,
+            owner_workspace=canonical_workspace,
+        )
+        if (
+            mount_record is not None
+            and body.action in mount_record.token.grants.writes
+            and body.target_precondition is None
+        ):
+            raise HTTPException(
+                status_code=428,
+                detail={
+                    "error": "TARGET_PRECONDITION_REQUIRED",
+                    "action": body.action,
+                    "fail_closed": True,
+                },
+            )
+        decision, reason, anchor, _ = mount_registry.evaluate(
+            body.capability_lease.mount_id,
+            body.action,
+            token_id=body.capability_lease.token_id,
+            nonce=body.capability_lease.nonce,
+            owner_principal=principal,
+            owner_workspace=canonical_workspace,
+        )
+        if decision is not Decision.ALLOW:
+            db.commit()
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "CAPABILITY_LEASE_DENIED", "reason": reason},
+            )
+        lease_result = {
+            "mount_id": body.capability_lease.mount_id,
+            "decision": decision.value,
+            "reason": reason,
+            "anchor_id": anchor.anchor_id,
+        }
+
     gate = _check_payment(db, canonical_workspace, body.action_cost_cents, settings, request.app)
     orchestrator = _build_orchestrator(db, settings, audit, workspace_id=canonical_workspace, app=request.app)
     try:
@@ -448,6 +793,7 @@ async def governed_exec(
     db.commit()
 
     elapsed_ms = (time.monotonic() - start) * 1000
+    execution_id = (run.execution_identity or {}).get("execution_id") if run else None
     return ExecResponse(
         response=result.get("response", ""),
         model=result.get("model"),
@@ -457,10 +803,13 @@ async def governed_exec(
         cached=result.get("cached"),
         cache_tier=result.get("cache_tier"),
         run_id=run.run_id if run else None,
-        execution_id=(run.execution_identity or {}).get("execution_id") if run else None,
+        execution_id=execution_id,
         links={
-            "audit": {"href": f"/api/v1/gpc/audit/{run.run_id if run else 'unknown'}", "method": "GET"},
-            "stake": {"href": "/api/v1/vnp/stake", "method": "POST"},
-            "evidence": {"href": "/api/v1/evidence/verify", "method": "POST"}
-        }
+            "evidence": {"href": f"/v1/executions/{execution_id}/evidence", "method": "GET"},
+            "measurements": {
+                "href": f"/v1/executions/{execution_id}/measurements",
+                "method": "GET",
+            },
+        },
+        capability_lease=lease_result,
     )
