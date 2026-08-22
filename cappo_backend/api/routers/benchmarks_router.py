@@ -1,9 +1,4 @@
-"""Benchmarks router — API Trust Rankings derived from real execution data.
-
-Aggregates GovernedRun execution statistics by provider to produce a live
-leaderboard. Falls back to seed data when no runs exist yet, but that seed
-data is clearly marked and will be replaced as real runs accumulate.
-"""
+"""Benchmarks router — rankings derived from recorded execution data."""
 
 from __future__ import annotations
 
@@ -11,7 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import Float, cast, desc, func
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import get_session
@@ -20,288 +15,44 @@ from cappo_backend.models.governed_run import GovernedRun
 
 router = APIRouter(prefix="/api/v1/benchmarks", tags=["API Benchmarks"])
 
-# Rich per-provider seed data aligned with VNP scoring dimensions.
-# sla and uptime24h are percentages (99.95 not 0.9995).
-# throughput is requests/sec (VNP ideal=10000, poor=10).
-# These baselines are replaced by real GovernedRun metrics once runs accumulate.
-_PROVIDER_SEED = {
-    "openai": {
-        "name": "GPT-4o",
-        "provider": "OpenAI",
-        "category": "General Reasoning",
-        "p50": 110.5,
-        "p95": 135.2,
-        "p99": 148.7,
-        "sla": 99.95,
-        "drift": 0.0125,
-        "sovereignTier": 1,
-        "complianceLabels": ["FedRAMP", "HIPAA", "GDPR", "TLS 1.3", "x402-ready"],
-        "govScore": 96,
-        "devScore": 95,
-        "endpointUrl": "https://api.openai.com/v1/chat/completions",
-        "description": "State-of-the-art general reasoning model from OpenAI, optimized for developer usage.",
-        "throughput": 4520,
-        "uptime24h": 99.95,
-        "totalStaked": 45000,
-        "status": "Excellent",
-        "mcpSchema": {
-            "name": "gpt-4o-completion",
-            "description": "Call OpenAI GPT-4o model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "prompt": {"type": "string"},
-                    "temperature": {"type": "number"}
-                },
-                "required": ["prompt"]
-            }
-        }
-    },
-    "gemini": {
-        "name": "Gemini 2.5 Flash",
-        "provider": "Google",
-        "category": "Multimodal Processing",
-        "p50": 85.2,
-        "p95": 110.1,
-        "p99": 125.4,
-        "sla": 99.99,
-        "drift": 0.0084,
-        "sovereignTier": 1,
-        "complianceLabels": ["FedRAMP", "HIPAA", "SOC2", "TLS 1.3", "x402-ready"],
-        "govScore": 98,
-        "devScore": 98,
-        "endpointUrl": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash",
-        "description": "High-performance Google model specialized in multimodal input and fast sequence reasoning.",
-        "throughput": 8250,
-        "uptime24h": 99.99,
-        "totalStaked": 50000,
-        "status": "Excellent",
-        "mcpSchema": {
-            "name": "gemini-flash-chat",
-            "description": "Call Google Gemini 2.5 Flash model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "contents": {"type": "string"}
-                },
-                "required": ["contents"]
-            }
-        }
-    },
-    "anthropic": {
-        "name": "Claude 3.5 Sonnet",
-        "provider": "Anthropic",
-        "category": "Context Reasoning",
-        "p50": 105.0,
-        "p95": 128.4,
-        "p99": 140.2,
-        "sla": 99.98,
-        "drift": 0.0102,
-        "sovereignTier": 1,
-        "complianceLabels": ["FedRAMP", "HIPAA", "SOC2", "TLS 1.3", "x402-ready"],
-        "govScore": 97,
-        "devScore": 96,
-        "endpointUrl": "https://api.anthropic.com/v1/messages",
-        "description": "Premium context reasoning and code-generation agent, validated for multi-turn planning.",
-        "throughput": 5200,
-        "uptime24h": 99.98,
-        "totalStaked": 48000,
-        "status": "Excellent",
-        "mcpSchema": {
-            "name": "claude-sonnet-message",
-            "description": "Call Anthropic Claude 3.5 Sonnet model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "messages": {"type": "array", "items": {"type": "object"}}
-                },
-                "required": ["messages"]
-            }
-        }
-    },
-    "groq": {
-        "name": "Llama 3 70B (Groq)",
-        "provider": "Groq",
-        "category": "Ultra-Low Latency",
-        "p50": 25.4,
-        "p95": 42.1,
-        "p99": 55.0,
-        "sla": 99.92,
-        "drift": 0.0150,
-        "sovereignTier": 2,
-        "complianceLabels": ["HIPAA", "SOC2", "TLS 1.3"],
-        "govScore": 91,
-        "devScore": 94,
-        "endpointUrl": "https://api.groq.com/v1/chat/completions",
-        "description": "Supercharged open-source Llama model served over custom ASIC hardware for instant throughput.",
-        "throughput": 12040,
-        "uptime24h": 99.92,
-        "totalStaked": 35000,
-        "status": "Excellent",
-        "mcpSchema": {
-            "name": "groq-llama-completion",
-            "description": "Call Groq Llama 3 70B model",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "prompt": {"type": "string"}
-                },
-                "required": ["prompt"]
-            }
-        }
-    },
-    "ollama": {
-        "name": "Local Ollama",
-        "provider": "Self-hosted",
-        "category": "On-Premise Privacy",
-        "p50": 150.0,
-        "p95": 190.5,
-        "p99": 220.0,
-        "sla": 99.85,
-        "drift": 0.0250,
-        "sovereignTier": 3,
-        "complianceLabels": ["Self-contained", "Zero-PII-Leakage", "TLS 1.3"],
-        "govScore": 88,
-        "devScore": 82,
-        "endpointUrl": "http://localhost:11434/api/generate",
-        "description": "Completely offline self-hosted LLM deployment, guaranteeing absolute data control.",
-        "throughput": 1500,
-        "uptime24h": 99.85,
-        "totalStaked": 12000,
-        "status": "Nominal",
-        "mcpSchema": {
-            "name": "ollama-generate",
-            "description": "Call local Ollama instance",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "model": {"type": "string"},
-                    "prompt": {"type": "string"}
-                },
-                "required": ["model", "prompt"]
-            }
-        }
-    }
-}
+def _percentile(values: list[float], percentile: float) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    index = min(len(ordered) - 1, round((len(ordered) - 1) * percentile))
+    return round(ordered[index], 1)
 
 
-def _get_provider_stats(db: Session) -> list:
-    return (
-        db.query(
-            GovernedRun.result_payload,
-            func.count(GovernedRun.run_id).label("run_count"),
-            func.avg(
-                cast(
-                    func.json_extract(GovernedRun.result_payload, "$.latency_ms"),
-                    Float
-                )
-            ).label("avg_latency"),
-        )
+def _get_provider_stats(db: Session) -> dict[str, dict]:
+    """Aggregate only values recorded by governed executions.
+
+    JSON extraction functions differ across database dialects. Reading the
+    already-persisted JSON payloads also keeps an empty or incomplete store
+    from becoming a fabricated benchmark result.
+    """
+    rows = (
+        db.query(GovernedRun.result_payload, GovernedRun.state)
         .filter(GovernedRun.result_payload.isnot(None))
-        .group_by(
-            func.json_extract(GovernedRun.result_payload, "$.provider")
-        )
         .all()
     )
-
-
-def _get_error_run_count(db: Session, provider_key: str) -> int:
-    return (
-        db.query(func.count(GovernedRun.run_id))
-        .filter(
-            GovernedRun.state.in_(["failed", "error", "law0_violation"]),
-            func.json_extract(GovernedRun.result_payload, "$.provider") == provider_key
-        )
-        .scalar()
-        or 0
-    )
-
-
-def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, error_run_count: int) -> dict:
-    seed = _PROVIDER_SEED.get(provider_key, {
-        "name": provider_key.title(),
-        "provider": provider_key.title(),
-        "category": "Reasoning Model",
-        "p50": 100.0,
-        "p95": 125.0,
-        "p99": 140.0,
-        "sla": 99.0,
-        "drift": 0.02,
-        "sovereignTier": 2,
-        "complianceLabels": ["TLS 1.3"],
-        "govScore": 85,
-        "devScore": 85,
-        "endpointUrl": None,
-        "description": None,
-        "throughput": 2000,
-        "uptime24h": 99.0,
-        "totalStaked": 10000,
-        "status": "Nominal",
-        "mcpSchema": None,
-    })
-
-    error_rate = (error_run_count / run_count) if run_count > 0 else 0
-    latency_penalty = min(20, int(avg_lat / 50))
-    trust_score_pct = (1 - error_rate)
-    gov_score = max(0, int(seed["govScore"] * trust_score_pct))
-    dev_score = max(0, int(seed["devScore"] * trust_score_pct - latency_penalty))
-
-    # sla and uptime as percentages (99.95 not 0.9995) for VNP frontend
-    real_uptime = round((1 - error_rate) * 100, 2)
-    alpha = min(1.0, run_count / 100.0)
-    blended_uptime = alpha * real_uptime + (1 - alpha) * seed["uptime24h"]
-    blended_sla = seed["sla"]
-    status_str = "Excellent" if blended_uptime >= 99.9 else "Nominal" if blended_uptime >= 99.0 else "Degraded"
-
-    return {
-        "id": provider_key,
-        "name": seed["name"],
-        "category": seed["category"],
-        "p50": round(avg_lat, 1) if avg_lat > 0 else seed["p50"],
-        "p95": round(avg_lat * 1.25, 1) if avg_lat > 0 else seed["p95"],
-        "p99": round(avg_lat * 1.4, 1) if avg_lat > 0 else seed["p99"],
-        "sla": round(blended_sla, 2),
-        "drift": seed["drift"],
-        "sovereignTier": seed["sovereignTier"],
-        "complianceLabels": seed["complianceLabels"],
-        "govScore": gov_score,
-        "devScore": dev_score,
-        "endpointUrl": seed["endpointUrl"],
-        "description": seed["description"],
-        "mcpSchema": seed["mcpSchema"],
-        "provider": seed["provider"],
-        "throughput": int(seed["throughput"] * (1 - error_rate)),
-        "uptime24h": round(blended_uptime, 2),
-        "totalStaked": seed["totalStaked"],
-        "status": status_str,
-    }
-
-
-def _fill_missing_seed_providers(real_providers: dict[str, dict]) -> None:
-    for key, seed in _PROVIDER_SEED.items():
-        if key not in real_providers:
-            real_providers[key] = {
-                "id": key,
-                "name": seed["name"],
-                "category": seed["category"],
-                "p50": seed["p50"],
-                "p95": seed["p95"],
-                "p99": seed["p99"],
-                "sla": seed["sla"],
-                "drift": seed["drift"],
-                "sovereignTier": seed["sovereignTier"],
-                "complianceLabels": seed["complianceLabels"],
-                "govScore": seed["govScore"],
-                "devScore": seed["devScore"],
-                "endpointUrl": seed["endpointUrl"],
-                "description": seed["description"],
-                "mcpSchema": seed["mcpSchema"],
-                "provider": seed["provider"],
-                "throughput": seed["throughput"],
-                "uptime24h": seed["uptime24h"],
-                "totalStaked": seed["totalStaked"],
-                "status": seed["status"],
-            }
+    providers: dict[str, dict] = {}
+    for payload, state in rows:
+        if not isinstance(payload, dict):
+            continue
+        provider = payload.get("provider")
+        if not isinstance(provider, str) or not provider.strip():
+            continue
+        latency = payload.get("latency_ms")
+        if not isinstance(latency, (int, float)) or isinstance(latency, bool):
+            continue
+        provider = provider.strip()
+        stats = providers.setdefault(provider, {"latencies": [], "successes": 0, "failures": 0})
+        stats["latencies"].append(float(latency))
+        if state in {"failed", "error", "law0_violation"}:
+            stats["failures"] += 1
+        else:
+            stats["successes"] += 1
+    return providers
 
 
 @router.get("/leaderboard")
@@ -311,41 +62,24 @@ async def get_leaderboard(db: Session = Depends(get_session)):
     Returns a flat JSON array of BenchApi objects directly, matching Next.js SWR.
     """
     stats = _get_provider_stats(db)
+    leaderboard = []
+    for provider, values in stats.items():
+        latencies = values["latencies"]
+        total_runs = len(latencies)
+        success_rate = values["successes"] / total_runs * 100
+        leaderboard.append({
+            "id": provider,
+            "name": provider,
+            "provider": provider,
+            "p50": _percentile(latencies, 0.50),
+            "p95": _percentile(latencies, 0.95),
+            "p99": _percentile(latencies, 0.99),
+            "uptime24h": round(success_rate, 2),
+            "status": "Measured" if values["failures"] == 0 else "Degraded",
+            "sampleCount": total_runs,
+        })
 
-    real_providers: dict[str, dict] = {}
-    for row in stats:
-        if not isinstance(row.result_payload, dict):
-            continue
-        provider_key = row.result_payload.get("provider", "unknown")
-        run_count = row.run_count or 0
-        avg_lat = float(row.avg_latency or 0)
-
-        error_run_count = _get_error_run_count(db, provider_key)
-
-        real_providers[provider_key] = _build_provider_data(
-            provider_key, run_count, avg_lat, error_run_count
-        )
-
-    # Fill in seed providers not yet seen in real runs
-    _fill_missing_seed_providers(real_providers)
-
-    # Sort by overall trust score derived from gov + dev + compliance
-    def Math_round_trust(val):
-        return round(val)
-
-    def trust_score(item):
-        security = item["govScore"]
-        performance = item["devScore"]
-        compliance = 70 + (4 - item["sovereignTier"]) * 7 + len(item["complianceLabels"]) * 3
-        return Math_round_trust((security + performance + compliance) / 3 * 10)
-
-    sorted_apis = sorted(
-        real_providers.values(),
-        key=trust_score,
-        reverse=True,
-    )
-
-    return sorted_apis
+    return sorted(leaderboard, key=lambda item: (-item["uptime24h"], item["p50"], item["id"]))
 
 
 @router.get("/staking/markets")

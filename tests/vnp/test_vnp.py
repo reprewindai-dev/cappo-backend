@@ -1,12 +1,22 @@
 """VNP Test Suite — verifying the trust and routing fabric."""
 
+import hashlib
+import hmac
+import json as _json
 import uuid
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from cappo_backend.models.vnp_models import APIState, ProbeEvent, RegionalTelemetry, VNPProvider
+from cappo_backend.models.vnp_models import (
+    APIState,
+    PerformanceLeaderboard,
+    ProbeEvent,
+    RegionalTelemetry,
+    VNPProvider,
+)
+from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
 
 
 def test_vnp_control_plane_onboarding(client: TestClient, db: Session):
@@ -44,9 +54,6 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
     )
     api = db.query(APIState).first()
 
-    from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
-    import hashlib, hmac, json as _json
-
     service = VNPTelemetryService(db)
 
     # Build probe payload and sign it as a probe worker would
@@ -77,6 +84,44 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
     # Verify aggregates
     telemetry = db.query(RegionalTelemetry).filter_by(api_id=api.id, region="eu-west").first()
     assert telemetry.p50_latency_ms == 150
+
+
+def test_vnp_leaderboard_endpoint_returns_persisted_rankings(
+    client: TestClient, db: Session
+):
+    api = APIState(
+        api_did="did:vnp:api:leaderboard",
+        name="Leaderboard API",
+        endpoint="https://leaderboard.test",
+        version="v1",
+    )
+    db.add(api)
+    db.flush()
+    db.add(
+        PerformanceLeaderboard(
+            api_id=api.id,
+            monthly_composite_score=Decimal("91.50"),
+            rank_index=1,
+            telemetry_samples_count=3,
+            best_performing_region="eu-west",
+            is_active_champion=True,
+        )
+    )
+    db.commit()
+
+    response = client.get("/v1/vnp/leaderboard")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "rank": 1,
+            "api_did": "did:vnp:api:leaderboard",
+            "name": "Leaderboard API",
+            "composite_score": 91.5,
+            "is_champion": True,
+            "best_region": "eu-west",
+        }
+    ]
 
 
 def test_vnp_incidents(client: TestClient, db: Session):

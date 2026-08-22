@@ -1,25 +1,56 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from cappo_backend.models.governed_run import GovernedRun
 
 
-def test_leaderboard_endpoint(client: TestClient) -> None:
+def test_leaderboard_endpoint_returns_empty_without_runs(client: TestClient) -> None:
     resp = client.get("/api/v1/benchmarks/leaderboard")
     assert resp.status_code == 200
-    data = resp.json()
-    assert isinstance(data, list)
-    assert len(data) >= 5
-    first_item = data[0]
-    # Check that it's a flat BenchApi structure
-    assert "id" in first_item
-    assert "name" in first_item
-    assert "govScore" in first_item
-    assert "devScore" in first_item
-    assert "sovereignTier" in first_item
-    assert "complianceLabels" in first_item
-    assert "p50" in first_item
-    assert "p95" in first_item
-    assert "p99" in first_item
+    assert resp.json() == []
+
+
+def test_leaderboard_endpoint_uses_recorded_run_data(
+    client: TestClient, db: Session
+) -> None:
+    db.add_all(
+        [
+            GovernedRun(
+                workspace_id="test-workspace",
+                tenant_id="test-workspace",
+                state="executed",
+                request_payload={},
+                result_payload={"provider": "recorded-provider", "latency_ms": 120},
+            ),
+            GovernedRun(
+                workspace_id="test-workspace",
+                tenant_id="test-workspace",
+                state="failed",
+                request_payload={},
+                result_payload={"provider": "recorded-provider", "latency_ms": 240},
+            ),
+        ]
+    )
+    db.commit()
+
+    resp = client.get("/api/v1/benchmarks/leaderboard")
+
+    assert resp.status_code == 200
+    assert resp.json() == [
+        {
+            "id": "recorded-provider",
+            "name": "recorded-provider",
+            "provider": "recorded-provider",
+            "p50": 120.0,
+            "p95": 240.0,
+            "p99": 240.0,
+            "uptime24h": 50.0,
+            "status": "Degraded",
+            "sampleCount": 2,
+        }
+    ]
 
 
 def test_staking_markets_endpoint(client: TestClient) -> None:
