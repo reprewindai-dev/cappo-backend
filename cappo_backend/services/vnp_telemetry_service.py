@@ -30,6 +30,23 @@ from cappo_backend.models.vnp_models import (
 logger = logging.getLogger(__name__)
 
 
+def canonical_probe_observation(
+    *, payload: dict[str, Any], worker_id: str, region: str,
+    latency_ms: int, status_code: int, throughput_rps: int,
+) -> str:
+    return json.dumps(
+        {
+            "payload": payload,
+            "worker_id": worker_id,
+            "region": region,
+            "latency_ms": latency_ms,
+            "status_code": status_code,
+            "throughput_rps": throughput_rps,
+        },
+        sort_keys=True,
+    )
+
+
 class VNPTelemetryService:
     def __init__(self, db: Session, worker_secret: str | None = None) -> None:
         self._db = db
@@ -72,7 +89,10 @@ class VNPTelemetryService:
         # VNP is an observation boundary.  The application process must never
         # manufacture its own probe evidence; every stored measurement needs a
         # signature supplied by the independently operated probe worker.
-        payload_str = json.dumps(payload_json or {}, sort_keys=True)
+        payload_str = canonical_probe_observation(
+            payload=payload_json or {}, worker_id=worker_id, region=region,
+            latency_ms=latency_ms, status_code=status_code, throughput_rps=throughput_rps,
+        )
         if signature is None:
             raise ValueError("Probe signature is required")
         if not self._verify_signature(payload_str, signature):

@@ -188,7 +188,7 @@ class RunOrchestrator:
                 genome_hash = result["genome_hash"]
 
         run = GovernedRun(
-            run_id=str(uuid.uuid4()),
+            run_id=str(request.get("execution_id") or uuid.uuid4()),
             workspace_id=request.get("workspace_id", "default"),
             tenant_id=request.get("tenant_id", "default"),
             delegation_depth=int(request.get("delegation_depth", 0)),
@@ -263,6 +263,9 @@ class RunOrchestrator:
             reserve_cents=run.reserve_cents,
             input_hash=run.hashes.get("input_hash"),
             decision_frame_hash=run.hashes.get("decision_frame_hash"),
+            provenance={"capability_authority": request_payload.get("capability_authority")}
+            if request_payload.get("capability_authority")
+            else None,
         )
         cert = self._pgl.mint_pre_certificate(params)
         run.pgl_identity = {

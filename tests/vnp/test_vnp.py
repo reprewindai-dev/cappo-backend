@@ -44,14 +44,19 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
     )
     api = db.query(APIState).first()
 
-    from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
-    import hashlib, hmac, json as _json
+    import hashlib
+    import hmac
+
+    from cappo_backend.services.vnp_telemetry_service import (
+        VNPTelemetryService,
+        canonical_probe_observation,
+    )
 
     service = VNPTelemetryService(db)
 
     # Build probe payload and sign it as a probe worker would
     payload_json = {"sample": "data"}
-    payload_str = _json.dumps(payload_json, sort_keys=True)
+    payload_str = canonical_probe_observation(payload=payload_json, worker_id="worker-001", region="eu-west", latency_ms=150, status_code=200, throughput_rps=0)
     probe_signature = hmac.new(
         b"test-secret", payload_str.encode(), hashlib.sha256
     ).hexdigest()

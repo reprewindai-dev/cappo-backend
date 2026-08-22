@@ -217,6 +217,17 @@ def build_terminal_eee(
             "granted_at": issued,
             "expires_at": expires,
         }]
+    capability_authority = _mapping(request.get("capability_authority"))
+    if capability_authority.get("decision") == "allow":
+        authority_chain.append({
+            "type": "capability-lease",
+            "artifact_hash": str(capability_authority.get("anchor_id") or "unresolved"),
+            "issuer": builder.issuer,
+            "granted_at": issued,
+            "expires_at": expires,
+            "mount_id": capability_authority.get("mount_id"),
+            "action": capability_authority.get("action"),
+        })
 
     fields: dict[str, Any] = {
         "eee_version": _SUPPORTED_VERSION,

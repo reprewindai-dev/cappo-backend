@@ -40,6 +40,15 @@ def _key_seeds(settings: Settings) -> dict[str, str]:
     return {str(k): str(v) for k, v in value.items()}
 
 
+def active_signing_seed(settings: Settings) -> str:
+    """Return the private seed matching the advertised active key id."""
+    seeds = _key_seeds(settings)
+    try:
+        return seeds[settings.capability_beacon_kid]
+    except KeyError as exc:
+        raise ValueError("CAPABILITY_BEACON_KID is absent from CAPABILITY_BEACON_KEYS_JSON") from exc
+
+
 def published_keys(settings: Settings | None = None) -> list[dict[str, str]]:
     settings = settings or get_settings()
     return [

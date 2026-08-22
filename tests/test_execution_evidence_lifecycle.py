@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import json
 
 import pytest
 from sqlalchemy import create_engine
@@ -33,7 +32,10 @@ from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBu
 from cappo_backend.services.executor import ExecutorUnavailableError
 from cappo_backend.services.orchestrator import GovernanceDeniedError, RunOrchestrator
 from cappo_backend.services.pgl_client import PGLClient
-from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
+from cappo_backend.services.vnp_telemetry_service import (
+    VNPTelemetryService,
+    canonical_probe_observation,
+)
 
 
 class _Executor:
@@ -307,6 +309,20 @@ def test_execution_evidence_is_retrievable_from_its_canonical_link(
     assert body["pgl"]["persisted"] is True
 
 
+def test_eee_builder_signs_with_the_advertised_rotating_beacon_key(settings: Settings) -> None:
+    settings.capability_beacon_kid = "rotated"
+    settings.capability_beacon_keys_json = '{"rotated":"rotated-signing-seed"}'
+
+    builder = _eee_builder(settings)
+    expected = EEEBuilder(
+        signing_key="rotated-signing-seed",
+        issuer=settings.capability_beacon_issuer,
+        kid="rotated",
+    )
+
+    assert builder.public_key_bytes == expected.public_key_bytes
+
+
 def test_execution_evidence_fails_closed_when_missing(client) -> None:
     response = client.get("/v1/executions/missing-execution/evidence")
 
@@ -390,7 +406,7 @@ def test_execution_measurement_returns_only_signed_vnp_observations(client, db: 
     }
     signature = hmac.new(
         b"worker-secret",
-        json.dumps(payload, sort_keys=True).encode(),
+        canonical_probe_observation(payload=payload, worker_id="worker-1", region="us-east", latency_ms=17, status_code=200, throughput_rps=9).encode(),
         hashlib.sha256,
     ).hexdigest()
     VNPTelemetryService(db, worker_secret="worker-secret").ingest_probe(
@@ -456,7 +472,7 @@ def test_execution_measurement_rejects_a_probe_for_a_different_result_state(
         "result_state_hash": "sha256:stale-result",
     }
     signature = hmac.new(
-        b"worker-secret", json.dumps(payload, sort_keys=True).encode(), hashlib.sha256
+        b"worker-secret", canonical_probe_observation(payload=payload, worker_id="worker-1", region="us-east", latency_ms=17, status_code=200, throughput_rps=0).encode(), hashlib.sha256
     ).hexdigest()
     VNPTelemetryService(db, worker_secret="worker-secret").ingest_probe(
         api_did=api.api_did,

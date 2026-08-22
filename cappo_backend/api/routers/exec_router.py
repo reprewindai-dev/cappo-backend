@@ -16,6 +16,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -38,6 +39,7 @@ from cappo_backend.security.http_signatures import (
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
+from cappo_backend.services.capability_beacon import active_signing_seed
 from cappo_backend.services.eee import (
     EEEBuilder,
     EEEVerifier,
@@ -74,6 +76,8 @@ class CapabilityLeaseInput(BaseModel):
     mount_id: str
     token_id: str
     nonce: str
+    approval_token: str | None = None
+    suppression_evidence: str | None = None
 
 
 class TargetPrecondition(BaseModel):
@@ -346,7 +350,7 @@ def _build_capi_payload(body: ExecRequest) -> dict[str, Any]:
 def _eee_builder(settings: Settings) -> EEEBuilder:
     """Use CAPPO's published beacon signing identity for EEE records."""
     return EEEBuilder(
-        signing_key=settings.ei_signing_key,
+        signing_key=active_signing_seed(settings),
         issuer=settings.capability_beacon_issuer,
         kid=settings.capability_beacon_kid,
     )
@@ -424,6 +428,20 @@ def get_execution_evidence(
     if event is None and isinstance(event_id, str) and settings.gnomledger_url:
         try:
             remote_event = GnomledgerPGLClient(settings).get_ledger_event(event_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"error": "EVIDENCE_NOT_FOUND", "execution_id": execution_id},
+                ) from exc
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "EVIDENCE_STORE_UNAVAILABLE",
+                    "execution_id": execution_id,
+                    "fail_closed": True,
+                },
+            ) from exc
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
@@ -457,6 +475,11 @@ def get_execution_evidence(
 
     builder = _eee_builder(settings)
     report = EEEVerifier({settings.capability_beacon_kid: builder.public_key_bytes}).verify(envelope)
+    if envelope.get("execution_id") != execution_id:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "EVIDENCE_EXECUTION_MISMATCH", "execution_id": execution_id},
+        )
     proof_state = {
         VerificationVerdict.VALID: "verified",
         VerificationVerdict.VALID_WITH_UNRESOLVED_REFS: "verified_with_unresolved_refs",
@@ -507,28 +530,19 @@ def get_execution_measurements(
         )
 
     provider = (run.result_payload or {}).get("provider")
-    api = (
-        db.execute(select(APIState).where(APIState.name == provider)).scalar_one_or_none()
-        if isinstance(provider, str) and provider
-        else None
-    )
+    execution_probes = db.execute(
+        select(ProbeEvent)
+        .where(ProbeEvent.payload_json["execution_id"].as_string() == execution_id)
+        .order_by(ProbeEvent.created_at.desc())
+    ).scalars().all()
+    api_ids = {probe.api_id for probe in execution_probes}
+    api = db.get(APIState, next(iter(api_ids))) if len(api_ids) == 1 else None
     if api is None:
         raise HTTPException(
             status_code=404,
             detail={"error": "MEASUREMENT_NOT_FOUND", "execution_id": execution_id},
         )
 
-    provider_probes = db.execute(
-        select(ProbeEvent)
-        .where(ProbeEvent.api_id == api.id)
-        .order_by(ProbeEvent.created_at.desc())
-        .limit(100)
-    ).scalars().all()
-    execution_probes = [
-        probe
-        for probe in provider_probes
-        if (probe.payload_json or {}).get("execution_id") == execution_id
-    ]
     result_state_hash = sha256_json(run.result_payload or {})
     stale_probes = [
         probe
@@ -688,6 +702,7 @@ async def governed_exec(
         _verify_target_precondition(body.target_precondition, settings)
 
     lease_result: dict[str, Any] | None = None
+    gate: PaymentGate | None = None
     if body.capability_lease is not None:
         principal = request.scope.get("auth_principal")
         if not isinstance(principal, str) or not principal:
@@ -702,6 +717,36 @@ async def governed_exec(
             owner_principal=principal,
             owner_workspace=canonical_workspace,
         )
+        if mount_record is not None and body.target_precondition is not None:
+            authorized_target = mount_record.token.scope.project
+            if body.target_precondition.target_id != authorized_target:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "TARGET_SCOPE_MISMATCH",
+                        "authorized_target": authorized_target,
+                        "observed_target": body.target_precondition.target_id,
+                        "fail_closed": True,
+                    },
+                )
+        if mount_record is not None and (
+            mount_record.token.nonce_consumed
+            or body.capability_lease.token_id != mount_record.token.token_id
+            or body.capability_lease.nonce != mount_record.token.nonce
+        ):
+            decision, reason, _anchor, _ = mount_registry.evaluate(
+                body.capability_lease.mount_id,
+                body.action,
+                token_id=body.capability_lease.token_id,
+                nonce=body.capability_lease.nonce,
+                owner_principal=principal,
+                owner_workspace=canonical_workspace,
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "CAPABILITY_LEASE_DENIED", "reason": reason},
+            )
         if (
             mount_record is not None
             and body.action in mount_record.token.grants.writes
@@ -715,6 +760,11 @@ async def governed_exec(
                     "fail_closed": True,
                 },
             )
+        # Commercial/rate admission must succeed before the single-use lease
+        # is irreversibly consumed.
+        gate = _check_payment(
+            db, canonical_workspace, body.action_cost_cents, settings, request.app
+        )
         decision, reason, anchor, _ = mount_registry.evaluate(
             body.capability_lease.mount_id,
             body.action,
@@ -722,8 +772,11 @@ async def governed_exec(
             nonce=body.capability_lease.nonce,
             owner_principal=principal,
             owner_workspace=canonical_workspace,
+            approval_token=body.capability_lease.approval_token,
+            suppression_evidence=body.capability_lease.suppression_evidence,
         )
         if decision is not Decision.ALLOW:
+            gate.decrement_concurrent()
             db.commit()
             raise HTTPException(
                 status_code=403,
@@ -736,11 +789,19 @@ async def governed_exec(
             "anchor_id": anchor.anchor_id,
         }
 
-    gate = _check_payment(db, canonical_workspace, body.action_cost_cents, settings, request.app)
+    if gate is None:
+        gate = _check_payment(db, canonical_workspace, body.action_cost_cents, settings, request.app)
     orchestrator = _build_orchestrator(db, settings, audit, workspace_id=canonical_workspace, app=request.app)
     try:
         payload = body.model_dump()
         payload["workspace_id"] = canonical_workspace
+        if body.capability_lease is not None and mount_record is not None:
+            payload["execution_id"] = mount_record.token.execution_id
+            payload["capability_authority"] = {
+                **lease_result,
+                "action": body.action,
+                "execution_id": mount_record.token.execution_id,
+            }
         result = _execute_run(orchestrator, payload, db)
         if result and "tokens" in result and isinstance(result["tokens"], int):
             gate.record_tokens(canonical_workspace, result["tokens"])
