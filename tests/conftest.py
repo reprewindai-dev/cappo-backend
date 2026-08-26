@@ -25,8 +25,18 @@ _TestSession = sessionmaker(bind=_test_engine, autoflush=False, expire_on_commit
 
 @pytest.fixture(autouse=True)
 def _create_tables() -> Iterator[None]:
-    import cappo_backend.models  # noqa: F401 — register models
+    import cappo_backend.models  # noqa: F401 — register models on Base
     Base.metadata.create_all(_test_engine)
+    # Seed the merkle_leaf_sequence singleton row (id=1, next_value=0).
+    # This mirrors what the production migration does.  Must not reset on an
+    # existing DB with committed receipts — safe here because the table is
+    # re-created fresh for every test.
+    from sqlalchemy import text
+    with _test_engine.connect() as conn:
+        conn.execute(
+            text("INSERT OR IGNORE INTO merkle_leaf_sequence (id, next_value) VALUES (1, 0)")
+        )
+        conn.commit()
     yield
     Base.metadata.drop_all(_test_engine)
 

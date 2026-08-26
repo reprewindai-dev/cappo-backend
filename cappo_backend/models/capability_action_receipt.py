@@ -14,13 +14,15 @@ Integrity columns:
   tamper detection — recompute from fields and compare.
 - pgl_anchor_id: the AuditEvent.log_hash that covered this action_decision, binding
   the receipt into the existing hash-chained audit ledger.
+- merkle_leaf_index: persistent monotonic append position. Canonical Merkle order is
+  ORDER BY merkle_leaf_index ASC. receipt_id is identity; this is sequence.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, LargeBinary, String
+from sqlalchemy import BigInteger, DateTime, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base
@@ -54,6 +56,17 @@ class CapabilityActionReceipt(Base):
     policy_version: Mapped[str | None] = mapped_column(String, nullable=True)
     biscuit_token_sha256: Mapped[str | None] = mapped_column(String, nullable=True)
     signed_receipt_cose: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+    # Merkle append position — persistent, monotonically increasing integer.
+    # Defines canonical Merkle leaf order: ORDER BY merkle_leaf_index ASC.
+    # receipt_id is identity; merkle_leaf_index is append sequence.
+    # Assigned atomically: SELECT COALESCE(MAX(merkle_leaf_index)+1, 0)
+    # within the same transaction that commits the receipt row.
+    # UNIQUE ensures no two receipts share a position.
+    # NULL only for legacy rows predating G0B.6 or rows without signed COSE bytes.
+    merkle_leaf_index: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, unique=True, index=True
+    )
 
     # Integrity: sha256_json over canonical receipt fields (excluding created_at).
     # Recompute and compare to detect silent field mutation.
