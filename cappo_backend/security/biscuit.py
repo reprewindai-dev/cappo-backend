@@ -40,6 +40,7 @@ def mint_biscuit_capability(
     writes: list[str],
     execution_id: str,
     ttl_seconds: int,
+    resources: list[str] | None = None,
 ) -> str:
     kp = get_root_key_pair()
     builder = Biscuit.builder()
@@ -60,7 +61,15 @@ def mint_biscuit_capability(
         builder.add_code(f'allowed_action("{r}");')
     for w in writes:
         builder.add_code(f'allowed_action("{w}");')
-    builder.add_code('check if current_action($act), allowed_action($act) or current_action("terminate");')
+    
+    if resources:
+        for res in resources:
+            builder.add_code(f'allowed_resource("{res}");')
+        builder.add_code('check if current_action($act, $res), allowed_action($act), allowed_resource($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+    else:
+        # If no resources bounded, only check action
+        builder.add_code('check if current_action($act, $res), allowed_action($act) or current_action("terminate", "");')
+
     from datetime import datetime, timezone, timedelta
     issued_dt = datetime.now(timezone.utc)
     expires_dt = issued_dt + timedelta(seconds=ttl_seconds)
@@ -80,6 +89,7 @@ def attenuate_biscuit_capability(
     reads: list[str] | None = None,
     writes: list[str] | None = None,
     ttl_seconds: int | None = None,
+    resources: list[str] | None = None,
 ) -> str:
     """Attenuate an existing capability locally without the root key."""
     kp = get_root_key_pair()
@@ -89,14 +99,18 @@ def attenuate_biscuit_capability(
 
     if reads is not None or writes is not None:
         if reads or writes:
-            for r in reads:
+            for r in reads or []:
                 builder.add_code(f'allowed_action_child("{r}");')
-            for w in writes:
+            for w in writes or []:
                 builder.add_code(f'allowed_action_child("{w}");')
-        # We append a check that forces actions to ALSO match these tighter constraints
-        # It MUST evaluate to true, IN ADDITION to the parent checks.
-        builder.add_code('check if current_action($act), allowed_action_child($act) or current_action("terminate");')
+        builder.add_code('check if current_action($act, $res), allowed_action_child($act) or current_action("terminate", "");')
         
+    if resources is not None:
+        if resources:
+            for res in resources:
+                builder.add_code(f'allowed_resource_child("{res}");')
+            builder.add_code('check if current_action($act, $res), allowed_resource_child($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+
     if ttl_seconds is not None:
         from datetime import datetime, timezone, timedelta
         expires_dt = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
@@ -110,6 +124,7 @@ def verify_biscuit_capability(
     token_b64: str,
     executor_spiffe_id: str,
     action: str,
+    resource: str = "",
     subject_spiffe_id: str | None = None
 ) -> bool:
     try:
@@ -121,7 +136,7 @@ def verify_biscuit_capability(
             auth_builder.add_code(f'current_subject("{subject_spiffe_id}");')
         else:
             auth_builder.add_code('current_subject("any");')
-        auth_builder.add_code(f'current_action("{action}");')
+        auth_builder.add_code(f'current_action("{action}", "{resource}");')
         auth_builder.set_time()
         auth_builder.add_code('allow if true;')
 

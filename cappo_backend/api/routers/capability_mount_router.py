@@ -72,6 +72,7 @@ class ActionRequest(BaseModel):
     token_id: str = Field(min_length=1)
     nonce: str = Field(min_length=1)
     action: str = Field(min_length=1)
+    resource: str | None = None
     approval_token: str | None = None
     suppression_evidence: str | None = None
     # Compatibility only. Caller booleans never authorize suppression-gated actions.
@@ -86,6 +87,7 @@ class ActionResponse(BaseModel):
     anchoring: dict[str, Any]
     mount_id: str
     action: str
+    resource: str | None = None
 
 
 class TerminateRequest(BaseModel):
@@ -248,6 +250,7 @@ def evaluate_action(
     decision, reason, anchor, _ = registry.evaluate(
         mount_id,
         body.action,
+        resource=body.resource,
         token_id=body.token_id,
         nonce=body.nonce,
         owner_principal=principal,
@@ -263,6 +266,7 @@ def evaluate_action(
         anchoring=anchor_payload(anchor),
         mount_id=mount_id,
         action=body.action,
+        resource=body.resource,
     )
 
 

@@ -41,6 +41,7 @@ class CapabilityActionReceipt(Base):
     token_id: Mapped[str] = mapped_column(String, index=True)
     principal: Mapped[str] = mapped_column(String, index=True)
     action: Mapped[str] = mapped_column(String)
+    resource: Mapped[str | None] = mapped_column(String, nullable=True)
     decision: Mapped[str] = mapped_column(String)      # always "allow" for receipts
     reason: Mapped[str] = mapped_column(String)
     actioned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

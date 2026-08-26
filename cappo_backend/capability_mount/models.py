@@ -96,12 +96,14 @@ class MountScope(ContractModel):
     project: str = Field(min_length=1)
     reads: list[str] | None = None
     writes: list[str] | None = None
+    resources: list[str] | None = None
     blocked: list[str] = Field(default_factory=list)
 
 
 class Grants(ContractModel):
     reads: list[str] = Field(default_factory=list)
     writes: list[str] = Field(default_factory=list)
+    resources: list[str] = Field(default_factory=list)
     blocked: list[str] = Field(default_factory=list)
     external_send: list[str] = Field(default_factory=list)
     suppression_required: list[str] = Field(default_factory=list)

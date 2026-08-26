@@ -250,6 +250,7 @@ class MountRegistry:
         mount_id: str,
         action: str,
         *,
+        resource: str | None = None,
         token_id: str,
         nonce: str,
         owner_principal: str = "auth-disabled",
