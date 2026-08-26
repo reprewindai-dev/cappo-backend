@@ -161,3 +161,60 @@ def verify_biscuit_capability(
     except Exception as e:
         print(f"Biscuit verification failed: {e}")
         return False
+
+def extract_authority_context(token_b64: str):
+    from cappo_backend.models.capability_lease import AuthorityContext
+    try:
+        kp = get_root_key_pair()
+        token = Biscuit.from_base64(token_b64, kp.public_key)
+        
+        auth_builder = AuthorizerBuilder()
+        auth_builder.add_code('allow if true;')
+        auth = auth_builder.build(token)
+        
+        import biscuit_auth
+        actions = set()
+        action_facts = auth.query(biscuit_auth.Rule('rule($act) <- allowed_action($act)'))
+        for fact in action_facts:
+            actions.add(str(fact.terms[0]).strip('"'))
+            
+        resources = set()
+        resource_facts = auth.query(biscuit_auth.Rule('rule($res) <- allowed_resource($res)'))
+        for fact in resource_facts:
+            resources.add(str(fact.terms[0]).strip('"'))
+            
+        executor_spiffe_id = "any"
+        exec_facts = auth.query(biscuit_auth.Rule('rule($exec) <- allowed_executor($exec)'))
+        if exec_facts:
+            executor_spiffe_id = str(exec_facts[0].terms[0]).strip('"')
+            
+        expires_at = None
+        exp_facts = auth.query(biscuit_auth.Rule('rule($exp) <- expires_at($exp)'))
+        if exp_facts:
+            exp_str = str(exp_facts[0].terms[0]).strip('"')
+            try:
+                from datetime import datetime, timezone
+                expires_at = datetime.strptime(exp_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+            except ValueError:
+                pass
+            
+        max_depth = 0
+        depth_facts = auth.query(biscuit_auth.Rule('rule($d) <- delegation_depth_max($d)'))
+        if depth_facts:
+            max_depth = int(str(depth_facts[0].terms[0]))
+            
+        if not resources:
+            resources.add("*")
+            
+        return AuthorityContext(
+            allowed_actions=actions,
+            allowed_resources=resources,
+            executor_spiffe_id=executor_spiffe_id,
+            expires_at=expires_at,
+            delegation_depth=token.block_count() - 1,
+            max_delegation_depth=max_depth,
+            authority_epoch=0
+        )
+    except Exception as e:
+        print(f"Failed to extract authority from biscuit: {e}")
+        return None

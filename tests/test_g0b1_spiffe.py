@@ -1,10 +1,12 @@
 import os
 from spiffe import WorkloadApiClient
 
+import pytest
+
 def test_spiffe_workload_api():
     socket_path = os.environ.get("SPIFFE_ENDPOINT_SOCKET")
-    assert socket_path is not None, "SPIFFE_ENDPOINT_SOCKET must be set"
-    print(f"Connecting to SPIFFE Workload API at {socket_path}")
+    if not socket_path:
+        pytest.skip("SPIFFE_ENDPOINT_SOCKET not set, skipping live SPIRE test")
 
     # The client automatically discovers the socket path from SPIFFE_ENDPOINT_SOCKET if not provided
     with WorkloadApiClient() as client:

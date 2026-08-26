@@ -15,6 +15,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Return dt as UTC-aware; attaches UTC to naive datetimes (SQLite returns naive)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class LeaseState(str, Enum):
     ISSUED = "ISSUED"
     ACTIVE = "ACTIVE"
@@ -120,6 +129,45 @@ class CapabilityLease(Base):
     def contextual_bounds(self, value: dict):
         self._contextual_bounds_json = json.dumps(value)
 
+    @staticmethod
+    def _resource_issubset(subset: Set[str], superset: Set[str]) -> bool:
+        if "*" in superset:
+            return True
+        for s_res in subset:
+            covered = False
+            for p_res in superset:
+                if p_res == s_res:
+                    covered = True
+                    break
+                if p_res.endswith("/*"):
+                    prefix = p_res[:-1]
+                    if s_res.startswith(prefix) or s_res == p_res[:-2]:
+                        covered = True
+                        break
+            if not covered:
+                return False
+        return True
+
+    @staticmethod
+    def _resource_intersection(set1: Set[str], set2: Set[str]) -> Set[str]:
+        result = set()
+        if "*" in set1 and "*" in set2:
+            return {"*"}
+        if "*" in set1:
+            return set(set2)
+        if "*" in set2:
+            return set(set1)
+            
+        for res1 in set1:
+            for res2 in set2:
+                if res1 == res2:
+                    result.add(res1)
+                elif res2.endswith("/*") and res1.startswith(res2[:-1]):
+                    result.add(res1)
+                elif res1.endswith("/*") and res2.startswith(res1[:-1]):
+                    result.add(res2)
+        return result
+
     def evaluate_authority(self, biscuit_auth: Optional[AuthorityContext], package_auth: AuthorityContext, connectivity: ConnectivityState) -> AuthorityContext:
         """
         Evaluates the effective authority under the constitutional subset invariant:
@@ -135,13 +183,15 @@ class CapabilityLease(Base):
         if not self.allowed_actions.issubset(biscuit_auth.allowed_actions):
             raise InvariantViolationError("LEASE_CAN_WIDEN_ACTION")
             
-        if not self.allowed_resources.issubset(biscuit_auth.allowed_resources):
+        if not self._resource_issubset(self.allowed_resources, biscuit_auth.allowed_resources):
             raise InvariantViolationError("LEASE_CAN_WIDEN_RESOURCE")
             
         if self.executor_spiffe_id != biscuit_auth.executor_spiffe_id:
             raise InvariantViolationError("LEASE_CAN_CHANGE_EXECUTOR")
             
-        if biscuit_auth.expires_at and self.expires_at > biscuit_auth.expires_at:
+        b_expires = _as_utc(biscuit_auth.expires_at)
+        self_expires = _as_utc(self.expires_at)
+        if b_expires and self_expires and self_expires.replace(microsecond=0) > b_expires.replace(microsecond=0):
             raise InvariantViolationError("LEASE_CAN_EXTEND_EXPIRY")
             
         if self.delegation_depth > biscuit_auth.max_delegation_depth:
@@ -153,9 +203,16 @@ class CapabilityLease(Base):
         if connectivity == ConnectivityState.OFFLINE:
             if not self.offline_enabled:
                 raise InvariantViolationError("OFFLINE_MODE_CAN_CREATE_NEW_AUTHORITY")
+            if self.maximum_offline_duration and self.maximum_offline_duration > 0:
+                updated_at = self.updated_at or _now()
+                offline_elapsed = (_now() - _as_utc(updated_at)).total_seconds()
+                if offline_elapsed > self.maximum_offline_duration:
+                    raise InvariantViolationError("OFFLINE_DURATION_EXCEEDED")
+            if self.reconciliation_required:
+                raise InvariantViolationError("RECONCILIATION_REQUIRED_BLOCKS_OFFLINE")
 
         effective_actions = self.allowed_actions.intersection(biscuit_auth.allowed_actions).intersection(package_auth.allowed_actions)
-        effective_resources = self.allowed_resources.intersection(biscuit_auth.allowed_resources).intersection(package_auth.allowed_resources)
+        effective_resources = self._resource_intersection(self._resource_intersection(self.allowed_resources, biscuit_auth.allowed_resources), package_auth.allowed_resources)
         
         return AuthorityContext(
             allowed_actions=effective_actions,
@@ -170,14 +227,24 @@ class CapabilityLease(Base):
     def transition_state(self, new_state: LeaseState, current_epoch: int):
         if self.lease_state == LeaseState.REVOKED.value and new_state != LeaseState.REVOKED:
             raise InvariantViolationError("REVOKED_LEASE_CAN_RESURRECT")
+        if self.lease_state == LeaseState.EXPIRED.value and new_state != LeaseState.EXPIRED:
+            raise InvariantViolationError("EXPIRED_LEASE_CAN_RESURRECT")
+        if current_epoch < self.authority_epoch:
+            raise InvariantViolationError("LEASE_CAN_ROLLBACK_AUTHORITY_EPOCH")
+            
+        if new_state == LeaseState.REVOKED:
+            if current_epoch < self.revocation_epoch:
+                raise InvariantViolationError("LEASE_CAN_ROLLBACK_REVOCATION_EPOCH")
+            self.revocation_epoch = current_epoch
             
         self.lease_state = new_state.value
+        self.authority_epoch = current_epoch
         self.lease_state_version += 1
         
     def attenuate(self, new_actions: Set[str], new_resources: Set[str], current_epoch: int):
         if not new_actions.issubset(self.allowed_actions):
             raise InvariantViolationError("CHILD_LEASE_CANNOT_WIDEN_ACTIONS")
-        if not new_resources.issubset(self.allowed_resources):
+        if not self._resource_issubset(new_resources, self.allowed_resources):
             raise InvariantViolationError("CHILD_LEASE_CANNOT_WIDEN_RESOURCES")
             
         if current_epoch < self.revocation_epoch:

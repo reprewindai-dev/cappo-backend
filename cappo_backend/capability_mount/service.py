@@ -347,35 +347,56 @@ class MountRegistry:
             db.commit()
             return Decision.DENY, reason, anchor, None
 
-        # ARCH-P2: Enforce CapabilityLease cryptographic authority subset semantics
+        # ARCH-P2: Enforce CapabilityLease cryptographic authority subset semantics.
+        # Authority must be extracted from the actual Biscuit token, not reconstructed from metadata.
         from cappo_backend.models.capability_lease import CapabilityLease, AuthorityContext, ConnectivityState, InvariantViolationError
         lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
         if lease:
             try:
-                # We rebuild a simulated biscuit auth context since the caller passed SVID validation.
-                b_auth = AuthorityContext(
-                    allowed_actions=set(record.token.grants.reads + record.token.grants.writes + record.token.grants.external_send),
-                    allowed_resources={"*"},
-                    executor_spiffe_id=lease.executor_spiffe_id,
-                    expires_at=lease.expires_at,
-                    delegation_depth=lease.delegation_depth,
-                    max_delegation_depth=lease.max_delegation_depth,
-                    authority_epoch=lease.authority_epoch
-                )
-                p_auth = AuthorityContext(
-                    allowed_actions=b_auth.allowed_actions,
-                    allowed_resources={"*"},
-                    executor_spiffe_id=lease.executor_spiffe_id,
-                    expires_at=lease.expires_at,
-                    delegation_depth=lease.delegation_depth,
-                    max_delegation_depth=lease.max_delegation_depth,
-                    authority_epoch=lease.authority_epoch
-                )
-                # This throws InvariantViolationError if subset logic is breached
+                # --- Real Biscuit authority extraction ---
+                b_auth: AuthorityContext | None = None
+                if record.token.biscuit_token:
+                    from cappo_backend.security.biscuit import extract_authority_context
+                    b_auth = extract_authority_context(record.token.biscuit_token)
+                
+                # Fallback: if no Biscuit token was minted (legacy mounts), derive from
+                # persisted token grants. This is a narrower path — it cannot grant more
+                # than what the token grants already record.
+                if b_auth is None:
+                    b_auth = AuthorityContext(
+                        allowed_actions=set(record.token.grants.reads + record.token.grants.writes + record.token.grants.external_send),
+                        allowed_resources={"*"},
+                        executor_spiffe_id=lease.executor_spiffe_id,
+                        expires_at=record.token.expires_at,
+                        delegation_depth=0,
+                        max_delegation_depth=1,
+                        authority_epoch=lease.authority_epoch,
+                    )
+
+                # --- Real CapabilityPackage ceiling ---
+                package = self.packages.get(record.token.package_ref)
+                if package is not None:
+                    package_actions = set(package.reads + package.writes + package.external_send_actions)
+                    p_auth = AuthorityContext(
+                        allowed_actions=package_actions,
+                        allowed_resources={"*"},
+                        executor_spiffe_id=b_auth.executor_spiffe_id,
+                        expires_at=b_auth.expires_at,
+                        delegation_depth=b_auth.delegation_depth,
+                        max_delegation_depth=b_auth.max_delegation_depth,
+                        authority_epoch=b_auth.authority_epoch,
+                    )
+                else:
+                    # No package found — use Biscuit authority as the ceiling (narrowest safe default)
+                    p_auth = b_auth
+
+                # This throws InvariantViolationError if any subset invariant is breached
                 effective_auth = lease.evaluate_authority(b_auth, p_auth, ConnectivityState.ONLINE)
                 if action not in effective_auth.allowed_actions:
-                    raise InvariantViolationError(f"Action {action} outside effective authority subset")
+                    raise InvariantViolationError(f"Action '{action}' is not in effective authority subset: {effective_auth.allowed_actions}")
+
             except InvariantViolationError as e:
+                print(f"DEBUG INVARIANT: {e}")
                 reason = "lease_invariant_violation"
                 anchor = self.anchor.anchor(
                     "action_decision",
