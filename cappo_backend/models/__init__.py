@@ -8,6 +8,7 @@ from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.models.merkle_leaf_sequence import MerkleLeafSequence
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
+from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.execution_authorization import ExecutionAuthorization
 from cappo_backend.models.execution_identity import ExecutionIdentity
@@ -48,6 +49,7 @@ __all__ = [
     "AuditEvent",
     "CapabilityActionReceipt",
     "CapabilityEvidenceConsumption",
+    "CapabilityLease",
     "CapabilityMount",
     "ExecutionAuthorization",
     "ExecutionIdentity",

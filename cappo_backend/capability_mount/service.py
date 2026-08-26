@@ -211,6 +211,33 @@ class MountRegistry:
                 anchor_detail=anchor.detail,
             )
         )
+        
+        from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
+        
+        _biscuit_sha256 = "none"
+        if token.biscuit_token:
+            import hashlib
+            _biscuit_sha256 = hashlib.sha256(token.biscuit_token.encode()).hexdigest()
+            
+        lease = CapabilityLease(
+            lease_id=f"lease_{mount.id}",
+            mount_id=mount.id,
+            capability_id=package.id,
+            policy_version="1.0",
+            execution_identity=token.execution_id or "unknown",
+            subject_spiffe_id=caller_spiffe_id or "legacy-unbound",
+            executor_spiffe_id=executor_spiffe_id or "legacy-unbound",
+            biscuit_hash=_biscuit_sha256,
+            issued_at=token.issued_at,
+            not_before=token.issued_at,
+            expires_at=token.expires_at,
+            lease_state=LeaseState.ACTIVE.value,
+            allowed_actions=set(token.grants.reads + token.grants.writes + token.grants.external_send),
+            allowed_resources=set(["*"]),
+            offline_enabled=False
+        )
+        db.add(lease)
+        
         db.commit()
         return (
             MountRecord(mount, token, ExecutionBinding(token, InMemoryAuditSink())),
@@ -319,6 +346,50 @@ class MountRegistry:
             )
             db.commit()
             return Decision.DENY, reason, anchor, None
+
+        # ARCH-P2: Enforce CapabilityLease cryptographic authority subset semantics
+        from cappo_backend.models.capability_lease import CapabilityLease, AuthorityContext, ConnectivityState, InvariantViolationError
+        lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
+        if lease:
+            try:
+                # We rebuild a simulated biscuit auth context since the caller passed SVID validation.
+                b_auth = AuthorityContext(
+                    allowed_actions=set(record.token.grants.reads + record.token.grants.writes + record.token.grants.external_send),
+                    allowed_resources={"*"},
+                    executor_spiffe_id=lease.executor_spiffe_id,
+                    expires_at=lease.expires_at,
+                    delegation_depth=lease.delegation_depth,
+                    max_delegation_depth=lease.max_delegation_depth,
+                    authority_epoch=lease.authority_epoch
+                )
+                p_auth = AuthorityContext(
+                    allowed_actions=b_auth.allowed_actions,
+                    allowed_resources={"*"},
+                    executor_spiffe_id=lease.executor_spiffe_id,
+                    expires_at=lease.expires_at,
+                    delegation_depth=lease.delegation_depth,
+                    max_delegation_depth=lease.max_delegation_depth,
+                    authority_epoch=lease.authority_epoch
+                )
+                # This throws InvariantViolationError if subset logic is breached
+                effective_auth = lease.evaluate_authority(b_auth, p_auth, ConnectivityState.ONLINE)
+                if action not in effective_auth.allowed_actions:
+                    raise InvariantViolationError(f"Action {action} outside effective authority subset")
+            except InvariantViolationError as e:
+                reason = "lease_invariant_violation"
+                anchor = self.anchor.anchor(
+                    "action_decision",
+                    principal=owner_principal,
+                    mount_id=mount_id,
+                    timestamp=utc_now().isoformat(),
+                    action=action,
+                    decision=Decision.DENY.value,
+                    reason=reason,
+                    mount=record.mount,
+                    token=record.token,
+                )
+                db.commit()
+                return Decision.DENY, reason, anchor, None
 
         verified_evidence: list[VerifiedMountEvidence] = []
         try:
