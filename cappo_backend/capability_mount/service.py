@@ -413,20 +413,33 @@ class MountRegistry:
                 import hashlib
                 _biscuit_sha256 = hashlib.sha256(record.token.biscuit_token.encode()).hexdigest()
 
+            sp = spiffe_fields or {}
+            
             _receipt_canonical = {
                 "execution_id": record.token.execution_id,
                 "mount_id": mount_id,
                 "token_id": record.token.token_id,
                 "principal": owner_principal,
+                "caller_spiffe_id": sp.get("caller_spiffe_id"),
+                "executor_spiffe_id": sp.get("caller_spiffe_id"), # For now
+                "caller_cert_sha256": sp.get("caller_cert_sha256"),
+                "capability_id": record.mount.package_ref,
+                "biscuit_token_sha256": _biscuit_sha256,
                 "action": action,
+                "resource": "*",
+                "policy_version": "1.0",
                 "decision": decision.value,
                 "reason": reason,
+                "timestamp": _actioned_at.isoformat(),
                 "actioned_at": _actioned_at.isoformat(),
+                "result_hash": None,
+                "pgl_anchor_id": anchor.anchor_id,
             }
-            if _biscuit_sha256:
-                _receipt_canonical["biscuit_token_sha256"] = _biscuit_sha256
-                
-            sp = spiffe_fields or {}
+            
+            from cappo_backend.security.evidence import get_evidence_key_pair, mint_signed_execution_evidence
+            _evidence_pk = get_evidence_key_pair()
+            _cose_bytes = mint_signed_execution_evidence(_receipt_canonical, _evidence_pk)
+            
             db.add(
                 CapabilityActionReceipt(
                     receipt_id=f"rcpt_{anchor.anchor_id or utc_now().strftime('%Y%m%d%H%M%S%f')}",
@@ -441,13 +454,15 @@ class MountRegistry:
                     content_hash=sha256_json(_receipt_canonical),
                     pgl_anchor_id=anchor.anchor_id,
                     caller_spiffe_id=sp.get("caller_spiffe_id"),
-                    executor_spiffe_id=sp.get("caller_spiffe_id"),  # for now, the caller is the executor
+                    executor_spiffe_id=sp.get("caller_spiffe_id"),
                     caller_cert_sha256=sp.get("caller_cert_sha256"),
+                    capability_id=record.mount.package_ref,
                     trust_domain=sp.get("trust_domain"),
                     svid_not_before=sp.get("svid_not_before"),
                     svid_not_after=sp.get("svid_not_after"),
                     policy_version="1.0",
                     biscuit_token_sha256=_biscuit_sha256,
+                    signed_receipt_cose=_cose_bytes,
                 )
             )
         db.commit()

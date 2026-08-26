@@ -93,10 +93,20 @@ def _recompute_hash(rcpt: CapabilityActionReceipt) -> str:
         "mount_id": rcpt.mount_id,
         "token_id": rcpt.token_id,
         "principal": rcpt.principal,
+        "caller_spiffe_id": rcpt.caller_spiffe_id,
+        "executor_spiffe_id": rcpt.executor_spiffe_id,
+        "caller_cert_sha256": rcpt.caller_cert_sha256,
+        "capability_id": rcpt.capability_id if hasattr(rcpt, "capability_id") else (rcpt.mount.package_ref if getattr(rcpt, "mount", None) else None),
+        "biscuit_token_sha256": rcpt.biscuit_token_sha256,
         "action": rcpt.action,
+        "resource": "*",
+        "policy_version": rcpt.policy_version,
         "decision": rcpt.decision,
         "reason": rcpt.reason,
+        "timestamp": actioned_at.isoformat(),
         "actioned_at": actioned_at.isoformat(),
+        "result_hash": None,
+        "pgl_anchor_id": rcpt.pgl_anchor_id,
     }
     return sha256_json(canonical)
 

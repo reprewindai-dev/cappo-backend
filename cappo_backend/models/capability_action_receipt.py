@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base
@@ -47,11 +47,13 @@ class CapabilityActionReceipt(Base):
     caller_spiffe_id: Mapped[str | None] = mapped_column(String, nullable=True)
     executor_spiffe_id: Mapped[str | None] = mapped_column(String, nullable=True)
     caller_cert_sha256: Mapped[str | None] = mapped_column(String, nullable=True)
+    capability_id: Mapped[str | None] = mapped_column(String, nullable=True)
     trust_domain: Mapped[str | None] = mapped_column(String, nullable=True)
     svid_not_before: Mapped[str | None] = mapped_column(String, nullable=True)
     svid_not_after: Mapped[str | None] = mapped_column(String, nullable=True)
     policy_version: Mapped[str | None] = mapped_column(String, nullable=True)
     biscuit_token_sha256: Mapped[str | None] = mapped_column(String, nullable=True)
+    signed_receipt_cose: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
     # Integrity: sha256_json over canonical receipt fields (excluding created_at).
     # Recompute and compare to detect silent field mutation.
