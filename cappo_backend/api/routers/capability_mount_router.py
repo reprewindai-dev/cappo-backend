@@ -50,6 +50,7 @@ class MountRequest(BaseModel):
     policy: MountPolicy = Field(default_factory=MountPolicy)
     ttl_seconds: int = Field(default=300, ge=1)
     execution_id: str | None = None
+    executor_spiffe_id: str | None = None
 
 
 class MountResponse(BaseModel):
@@ -236,6 +237,14 @@ def evaluate_action(
     registry: MountRegistry = Depends(get_registry),
 ) -> ActionResponse:
     principal, workspace = _caller(request)
+    spiffe_fields = {
+        "caller_spiffe_id": request.scope.get("caller_spiffe_id"),
+        "trust_domain": request.scope.get("trust_domain"),
+        "caller_cert_sha256": request.scope.get("caller_cert_sha256"),
+        "svid_not_before": request.scope.get("svid_not_before"),
+        "svid_not_after": request.scope.get("svid_not_after"),
+    }
+
     decision, reason, anchor, _ = registry.evaluate(
         mount_id,
         body.action,
@@ -246,6 +255,7 @@ def evaluate_action(
         approval_token=body.approval_token,
         suppression_evidence=body.suppression_evidence,
         suppression_confirmed=body.suppression_confirmed,
+        spiffe_fields=spiffe_fields,
     )
     return ActionResponse(
         decision=decision,

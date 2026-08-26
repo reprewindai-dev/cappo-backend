@@ -49,6 +49,7 @@ from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
+from cappo_backend.security.spiffe_middleware import SVIDEnforcementMiddleware
 
 
 @asynccontextmanager
@@ -115,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.add_middleware(OllamaBleedSanitizerMiddleware)
+    app.add_middleware(SVIDEnforcementMiddleware, settings=settings)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(AmphotericSensingMiddleware)
     app.add_middleware(

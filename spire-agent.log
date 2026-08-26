@@ -1,0 +1,29 @@
+time="2026-08-26T16:51:12Z" level=warning msg="Current umask 0022 is too permissive; setting umask 0027"
+time="2026-08-26T16:51:12Z" level=info msg="Starting agent with data directory: \"/opt/spire/data\""
+time="2026-08-26T16:51:12Z" level=info msg="Plugin loaded" external=false plugin_name=join_token plugin_type=NodeAttestor subsystem_name=catalog
+time="2026-08-26T16:51:12Z" level=info msg="Plugin loaded" external=false plugin_name=disk plugin_type=KeyManager subsystem_name=catalog
+time="2026-08-26T16:51:12Z" level=info msg="Plugin loaded" external=false plugin_name=unix plugin_type=WorkloadAttestor subsystem_name=catalog
+time="2026-08-26T16:51:12Z" level=info msg="Bundle is not found" subsystem_name=attestor
+time="2026-08-26T16:51:12Z" level=debug msg="No pre-existing agent SVID found. Will perform node attestation" subsystem_name=attestor
+time="2026-08-26T16:51:12Z" level=warning msg="Keys recovered, but no SVID found. Generating new keypair" subsystem_name=attestor
+time="2026-08-26T16:51:12Z" level=info msg="SVID is not found. Starting node attestation" subsystem_name=attestor
+time="2026-08-26T16:51:12Z" level=warning msg="Insecure bootstrap enabled; skipping server certificate verification" subsystem_name=attestor
+time="2026-08-26T16:51:12Z" level=warning msg="Insecure bootstrap enabled; skipping server certificate verification" subsystem_name=attestor
+time="2026-08-26T16:51:12Z" level=info msg="Node attestation was successful" rettestable=false spiffe_id="spiffe://example.org/spire/agent/join_token/e12887b8-d6b7-4f72-a901-40c3121a6c98" subsystem_name=attestor
+time="2026-08-26T16:51:12Z" level=debug msg="Entry created" entry=3687f8b6-59c6-49fb-a84b-128f1dc58962 selectors_added=1 spiffe_id="spiffe://example.org/agent" subsystem_name=cache_manager
+time="2026-08-26T16:51:12Z" level=debug msg="Renewing stale entries" cache_type=workload count=1 limit=500 subsystem_name=manager
+time="2026-08-26T16:51:12Z" level=info msg="Creating X509-SVID" entry_id=3687f8b6-59c6-49fb-a84b-128f1dc58962 spiffe_id="spiffe://example.org/agent" subsystem_name=manager
+time="2026-08-26T16:51:12Z" level=debug msg="SVID updated" entry=3687f8b6-59c6-49fb-a84b-128f1dc58962 spiffe_id="spiffe://example.org/agent" subsystem_name=cache_manager
+time="2026-08-26T16:51:12Z" level=debug msg="Bundle added" subsystem_name=svid_store_cache trust_domain_id=example.org
+time="2026-08-26T16:51:12Z" level=info msg="Starting Workload and SDS APIs" address=/tmp/spire-sockets/workload_api.sock network=unix subsystem_name=endpoints
+time="2026-08-26T16:51:13Z" level=debug msg="Initializing health checkers" subsystem_name=health
+time="2026-08-26T16:51:17Z" level=debug msg="Entry created" entry=0b00395c-2eab-4f07-ae25-8dcce15d8d11 selectors_added=1 spiffe_id="spiffe://example.org/workload/cappo-backend" subsystem_name=cache_manager
+time="2026-08-26T16:51:17Z" level=debug msg="Renewing stale entries" cache_type=workload count=1 limit=500 subsystem_name=manager
+time="2026-08-26T16:51:17Z" level=info msg="Creating X509-SVID" entry_id=0b00395c-2eab-4f07-ae25-8dcce15d8d11 spiffe_id="spiffe://example.org/workload/cappo-backend" subsystem_name=manager
+time="2026-08-26T16:51:17Z" level=debug msg="SVID updated" entry=0b00395c-2eab-4f07-ae25-8dcce15d8d11 spiffe_id="spiffe://example.org/workload/cappo-backend" subsystem_name=cache_manager
+time="2026-08-26T16:51:34Z" level=debug msg="PID attested to have selectors" pid=57 selectors="[type:\"unix\"  value:\"uid:0\" type:\"unix\"  value:\"user:root\" type:\"unix\"  value:\"gid:0\" type:\"unix\"  value:\"group:root\" type:\"unix\"  value:\"supplementary_gid:0\" type:\"unix\"  value:\"supplementary_group:root\"]" subsystem_name=workload_attestor
+time="2026-08-26T16:51:34Z" level=debug msg="Fetched X.509 SVID" count=1 method=FetchX509SVID pid=57 registered=true service=WorkloadAPI spiffe_id="spiffe://example.org/workload/cappo-backend" subsystem_name=endpoints ttl=3582.025797557
+time="2026-08-26T16:51:36Z" level=debug msg="Finishing health checker" subsystem_name=health
+time="2026-08-26T16:51:36Z" level=info msg="Stopping Workload and SDS APIs" subsystem_name=endpoints
+time="2026-08-26T16:51:36Z" level=debug msg="Stopping SVID rotator" subsystem_name=manager
+time="2026-08-26T16:51:36Z" level=info msg="Cache manager stopped" subsystem_name=manager

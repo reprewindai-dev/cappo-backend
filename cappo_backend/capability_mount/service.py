@@ -9,8 +9,10 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_mount import CapabilityMount
+from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.mount_evidence import (
     BoundMountEvidenceVerifier,
     VerifiedMountEvidence,
@@ -138,6 +140,8 @@ class MountRegistry:
         owner_principal: str = "auth-disabled",
         owner_workspace: str | None = None,
         execution_id: str | None = None,
+        caller_spiffe_id: str | None = None,
+        executor_spiffe_id: str | None = None,
     ) -> tuple[MountRecord | None, AnchorResult, str]:
         db = self._db()
         package = self.packages.get(package_ref)
@@ -161,6 +165,19 @@ class MountRegistry:
                 role=role,
                 execution_id=execution_id,
             )
+            
+            if caller_spiffe_id:
+                from cappo_backend.security.biscuit import mint_biscuit_capability
+                token.biscuit_token = mint_biscuit_capability(
+                    caller_spiffe_id=caller_spiffe_id,
+                    executor_spiffe_id=executor_spiffe_id,
+                    capability_id=package.id,
+                    reads=token.grants.reads,
+                    writes=token.grants.writes,
+                    execution_id=token.execution_id,
+                    ttl_seconds=token.ttl_seconds,
+                )
+                
         except MountError as exc:
             return None, AnchorResult("not_applicable"), str(exc)
 
@@ -238,7 +255,8 @@ class MountRegistry:
         approval_token: str | None = None,
         suppression_evidence: str | None = None,
         suppression_confirmed: bool = False,
-    ) -> tuple[Decision, str, AnchorResult, dict[str, Any] | None]:
+        spiffe_fields: dict[str, str | None] | None = None,
+    ) -> tuple[Decision, str, AnchorResult, ExecutionBinding | None]:
         # ``suppression_confirmed`` remains a compatibility input only. A caller
         # boolean is never evidence and cannot satisfy the suppression gate.
         _ = suppression_confirmed
@@ -247,6 +265,9 @@ class MountRegistry:
         if row is None:
             anchor = self.anchor.anchor(
                 "action_decision",
+                principal=owner_principal,
+                mount_id=mount_id,
+                timestamp=utc_now().isoformat(),
                 action=action,
                 decision=Decision.DENY.value,
                 reason="unknown_mount",
@@ -258,6 +279,9 @@ class MountRegistry:
         if not self._owned_by(row, owner_principal, owner_workspace):
             anchor = self.anchor.anchor(
                 "action_decision",
+                principal=owner_principal,
+                mount_id=mount_id,
+                timestamp=utc_now().isoformat(),
                 action=action,
                 decision=Decision.DENY.value,
                 reason="owner_mismatch",
@@ -281,6 +305,9 @@ class MountRegistry:
         if reason:
             anchor = self.anchor.anchor(
                 "action_decision",
+                principal=owner_principal,
+                mount_id=mount_id,
+                timestamp=utc_now().isoformat(),
                 action=action,
                 decision=Decision.DENY.value,
                 reason=reason,
@@ -366,6 +393,9 @@ class MountRegistry:
 
         anchor = self.anchor.anchor(
             "action_decision",
+                principal=owner_principal,
+                mount_id=mount_id,
+                timestamp=utc_now().isoformat(),
             action=action,
             decision=decision.value,
             reason=reason,
@@ -377,6 +407,49 @@ class MountRegistry:
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor, None
         if decision is Decision.ALLOW:
             row.nonce_consumed = True
+            _actioned_at = utc_now()
+            _biscuit_sha256 = None
+            if record.token.biscuit_token:
+                import hashlib
+                _biscuit_sha256 = hashlib.sha256(record.token.biscuit_token.encode()).hexdigest()
+
+            _receipt_canonical = {
+                "execution_id": record.token.execution_id,
+                "mount_id": mount_id,
+                "token_id": record.token.token_id,
+                "principal": owner_principal,
+                "action": action,
+                "decision": decision.value,
+                "reason": reason,
+                "actioned_at": _actioned_at.isoformat(),
+            }
+            if _biscuit_sha256:
+                _receipt_canonical["biscuit_token_sha256"] = _biscuit_sha256
+                
+            sp = spiffe_fields or {}
+            db.add(
+                CapabilityActionReceipt(
+                    receipt_id=f"rcpt_{anchor.anchor_id or utc_now().strftime('%Y%m%d%H%M%S%f')}",
+                    execution_id=record.token.execution_id,
+                    mount_id=mount_id,
+                    token_id=record.token.token_id,
+                    principal=owner_principal,
+                    action=action,
+                    decision=decision.value,
+                    reason=reason,
+                    actioned_at=_actioned_at,
+                    content_hash=sha256_json(_receipt_canonical),
+                    pgl_anchor_id=anchor.anchor_id,
+                    caller_spiffe_id=sp.get("caller_spiffe_id"),
+                    executor_spiffe_id=sp.get("caller_spiffe_id"),  # for now, the caller is the executor
+                    caller_cert_sha256=sp.get("caller_cert_sha256"),
+                    trust_domain=sp.get("trust_domain"),
+                    svid_not_before=sp.get("svid_not_before"),
+                    svid_not_after=sp.get("svid_not_after"),
+                    policy_version="1.0",
+                    biscuit_token_sha256=_biscuit_sha256,
+                )
+            )
         db.commit()
         if decision is Decision.ALLOW:
             record.binding._append(action, Decision.ALLOW, reason)  # noqa: SLF001

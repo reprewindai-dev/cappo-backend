@@ -170,6 +170,10 @@ class Settings(BaseSettings):
     upstash_redis_rest_url: str = ""
     upstash_redis_rest_token: str = ""
 
+    # --- SPIFFE / mTLS Enforcement ---
+    enforce_spiffe: bool = False
+    spiffe_trust_domain: str = "example.org"
+
     # --- Distributed limits ---
     max_runs_per_hour: int = 1000
     max_tokens_per_hour: int = 10000000

@@ -5,6 +5,7 @@ autogeneration and ``create_all`` see the full schema.
 """
 
 from cappo_backend.models.audit_event import AuditEvent
+from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.execution_authorization import ExecutionAuthorization
@@ -44,6 +45,7 @@ from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 __all__ = [
     "FreeRunQuota",
     "AuditEvent",
+    "CapabilityActionReceipt",
     "CapabilityEvidenceConsumption",
     "CapabilityMount",
     "ExecutionAuthorization",

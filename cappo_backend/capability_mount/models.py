@@ -153,6 +153,7 @@ class EphemeralScopedToken(ContractModel):
     single_use: Literal[True] = True
     nonce_consumed: bool = False
     nonce: str = Field(min_length=1)
+    biscuit_token: str | None = None
 
     @field_validator("expires_at")
     @classmethod

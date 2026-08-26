@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  cappo-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - .:/app
