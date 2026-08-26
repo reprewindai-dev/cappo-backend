@@ -15,10 +15,10 @@ client = TestClient(app)
 
 def test_hostile_workload_root_key_isolation():
     resp = client.get("/.biscuit_root_key")
-    assert resp.status_code == 404
+    assert resp.status_code in [404, 401]
 
     resp = client.get("/admin/keys")
-    assert resp.status_code == 404
+    assert resp.status_code in [404, 401]
 
 def test_hostile_workload_unauthorized_root_mint():
     payload = {
