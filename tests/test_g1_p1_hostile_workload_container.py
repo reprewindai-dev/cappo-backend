@@ -41,8 +41,8 @@ def test_container_cannot_access_cappo_memory():
 def test_container_cannot_connect_to_postgres():
     # Attempt to connect to the postgres database directly
     # Need to install psql in the alpine container
-    cmd = "apk add --no-cache postgresql-client >/dev/null 2>&1 && psql -h lockerphycer-lockerphycer-postgres-1 -U postgres -c '\l' || echo 'connection_failed'"
+    cmd = r"apk add --no-cache postgresql-client >/dev/null 2>&1 && psql -h lockerphycer-lockerphycer-postgres-1 -U postgres -c '\l' || echo 'connection_failed'"
     res = run_hostile_probe(cmd)
     # The workload container shouldn't have the password, or network policy might block it.
-    # Without the password, it will fail.
+    # Note: The port may be reachable (no network block), but authentication is correctly denied.
     assert "connection_failed" in res.stdout or "password authentication failed" in res.stderr or "could not translate host name" in res.stderr
