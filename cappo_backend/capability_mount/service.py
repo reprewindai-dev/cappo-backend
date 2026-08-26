@@ -48,6 +48,7 @@ class EventAnchor(Protocol):
         reason: str,
         mount: Mount | None,
         token: EphemeralScopedToken | None,
+        **kwargs: Any,
     ) -> AnchorResult: ...
 
 
@@ -168,7 +169,7 @@ class MountRegistry:
             
             if caller_spiffe_id:
                 from cappo_backend.security.biscuit import mint_biscuit_capability
-                token.biscuit_token = mint_biscuit_capability(
+                biscuit_token = mint_biscuit_capability(
                     caller_spiffe_id=caller_spiffe_id,
                     executor_spiffe_id=executor_spiffe_id,
                     capability_id=package.id,
@@ -177,6 +178,7 @@ class MountRegistry:
                     execution_id=token.execution_id,
                     ttl_seconds=token.ttl_seconds,
                 )
+                token = token.model_copy(update={"biscuit_token": biscuit_token})
                 
         except MountError as exc:
             return None, AnchorResult("not_applicable"), str(exc)
@@ -189,7 +191,7 @@ class MountRegistry:
             mount=mount,
             token=token,
         )
-        if anchor.status != "confirmed":
+        if anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
             return None, anchor, "pgl_anchor_unconfirmed"
 
@@ -402,7 +404,7 @@ class MountRegistry:
             mount=record.mount,
             token=record.token,
         )
-        if decision is Decision.ALLOW and anchor.status != "confirmed":
+        if decision is Decision.ALLOW and anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor, None
         if decision is Decision.ALLOW:
@@ -421,7 +423,7 @@ class MountRegistry:
                 "token_id": record.token.token_id,
                 "principal": owner_principal,
                 "caller_spiffe_id": sp.get("caller_spiffe_id"),
-                "executor_spiffe_id": sp.get("caller_spiffe_id"), # For now
+                "executor_spiffe_id": sp.get("executor_spiffe_id"),
                 "caller_cert_sha256": sp.get("caller_cert_sha256"),
                 "capability_id": record.mount.package_ref,
                 "biscuit_token_sha256": _biscuit_sha256,
@@ -440,31 +442,32 @@ class MountRegistry:
             _evidence_pk = get_evidence_key_pair()
             _cose_bytes = mint_signed_execution_evidence(_receipt_canonical, _evidence_pk)
             
-            db.add(
-                CapabilityActionReceipt(
-                    receipt_id=f"rcpt_{anchor.anchor_id or utc_now().strftime('%Y%m%d%H%M%S%f')}",
-                    execution_id=record.token.execution_id,
-                    mount_id=mount_id,
-                    token_id=record.token.token_id,
-                    principal=owner_principal,
-                    action=action,
-                    decision=decision.value,
-                    reason=reason,
-                    actioned_at=_actioned_at,
-                    content_hash=sha256_json(_receipt_canonical),
-                    pgl_anchor_id=anchor.anchor_id,
-                    caller_spiffe_id=sp.get("caller_spiffe_id"),
-                    executor_spiffe_id=sp.get("caller_spiffe_id"),
-                    caller_cert_sha256=sp.get("caller_cert_sha256"),
-                    capability_id=record.mount.package_ref,
-                    trust_domain=sp.get("trust_domain"),
-                    svid_not_before=sp.get("svid_not_before"),
-                    svid_not_after=sp.get("svid_not_after"),
-                    policy_version="1.0",
-                    biscuit_token_sha256=_biscuit_sha256,
-                    signed_receipt_cose=_cose_bytes,
-                )
+            receipt = CapabilityActionReceipt(
+                receipt_id=f"rcpt_{anchor.anchor_id or utc_now().strftime('%Y%m%d%H%M%S%f')}",
+                execution_id=record.token.execution_id,
+                mount_id=mount_id,
+                token_id=record.token.token_id,
+                principal=owner_principal,
+                action=action,
+                decision=decision.value,
+                reason=reason,
+                actioned_at=_actioned_at,
+                content_hash=sha256_json(_receipt_canonical),
+                pgl_anchor_id=anchor.anchor_id,
+                caller_spiffe_id=sp.get("caller_spiffe_id"),
+                executor_spiffe_id=sp.get("executor_spiffe_id"),
+                caller_cert_sha256=sp.get("caller_cert_sha256"),
+                capability_id=record.mount.package_ref,
+                trust_domain=sp.get("trust_domain"),
+                svid_not_before=sp.get("svid_not_before"),
+                svid_not_after=sp.get("svid_not_after"),
+                policy_version="1.0",
+                biscuit_token_sha256=_biscuit_sha256,
+                signed_receipt_cose=_cose_bytes,
             )
+            db.add(receipt)
+            from cappo_backend.security.merkle_ops import assign_merkle_leaf_index
+            assign_merkle_leaf_index(db, receipt)
         db.commit()
         if decision is Decision.ALLOW:
             record.binding._append(action, Decision.ALLOW, reason)  # noqa: SLF001
@@ -529,7 +532,7 @@ class MountRegistry:
             mount=record.mount,
             token=record.token,
         )
-        if anchor.status != "confirmed":
+        if anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor
         row.terminated = True

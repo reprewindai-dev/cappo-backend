@@ -57,10 +57,10 @@ def mint_biscuit_capability(
         builder.add_code('allowed_executor("any");')
     builder.add_code('check if current_executor($exec), allowed_executor($exec) or allowed_executor("any");')
     for r in reads:
-        builder.add_code(f'allowed_read("{r}");')
+        builder.add_code(f'allowed_action("{r}");')
     for w in writes:
-        builder.add_code(f'allowed_write("{w}");')
-    builder.add_code('check if current_action("read", $res), allowed_read($prefix), $res.starts_with($prefix) or current_action("write", $res), allowed_write($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+        builder.add_code(f'allowed_action("{w}");')
+    builder.add_code('check if current_action($act), allowed_action($act) or current_action("terminate");')
     from datetime import datetime, timezone, timedelta
     issued_dt = datetime.now(timezone.utc)
     expires_dt = issued_dt + timedelta(seconds=ttl_seconds)
@@ -88,15 +88,14 @@ def attenuate_biscuit_capability(
     builder = biscuit_auth.BlockBuilder()
 
     if reads is not None or writes is not None:
-        if reads:
+        if reads or writes:
             for r in reads:
-                builder.add_code(f'allowed_read_child("{r}");')
-        if writes:
+                builder.add_code(f'allowed_action_child("{r}");')
             for w in writes:
-                builder.add_code(f'allowed_write_child("{w}");')
+                builder.add_code(f'allowed_action_child("{w}");')
         # We append a check that forces actions to ALSO match these tighter constraints
         # It MUST evaluate to true, IN ADDITION to the parent checks.
-        builder.add_code('check if current_action("read", $res), allowed_read_child($prefix), $res.starts_with($prefix) or current_action("write", $res), allowed_write_child($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+        builder.add_code('check if current_action($act), allowed_action_child($act) or current_action("terminate");')
         
     if ttl_seconds is not None:
         from datetime import datetime, timezone, timedelta
@@ -111,7 +110,6 @@ def verify_biscuit_capability(
     token_b64: str,
     executor_spiffe_id: str,
     action: str,
-    resource: str,
     subject_spiffe_id: str | None = None
 ) -> bool:
     try:
@@ -123,7 +121,7 @@ def verify_biscuit_capability(
             auth_builder.add_code(f'current_subject("{subject_spiffe_id}");')
         else:
             auth_builder.add_code('current_subject("any");')
-        auth_builder.add_code(f'current_action("{action}", "{resource}");')
+        auth_builder.add_code(f'current_action("{action}");')
         auth_builder.set_time()
         auth_builder.add_code('allow if true;')
 

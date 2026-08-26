@@ -32,39 +32,34 @@ def test_g0b3_biscuit_issuance():
     assert verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="contact.read"
+        action="contact.read"
     ) == True
 
     # 3. Wrong Action DENY
     assert verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="message.send"  # authorized for write, not read
-    ) == False
+        action="message.send"  # authorized for write, not read (Wait, writes are "message.send") Oh actually, the test meant to check if "message.send" fails? Wait! "message.send" is in writes, so it SHOULD succeed!
+    ) == True
 
     assert verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="delete",
-        resource="contact.read"
+        action="delete.resource"
     ) == False
 
-    # 4. Wrong Resource DENY
+    # 4. Wrong Resource DENY -> Not applicable anymore, but we can test unknown action
     assert verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="unknown.resource"
+        action="unknown.action"
     ) == False
 
     # 5. Wrong SPIFFE identity (Audience) DENY
     assert verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id="spiffe://example.org/workload/evil-agent",
-        action="read",
-        resource="contact.read"
+        action="contact.read"
     ) == False
 
     # 6. Expired DENY
@@ -81,16 +76,14 @@ def test_g0b3_biscuit_issuance():
     assert verify_biscuit_capability(
         token_b64=expired_token,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="contact.read"
+        action="contact.read"
     ) == False
 
     # 7. WRONG_SUBJECT Denied
     assert verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="/records/customer-42",
+        action="contact.read",
         subject_spiffe_id="spiffe://example.org/workload/not-cappo"
     ) == False
     print("WRONG_SUBJECT_DENIED = True")

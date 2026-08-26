@@ -8,8 +8,8 @@ def test_g0b4_biscuit_attenuation():
     caller_spiffe_id = "spiffe://example.org/workload/cappo-backend"
     executor_spiffe_id = "spiffe://example.org/workload/my-agent"
     capability_id = "records@v1"
-    reads = ["/records/"]
-    writes = ["/records/"]
+    reads = ["record.read", "record.read_all"]
+    writes = ["record.write"]
     execution_id = "exec_42"
     ttl_seconds = 600
 
@@ -25,19 +25,18 @@ def test_g0b4_biscuit_attenuation():
     )
 
     assert parent_token_b64 is not None
-    # Parent authorizes read /records/customer-42
+    # Parent authorizes read record.read
     assert verify_biscuit_capability(
         token_b64=parent_token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="/records/customer-42",
+        action="record.read",
         subject_spiffe_id=caller_spiffe_id
     ) == True
 
     # 2. Attenuate Child Token Locally
     child_token_b64 = attenuate_biscuit_capability(
         token_b64=parent_token_b64,
-        reads=["/records/customer-42"],
+        reads=["record.read"],
         writes=[],  # drop writes
         ttl_seconds=120  # reduced from 600
     )
@@ -49,26 +48,23 @@ def test_g0b4_biscuit_attenuation():
     assert verify_biscuit_capability(
         token_b64=child_token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="/records/customer-42",
+        action="record.read",
         subject_spiffe_id=caller_spiffe_id
     ) == True
 
-    # 4. Action Widening Denied (write /records/customer-42)
+    # 4. Action Widening Denied (write)
     assert verify_biscuit_capability(
         token_b64=child_token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="write",
-        resource="/records/customer-42",
+        action="record.write",
         subject_spiffe_id=caller_spiffe_id
     ) == False
 
-    # 5. Resource Widening Denied (read /records/customer-99)
+    # 5. Dropped Action Denied (read_all)
     assert verify_biscuit_capability(
         token_b64=child_token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="/records/customer-99",
+        action="record.read_all",
         subject_spiffe_id=caller_spiffe_id
     ) == False
 
@@ -82,7 +78,7 @@ def test_g0b4_biscuit_attenuation():
     # Attenuating child again should fail to verify.
     grandchild_token_b64 = attenuate_biscuit_capability(
         token_b64=child_token_b64,
-        reads=["/records/customer-42"],
+        reads=["record.read"],
         writes=[],
         ttl_seconds=60
     )
@@ -90,8 +86,7 @@ def test_g0b4_biscuit_attenuation():
     assert verify_biscuit_capability(
         token_b64=grandchild_token_b64,
         executor_spiffe_id=executor_spiffe_id,
-        action="read",
-        resource="/records/customer-42",
+        action="record.read",
         subject_spiffe_id=caller_spiffe_id
     ) == False
 

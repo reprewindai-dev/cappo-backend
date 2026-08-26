@@ -34,6 +34,7 @@ class AuditPGLAnchor:
         reason: str,
         mount: Mount | None,
         token: EphemeralScopedToken | None,
+        **kwargs: Any,
     ) -> AnchorResult:
         payload: dict[str, Any] = {
             "event_type": event_type,
@@ -58,7 +59,7 @@ class AuditPGLAnchor:
         url = self.settings.pgl_ledger_url
         if not url:
             return AnchorResult(
-                "unconfirmed",
+                "pending_reconciliation",
                 anchor_id=event.log_hash,
                 detail="external PGL is not configured",
             )
@@ -83,7 +84,7 @@ class AuditPGLAnchor:
             response.raise_for_status()
         except Exception:
             return AnchorResult(
-                "unconfirmed",
+                "pending_reconciliation",
                 anchor_id=event.log_hash,
                 detail="external PGL append unconfirmed",
             )

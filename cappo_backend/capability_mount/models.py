@@ -44,6 +44,14 @@ class CapabilityPackage(ContractModel):
     family: str = Field(min_length=1)
     title: str = Field(min_length=1)
     purpose: str = Field(min_length=1)
+    
+    # CANONICAL VOCABULARY DEFINITION:
+    # CAPPO unifies execution consequences into a single `action` identifier.
+    # An action is a granular, atomic string identifying the governed consequence.
+    # It often embeds both the operation and the resource type (e.g. "contact.read").
+    # CAPPO does NOT separate 'operation' (read) and 'resource path' (/contacts/1)
+    # during policy evaluation; if finer-grained resource scoping is needed,
+    # it must be represented as distinct action strings or via capability bounds.
     reads: list[str] = Field(default_factory=list)
     writes: list[str] = Field(default_factory=list)
     blocked: list[str] = Field(default_factory=list)
