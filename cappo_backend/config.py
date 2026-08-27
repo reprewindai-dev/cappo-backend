@@ -207,38 +207,14 @@ class Settings(BaseSettings):
     def reject_known_insecure_keys(cls, v: Any) -> Any:
         if isinstance(v, str):
             import hashlib
-            import secrets
-            import os
-            
-            _KNOWN_COMPROMISED_KEY_FINGERPRINT = "d2623fa3f2c01611397de54f7724fbe483a53fbec78d46b76aa283dbe02600d8"
-            keys = [k.strip() for k in v.split(",")]
-            has_compromised = False
-            for k in keys:
-                if hashlib.sha256(k.encode()).hexdigest() == _KNOWN_COMPROMISED_KEY_FINGERPRINT:
-                    has_compromised = True
-                    break
-                    
-            if has_compromised:
-                env = (os.getenv("ENVIRONMENT") or os.getenv("ENV") or "development").lower()
-                is_prod = env in {"production", "prod"}
-                if is_prod:
-                    raise InsecureProductionConfigError(
+
+            compromised_fingerprint = "d2623fa3f2c01611397de54f7724fbe483a53fbec78d46b76aa283dbe02600d8"
+            for key in (item.strip() for item in v.split(",")):
+                if key and hashlib.sha256(key.encode()).hexdigest() == compromised_fingerprint:
+                    raise ValueError(
                         "Compromised CAPPO API credential detected. "
-                        "Rotate the API_KEYS value in the Coolify environment panel and redeploy."
+                        "Rotate API_KEYS in deployment configuration before startup."
                     )
-                else:
-                    import logging
-                    logging.warning(
-                        "WARNING: Compromised CAPPO API credential detected in development. "
-                        "Silently replacing with a random secure token."
-                    )
-                    new_keys = []
-                    for k in keys:
-                        if hashlib.sha256(k.encode()).hexdigest() == _KNOWN_COMPROMISED_KEY_FINGERPRINT:
-                            new_keys.append(secrets.token_hex(32))
-                        else:
-                            new_keys.append(k)
-                    return ",".join(new_keys)
         return v
 
     def validate_production(self) -> None:
