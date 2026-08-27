@@ -36,3 +36,22 @@
 
 The P5 boundary is closed from SHA `b48007614bee92d1caacc628d96fe9a786e8cd47` forward.
 This file is the permanent on-chain record of the C0 gate event.
+
+---
+
+## Live Verifier Runs
+
+### Run 1 — 2026-08-27T17:43Z
+
+Tool: `veklom-verify.py` (dependencies: `cbor2`, `cryptography`)
+
+| Check | Result |
+|---|---|
+| `SIGNATURE_VALID` | `true` |
+| `EXECUTION_ID` | `exec_01J6B9…` |
+| `ACTION` | `contact.read` |
+| `RESOURCE` | `/contacts/123` |
+| `MERKLE_INCLUSION_VALID` | `true` |
+| `RECONCILIATION_STATUS` | `pending` |
+
+**Interpretation:** Signature and Merkle inclusion are cryptographically verified. `RECONCILIATION_STATUS=pending` is **correct and expected** — it reflects that the E2E, IR, and RC System Track gates remain open in the canonical registry. This is not a failure; it is an honest report of work remaining. The verifier is operating truthfully.
