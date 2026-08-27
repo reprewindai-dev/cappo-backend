@@ -1,58 +1,59 @@
 """
-AI-1 — Authority Ingress Completeness (Out-of-Process Assault)
+AI-1 authority-ingress adversarial harness hardening.
 
-Hypothesis: Every executable authority unit can be traced to a declared upstream grant.
-
-Attack program:
-Spawn an explicitly hostile subprocess (ai1_hostile_workload.py) representing the
-execution plane workload. The harness will attempt to pollute the environment with
-forbidden secrets (e.g. CAPPO_AUTHORIZATION_OVERRIDE) and leaked database URLs.
-The hostile workload will attempt to scrape these inputs and use them to gain 
-consequence authority.
-
-Falsifier: Any path where the hostile workload exits with code 0 (meaning it successfully
-found and exploited a path to gain authority).
+This test validates a narrow property: the local subprocess harness does not pass
+parent-process secrets into the hostile child and the resulting evidence does not
+reprint a sentinel secret. It is not proof of Lockerphycer/container isolation,
+network-namespace enforcement, filesystem confinement, or CEM-1 conformance.
 """
 
+import json
 import os
-import sys
 import subprocess
+import sys
+
 import pytest
 
-# Define the declared substrate boundary for CEM-1-R1
-# In a real environment, this would be `docker run --network none ...`
-# Here, it is a local Python subprocess with isolated environment variables.
+
 SUBSTRATE_PYTHON_EXEC = sys.executable
 HOSTILE_PAYLOAD = os.path.join(os.path.dirname(__file__), "ai1_hostile_workload.py")
+SAFE_ENV_KEYS = ("PATH", "SYSTEMROOT", "WINDIR", "HOME", "TMP", "TEMP")
 
-def test_ai_1_out_of_process_assault(tmp_path):
-    """
-    Spawns the hostile workload and verifies it cannot gain authority.
-    """
-    # 1. Prepare the hostile environment
-    # We pass the real current environment. If the substrate leaks credentials, 
-    # the hostile workload will find them and fail the test.
-    env = os.environ.copy()
-    
-    # 2. Spawn the hostile workload
+
+def _hostile_environment() -> dict[str, str]:
+    """Build the explicit allowlist passed across the local harness boundary."""
+    env = {key: os.environ[key] for key in SAFE_ENV_KEYS if key in os.environ}
+    # Preserve local package discovery without copying arbitrary parent variables.
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    env["PYTHONPATH"] = repo_root
+    return env
+
+
+def test_ai_1_out_of_process_assault(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The local hostile child receives no parent secret and emits secret-safe evidence."""
+    sentinel = "cem1-parent-secret-must-never-cross-boundary"
+    monkeypatch.setenv("CEM1_TEST_SECRET", sentinel)
+
     result = subprocess.run(
         [SUBSTRATE_PYTHON_EXEC, HOSTILE_PAYLOAD],
-        env=env,
+        env=_hostile_environment(),
         capture_output=True,
-        text=True
+        text=True,
+        check=False,
     )
-    
-    # 3. Evaluate the result
-    # The hostile workload returns 0 if it successfully gains authority.
-    # It returns 1 if it is successfully isolated.
-    
-    # If the process exited with 0, it means it found a bypass!
+
+    # Evidence must remain safe even when the hostile payload or harness fails.
+    assert sentinel not in result.stdout
+    assert sentinel not in result.stderr
+
     if result.returncode == 0:
-        pytest.fail(f"AI-1 Falsified: Hostile workload successfully gained authority.\nOutput:\n{result.stdout}\n{result.stderr}")
-        
-    assert result.returncode == 1, f"Expected workload to fail with exit code 1, got {result.returncode}"
-    
-    # We can inspect the JSON report printed by the workload
-    print("Hostile Workload Output:")
-    print(result.stdout)
-    assert "isolation_held" in result.stdout
+        pytest.fail("AI-1 falsified: hostile workload gained authority; output redacted")
+
+    assert result.returncode == 1, (
+        f"Expected hostile workload denial (exit 1), got {result.returncode}; output redacted"
+    )
+
+    report = json.loads(result.stdout)
+    assert report["status"] == "SECURE"
+    assert report["reason"] == "isolation_held"
+    assert "CEM1_TEST_SECRET" not in report["report"]["suspicious_env_vars"]
