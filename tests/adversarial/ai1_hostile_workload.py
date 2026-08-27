@@ -1,98 +1,134 @@
 """
-Hostile Workload Payload for AI-1 (Authority Ingress).
+Hostile workload payload for the AI-1 authority-ingress harness.
 
-This script is spawned as a completely separate process by the AI-1 test harness.
-Its objective is to hunt for undeclared authority:
-1. Environment variable leakage (DB credentials, root keys, admin flags)
-2. Cached or leaked token files on disk (.biscuit, .key)
-3. Direct DB connectivity via leaked credentials
-4. Direct CAPPO registry instantiation without a valid cryptographic grant
+This payload is intentionally evidence-safe: it reports only categories, key names,
+and boolean/count outcomes. It must never print credential values, database URLs,
+private topology, or raw exception text.
 
 Exit codes:
-0: Attack SUCCEEDED (Authority was successfully stolen/smuggled). AI-1 FAILS.
-1: Attack FAILED (Hostile workload remained fully isolated). AI-1 PASSES.
+0: attack succeeded and authority was gained.
+1: attack failed and the harness boundary held.
 """
+
+import json
 import os
 import sys
-import json
-import logging
 
-def attack():
-    report = {"findings": [], "stolen_tokens": [], "db_breach": False}
-    
-    # 1. Scrape Environment Variables
-    env_keys = list(os.environ.keys())
-    suspicious_env = [k for k in env_keys if any(x in k.upper() for x in ["TOKEN", "SECRET", "DB", "AUTH", "SPIFFE", "URL", "KEY", "ADMIN"])]
+
+SENSITIVE_NAME_MARKERS = (
+    "TOKEN",
+    "SECRET",
+    "DB",
+    "AUTH",
+    "SPIFFE",
+    "URL",
+    "KEY",
+    "ADMIN",
+)
+SECRET_FILE_SUFFIXES = (".token", ".biscuit", ".pem", ".key")
+
+
+def attack() -> None:
+    report: dict[str, object] = {
+        "findings": [],
+        "db_breach": False,
+        "secret_file_count": 0,
+    }
+    findings = report["findings"]
+    assert isinstance(findings, list)
+
+    # Report names only. Environment values are never evidence.
+    suspicious_env = sorted(
+        key
+        for key in os.environ
+        if any(marker in key.upper() for marker in SENSITIVE_NAME_MARKERS)
+    )
     report["suspicious_env_vars"] = suspicious_env
 
-    # 2. Scrape File System (looking for leaked tokens)
+    # Count candidate secret-bearing files without emitting host paths.
     search_paths = [os.getcwd(), os.environ.get("TEMP", "/tmp")]
-    found_secrets = []
-    for path in search_paths:
+    secret_file_count = 0
+    for search_path in search_paths:
         try:
-            for root, dirs, files in os.walk(path):
-                # Restrict search depth to avoid hanging
-                if root.count(os.sep) - path.count(os.sep) > 3:
+            for root, _dirs, files in os.walk(search_path):
+                if root.count(os.sep) - search_path.count(os.sep) > 3:
                     continue
-                for file in files:
-                    if file.endswith((".token", ".biscuit", ".pem", ".key")):
-                        found_secrets.append(os.path.join(root, file))
+                secret_file_count += sum(
+                    filename.endswith(SECRET_FILE_SUFFIXES) for filename in files
+                )
         except Exception:
-            pass
-    report["found_secrets"] = found_secrets
+            findings.append("filesystem_scan_unavailable")
+    report["secret_file_count"] = secret_file_count
 
-    # 3. Attempt direct database connection if URL leaked
-    db_urls = [os.environ[k] for k in suspicious_env if "DB" in k.upper() or "URL" in k.upper()]
-    
+    # Attempt direct database access only if a database-like URL somehow crossed
+    # the harness boundary. Never include the URL or transport exception in output.
+    db_urls = [
+        os.environ[key]
+        for key in suspicious_env
+        if "DB" in key.upper() or "URL" in key.upper()
+    ]
     for url in db_urls:
-        if "sqlite" in url or "postgresql" in url:
-            try:
-                from sqlalchemy import create_engine
-                from sqlalchemy.sql import text
-                engine = create_engine(url)
-                with engine.connect() as conn:
-                    # Try to read the capability mount table
-                    conn.execute(text("SELECT 1 FROM capability_mounts LIMIT 1"))
-                    report["db_breach"] = True
-                    report["findings"].append(f"DB Breach: direct access via {url}")
-                    break
-            except Exception as e:
-                report["findings"].append(f"DB connect failed for {url}: {e}")
+        if "sqlite" not in url and "postgresql" not in url:
+            continue
+        try:
+            from sqlalchemy import create_engine
+            from sqlalchemy.sql import text
+
+            engine = create_engine(url)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1 FROM capability_mounts LIMIT 1"))
+                report["db_breach"] = True
+                findings.append("direct_db_access_succeeded")
+                break
+        except Exception:
+            findings.append("direct_db_access_denied")
 
     if report["db_breach"]:
         print(json.dumps({"status": "BREACHED", "reason": "direct_db_access", "report": report}))
-        sys.exit(0)  # Attack succeeded -> AI-1 FAILS
+        sys.exit(0)
 
-    # 4. Attempt to bypass using explicit overrides and actual library calls
-    # If the environment allows an override, calling MountRegistry.evaluate should return ALLOW
+    # Attempt CAPPO evaluation only when a DB URL crossed the boundary. Again,
+    # report category-only outcomes so failures cannot disclose secret material.
     try:
-        from cappo_backend.capability_mount.service import MountRegistry
         import sqlalchemy.orm
-        
-        # If we have a DB URL, try to build a registry and evaluate
+
+        from cappo_backend.capability_mount.service import MountRegistry
+
         for url in db_urls:
-            if "sqlite" in url or "postgresql" in url:
-                engine = create_engine(url)
-                Session = sqlalchemy.orm.sessionmaker(bind=engine)
-                db = Session()
-                reg = MountRegistry(db)
-                
-                decision, reason, _, _ = reg.evaluate(
+            if "sqlite" not in url and "postgresql" not in url:
+                continue
+            from sqlalchemy import create_engine
+
+            engine = create_engine(url)
+            session_factory = sqlalchemy.orm.sessionmaker(bind=engine)
+            db = session_factory()
+            try:
+                registry = MountRegistry(db)
+                decision, _reason, _anchor, _details = registry.evaluate(
                     mount_id="dummy",
                     action="test.action",
                     requested_resource="test",
-                    biscuit_token=None
+                    biscuit_token=None,
                 )
-                
                 if decision.value == "allow":
-                    print(json.dumps({"status": "BREACHED", "reason": "real_cappo_allow_achieved", "report": report}))
+                    print(
+                        json.dumps(
+                            {
+                                "status": "BREACHED",
+                                "reason": "real_cappo_allow_achieved",
+                                "report": report,
+                            }
+                        )
+                    )
                     sys.exit(0)
-    except Exception as e:
-        report["findings"].append(f"Direct CAPPO evaluation failed: {e}")
+            finally:
+                db.close()
+    except Exception:
+        findings.append("direct_cappo_evaluation_denied")
 
-    # 5. If we reach here, the hostile workload could not find a way to elevate privileges
     print(json.dumps({"status": "SECURE", "reason": "isolation_held", "report": report}))
-    sys.exit(1)  # Attack failed -> AI-1 PASSES
+    sys.exit(1)
+
 
 if __name__ == "__main__":
     attack()
