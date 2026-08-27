@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
+from cappo_backend.capability_mount.engine import mark_mount_revoked
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.mount_evidence import (
@@ -117,10 +118,36 @@ class MountRegistry:
         token = EphemeralScopedToken.model_validate(row.token_json).model_copy(
             update={"nonce_consumed": row.nonce_consumed}
         )
+        
+        def cappo_evaluator(action: str, kwargs: dict[str, object]) -> tuple[Decision, str]:
+            # This allows ExecutionBinding.consequence() to automatically route through CAPPO
+            # for true consequence dominance.
+            dec, reason, _, _ = self.evaluate(
+                mount_id=mount.id,
+                action=action,
+                resource=str(kwargs.get("resource")) if "resource" in kwargs else None,
+                token_id=token.token_id,
+                nonce=token.nonce,
+                owner_principal=row.owner_principal,
+                owner_workspace=row.owner_workspace,
+                approval_token=str(kwargs.get("approval_token")) if "approval_token" in kwargs else None,
+                suppression_evidence=str(kwargs.get("suppression_evidence")) if "suppression_evidence" in kwargs else None,
+                suppression_confirmed=bool(kwargs.get("suppression_confirmed")),
+            )
+            return dec, reason
+
+        binding = ExecutionBinding(
+            token, 
+            DatabaseAuditSink(self._db(), row.owner_workspace, None),
+            cappo_evaluator=cappo_evaluator
+        )
+        
+        if row.terminated:
+            binding._terminated = True
         return MountRecord(
             mount,
             token,
-            ExecutionBinding(token, DatabaseAuditSink(self._db(), row.owner_workspace, None)),
+            binding,
             AnchorResult(row.anchor_status, row.anchor_id, row.anchor_detail),
         )
 
@@ -693,6 +720,7 @@ class MountRegistry:
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor
             
         row.terminated = True
+        mark_mount_revoked(mount_id)
         
         from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
         lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).first()

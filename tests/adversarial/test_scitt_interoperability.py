@@ -22,7 +22,7 @@ def test_scitt_cbor_structure_compliance():
     # We call the existing function to get our local COSE_Sign1 bytes
     cose_bytes = mint_signed_execution_evidence(
         canonical_receipt=payload,
-        private_key=get_evidence_key_pair()
+        key_file=".evidence_root_key"
     )
     
     # Decode the CBOR

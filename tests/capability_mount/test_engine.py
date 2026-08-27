@@ -56,40 +56,40 @@ def mount_binding(package: CapabilityPackage, scope: MountScope, **policy: objec
 def test_default_deny_unknown_action(package: CapabilityPackage, scope: MountScope) -> None:
     _, _, binding, sink = mount_binding(package, scope)
     with pytest.raises(PolicyError, match="not_in_capability_profile"):
-        binding.call("unknown.action", lambda: "never")
+        binding.compute("unknown.action", lambda: "never")
     assert sink.events[-1].decision is Decision.DENY
 
 
 def test_explicit_allow_read(package: CapabilityPackage, scope: MountScope) -> None:
     _, _, binding, sink = mount_binding(package, scope)
-    assert binding.call("contact.read", lambda: "read") == "read"
+    assert binding.compute("contact.read", lambda: "read") == "read"
     assert sink.events[-1].decision is Decision.ALLOW
 
 
 def test_explicit_allow_write(package: CapabilityPackage, scope: MountScope) -> None:
     _, _, binding, _ = mount_binding(package, scope, require_suppression_check=False)
-    assert binding.call("draft.write", lambda: "written") == "written"
+    assert binding.compute("draft.write", lambda: "written") == "written"
 
 
 def test_plain_write_does_not_require_approval(
     package: CapabilityPackage, scope: MountScope
 ) -> None:
     _, _, binding, _ = mount_binding(package, scope)
-    assert binding.call("plain.write", lambda: "written") == "written"
+    assert binding.compute("plain.write", lambda: "written") == "written"
 
 
 def test_blocked_precedence(package: CapabilityPackage, scope: MountScope) -> None:
     package_with_overlap = package.model_copy(update={"blocked": ["draft.write"]})
     _, _, binding, _ = mount_binding(package_with_overlap, scope, require_suppression_check=False)
     with pytest.raises(PolicyError, match="blocked_action"):
-        binding.call("draft.write", lambda: "never")
+        binding.compute("draft.write", lambda: "never")
 
 
 def test_scope_mismatch_denies(package: CapabilityPackage, scope: MountScope) -> None:
     narrow_scope = scope.model_copy(update={"reads": ["contact.read"], "writes": []})
     _, _, binding, _ = mount_binding(package, narrow_scope)
     with pytest.raises(PolicyError, match="not_in_capability_profile"):
-        binding.call("draft.write", lambda: "never")
+        binding.compute("draft.write", lambda: "never")
 
 
 def test_ttl_expiry_denies(package: CapabilityPackage, scope: MountScope) -> None:
@@ -106,7 +106,7 @@ def test_ttl_expiry_denies(package: CapabilityPackage, scope: MountScope) -> Non
 
     binding = ExecutionBinding(token, sink, clock=lambda: now + timedelta(seconds=2))
     with pytest.raises(TokenExpiredError):
-        binding.call("contact.read", lambda: "never")
+        binding.compute("contact.read", lambda: "never")
     assert sink.events[-1].reason == "token_expired"
 
 
@@ -116,7 +116,7 @@ def test_explicit_terminate_denies_subsequent_calls(
     _, _, binding, sink = mount_binding(package, scope)
     binding.terminate()
     with pytest.raises(ExecutionTerminatedError):
-        binding.call("contact.read", lambda: "never")
+        binding.compute("contact.read", lambda: "never")
     assert sink.events[-1].reason == "terminated"
 
 
@@ -125,7 +125,7 @@ def test_task_complete_unmount(package: CapabilityPackage, scope: MountScope) ->
     binding.terminate(UnmountReason.TASK_COMPLETE)
     assert mount.lifecycle.state.value == "mounted"
     with pytest.raises(ExecutionTerminatedError):
-        binding.call("contact.read", lambda: "never")
+        binding.compute("contact.read", lambda: "never")
 
 
 def test_raw_human_approval_token_never_authorizes_external_send(
@@ -133,7 +133,7 @@ def test_raw_human_approval_token_never_authorizes_external_send(
 ) -> None:
     _, _, binding, sink = mount_binding(package, scope, require_suppression_check=False)
     with pytest.raises(PolicyError, match="human_approval_not_verified"):
-        binding.call(
+        binding.compute(
             "outreach.email_send",
             lambda: "never",
             approval_token="arbitrary-caller-string",
@@ -153,7 +153,7 @@ def test_raw_suppression_boolean_never_authorizes_suppression_gate(
         require_human_approval_for_external_send=False,
     )
     with pytest.raises(PolicyError, match="suppression_not_verified"):
-        binding.call(
+        binding.compute(
             "outreach.email_send",
             lambda: "never",
             suppression_confirmed=True,
@@ -218,9 +218,9 @@ def test_persistent_memory_is_package_bounded_and_ephemeral_mounts_reject_it(
 
 def test_audit_appends_on_allow_and_deny(package: CapabilityPackage, scope: MountScope) -> None:
     _, _, binding, sink = mount_binding(package, scope)
-    binding.call("contact.read", lambda: "read")
+    binding.compute("contact.read", lambda: "read")
     with pytest.raises(PolicyError):
-        binding.call("unknown.action", lambda: "never")
+        binding.compute("unknown.action", lambda: "never")
     assert [event.decision for event in sink.events] == [Decision.ALLOW, Decision.DENY]
 
 
@@ -228,9 +228,9 @@ def test_audit_hash_chain_continuity_and_tamper_detection(
     package: CapabilityPackage, scope: MountScope
 ) -> None:
     _, _, binding, sink = mount_binding(package, scope)
-    binding.call("contact.read", lambda: "read")
+    binding.compute("contact.read", lambda: "read")
     with pytest.raises(PolicyError):
-        binding.call("unknown.action", lambda: "never")
+        binding.compute("unknown.action", lambda: "never")
     assert sink.verify_chain() is True
     sink.events[0] = sink.events[0].model_copy(update={"reason": "tampered"})
     assert sink.verify_chain() is False

@@ -35,6 +35,15 @@ T = TypeVar("T")
 Action = Callable[..., T]
 
 
+_LOCAL_REVOCATIONS: set[str] = set()
+
+def mark_mount_revoked(mount_id: str) -> None:
+    _LOCAL_REVOCATIONS.add(mount_id)
+
+def is_mount_revoked(mount_id: str) -> bool:
+    return mount_id in _LOCAL_REVOCATIONS
+
+
 class AuditSink(Protocol):
     def append(self, event: ExecutionAuditEvent) -> None: ...
 
@@ -184,6 +193,7 @@ class ExecutionBinding:
         sink: AuditSink | None = None,
         *,
         clock: Callable[[], datetime] | None = None,
+        cappo_evaluator: Callable[[str, dict[str, object]], tuple[Decision, str]] | None = None,
     ) -> None:
         self.token = token
         self.sink = sink or InMemoryAuditSink()
@@ -191,16 +201,18 @@ class ExecutionBinding:
         self._terminated = False
         self._last_hash: str | None = None
         self._profile = CapabilityProfile(token.grants)
+        self._cappo_evaluator = cappo_evaluator
 
     def check_live(self) -> None:
-        if self._terminated:
+        if self._terminated or is_mount_revoked(self.token.mount_id):
+            self._terminated = True
             self._append("execution", Decision.DENY, "terminated")
             raise ExecutionTerminatedError("execution is terminated")
         if self._clock() > self.token.expires_at:
             self._append("execution", Decision.DENY, "token_expired")
             raise TokenExpiredError("execution token has expired")
 
-    def call(self, action: str, fn: Action[T], **kwargs: object) -> T:
+    def _local_eval(self, action: str, kwargs: dict[str, object]) -> None:
         try:
             self.check_live()
         except PolicyError:
@@ -230,6 +242,30 @@ class ExecutionBinding:
             self._append(action, Decision.DENY, "suppression_not_verified")
             raise PolicyError("suppression_not_verified")
 
+    def compute(self, action: str, fn: Action[T], **kwargs: object) -> T:
+        """Execute pure local computation without external consequences.
+        Applies local capability bounds but does NOT consume nonces, budgets, or PGL receipts."""
+        self._local_eval(action, kwargs)
+        result = fn(**kwargs)
+        self._append(action, Decision.ALLOW, "allowed")
+        return result
+
+    def consequence(self, action: str, fn: Action[T], **kwargs: object) -> T:
+        """Execute a state-mutating or externally observable consequence.
+        Strictly requires CAPPO dominance (nonce consumption, budget check, PGL receipt)
+        before allowing the execution to proceed."""
+        self._local_eval(action, kwargs)
+        
+        if not self._cappo_evaluator:
+            # Fail closed if CAPPO evaluator is unconfigured
+            self._append(action, Decision.DENY, "cappo_evaluator_missing")
+            raise PolicyError("cappo_evaluator_missing")
+            
+        decision, reason = self._cappo_evaluator(action, kwargs)
+        if decision != Decision.ALLOW:
+            self._append(action, decision, reason)
+            raise PolicyError(reason)
+            
         result = fn(**kwargs)
         self._append(action, Decision.ALLOW, "allowed")
         return result
