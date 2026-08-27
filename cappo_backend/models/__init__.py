@@ -7,6 +7,12 @@ autogeneration and ``create_all`` see the full schema.
 from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.models.merkle_leaf_sequence import MerkleLeafSequence
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+from cappo_backend.models.consequence_execution import (
+    ConsequenceExecutionEvent,
+    ConsequenceState,
+    ConsequenceInvariantViolation,
+    build_intent_hash,
+)
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.capability_mount import CapabilityMount
@@ -48,6 +54,10 @@ __all__ = [
     "FreeRunQuota",
     "AuditEvent",
     "CapabilityActionReceipt",
+    "ConsequenceExecutionEvent",
+    "ConsequenceState",
+    "ConsequenceInvariantViolation",
+    "build_intent_hash",
     "CapabilityEvidenceConsumption",
     "CapabilityLease",
     "CapabilityMount",

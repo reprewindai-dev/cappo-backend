@@ -10,6 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+from cappo_backend.models.consequence_execution import (
+    ConsequenceExecutionEvent,
+    ConsequenceState,
+    ConsequenceInvariantViolation,
+    build_intent_hash,
+    build_proof_subject_hash,
+)
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.capability_mount.engine import mark_mount_revoked
 from cappo_backend.models.capability_mount import CapabilityMount
@@ -118,11 +125,38 @@ class MountRegistry:
         token = EphemeralScopedToken.model_validate(row.token_json).model_copy(
             update={"nonce_consumed": row.nonce_consumed}
         )
-        
-        def cappo_evaluator(action: str, kwargs: dict[str, object]) -> tuple[Decision, str]:
-            # This allows ExecutionBinding.consequence() to automatically route through CAPPO
-            # for true consequence dominance.
-            dec, reason, _, _ = self.evaluate(
+
+        def cappo_evaluator(
+            action: str,
+            kwargs: dict[str, object],
+            *,
+            operation_id: str,
+            intent_hash: str,
+        ) -> tuple[Decision, str, str | None]:
+            """Route through CAPPO.evaluate() for consequence dominance.
+
+            Returns (decision, reason, receipt_id | None).
+            receipt_id is None when the decision is DENY (no receipt written).
+            On ALLOW, also creates ConsequenceExecution in AUTHORIZED state
+            bound to the receipt — idempotent on operation_id + intent_hash.
+            """
+            # Idempotency check: reject same operation_id with different intent
+            import uuid
+            db = self._db()
+            latest = db.execute(
+                select(ConsequenceExecutionEvent)
+                .where(ConsequenceExecutionEvent.operation_id == operation_id)
+                .order_by(ConsequenceExecutionEvent.version.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            
+            if latest is not None:
+                if latest.intent_hash != intent_hash:
+                    return Decision.DENY, "idempotency_intent_mismatch", None
+                # Same operation already in progress or complete — return cached state
+                return Decision.DENY, f"idempotency_replay:{latest.state}", latest.receipt_id
+
+            dec, reason, _, detail = self.evaluate(
                 mount_id=mount.id,
                 action=action,
                 resource=str(kwargs.get("resource")) if "resource" in kwargs else None,
@@ -134,14 +168,224 @@ class MountRegistry:
                 suppression_evidence=str(kwargs.get("suppression_evidence")) if "suppression_evidence" in kwargs else None,
                 suppression_confirmed=bool(kwargs.get("suppression_confirmed")),
             )
-            return dec, reason
+            receipt_id = (detail or {}).get("receipt_id")
+
+            if dec is Decision.ALLOW and receipt_id:
+                proof_hash = build_proof_subject_hash(
+                    operation_id=operation_id,
+                    intent_hash=intent_hash,
+                    previous_truth_state="none",
+                    asserted_truth_state=ConsequenceState.AUTHORIZED.value,
+                    consequence_identity=receipt_id,
+                    canonical_asserted_proposition=f"authorize {action} on {kwargs.get('resource', '*')}",
+                )
+                # Append AUTHORIZED event
+                # _SITE: cappo_evaluator
+                ce = ConsequenceExecutionEvent(
+                    event_id=f"evt_{uuid.uuid4().hex}",
+                    operation_id=operation_id,
+                    intent_hash=intent_hash,
+                    state=ConsequenceState.AUTHORIZED.value,
+                    version=0,
+                    receipt_id=receipt_id,
+                    mount_id=mount.id,
+                    execution_id=token.execution_id,
+                    principal=row.owner_principal,
+                    action=action,
+                    resource=str(kwargs.get("resource")) if "resource" in kwargs else None,
+                    proof_subject_hash=proof_hash,
+                )
+                db.add(ce)
+                db.commit()
+
+            return dec, reason, receipt_id
+
+        def begin_consequence(operation_id: str) -> bool:
+            """Atomically append ConsequenceExecutionEvent(STARTED).
+            
+            Uses database locking to prevent concurrent workers from both moving
+            AUTHORIZED -> STARTED. Returns True if claimed, False if another worker won.
+            """
+            import uuid
+            db = self._db()
+            
+            # Use FOR UPDATE to serialize access to the latest event for this operation.
+            # (In PostgreSQL this blocks concurrent claims; sqlite will lock the DB)
+            latest = db.execute(
+                select(ConsequenceExecutionEvent)
+                .where(ConsequenceExecutionEvent.operation_id == operation_id)
+                .order_by(ConsequenceExecutionEvent.version.desc())
+                .limit(1)
+                .with_for_update()
+            ).scalar_one_or_none()
+
+            if latest is None:
+                db.commit()
+                return False  # No AUTHORIZED event exists
+                
+            if latest.state != ConsequenceState.AUTHORIZED.value:
+                db.commit()
+                return False  # Already advanced past AUTHORIZED
+
+            try:
+                proof_hash = build_proof_subject_hash(
+                    operation_id=operation_id,
+                    intent_hash=latest.intent_hash,
+                    previous_truth_state=latest.state,
+                    asserted_truth_state=ConsequenceState.STARTED.value,
+                    consequence_identity=latest.receipt_id or "unknown",
+                    canonical_asserted_proposition=f"execution_started {latest.action} on {latest.resource or '*'}",
+                )
+                # _SITE: begin_consequence
+                ce = ConsequenceExecutionEvent(
+                    event_id=f"evt_{uuid.uuid4().hex}",
+                    operation_id=operation_id,
+                    intent_hash=latest.intent_hash,
+                    state=ConsequenceState.STARTED.value,
+                    version=latest.version + 1,
+                    receipt_id=latest.receipt_id,
+                    mount_id=latest.mount_id,
+                    execution_id=latest.execution_id,
+                    principal=latest.principal,
+                    action=latest.action,
+                    resource=latest.resource,
+                    completion_proof_type="optimistic_claim",
+                    proof_subject_hash=proof_hash,
+                )
+                db.add(ce)
+                db.commit()
+                return True
+            except Exception:
+                db.rollback()
+                return False
+
+        def completion_reporter(
+            operation_id: str,
+            *,
+            succeeded: bool,
+            error_summary: str | None = None,
+            outcome_uncertain: bool = False,
+            proof_type: str = "callback_return",
+        ) -> None:
+            """Append SUCCEEDED / FAILED / OUTCOME_UNKNOWN event."""
+            import uuid
+            db = self._db()
+            latest = db.execute(
+                select(ConsequenceExecutionEvent)
+                .where(ConsequenceExecutionEvent.operation_id == operation_id)
+                .order_by(ConsequenceExecutionEvent.version.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            
+            if latest is None:
+                return  # No record to update
+
+            from cappo_backend.models.consequence_execution import _ALLOWED_TRANSITIONS
+            
+            if latest.state == ConsequenceState.OUTCOME_UNKNOWN.value:
+                if outcome_uncertain:
+                    target = ConsequenceState.OUTCOME_UNKNOWN
+                    pt = "outcome_uncertain"
+                elif succeeded:
+                    target = ConsequenceState.RECONCILED_SUCCEEDED
+                    pt = proof_type
+                else:
+                    target = ConsequenceState.RECONCILED_FAILED
+                    pt = proof_type
+            else:
+                if outcome_uncertain:
+                    target = ConsequenceState.OUTCOME_UNKNOWN
+                    pt = "outcome_uncertain"
+                elif succeeded:
+                    target = ConsequenceState.SUCCEEDED
+                    pt = proof_type
+                else:
+                    target = ConsequenceState.FAILED
+                    pt = proof_type
+
+            # Enforce FSM
+            latest_enum = ConsequenceState(latest.state)
+            if target != latest_enum and target not in _ALLOWED_TRANSITIONS.get(latest_enum, set()):
+                raise ConsequenceInvariantViolation(
+                    f"Illegal transition: {latest.state} -> {target.value}"
+                )
+            terminal = {
+                ConsequenceState.SUCCEEDED.value,
+                ConsequenceState.FAILED.value,
+                ConsequenceState.RECONCILED_SUCCEEDED.value,
+                ConsequenceState.RECONCILED_FAILED.value,
+            }
+            if latest.state in terminal:
+                print(f"completion_reporter: operation {operation_id} already in terminal state {latest.state}")
+                return
+
+            # Enforce Asserted Certainty <= Evidentiary Certainty
+            certainty_levels = {
+                "outcome_uncertain": 0,
+                "optimistic_claim": 1,
+                "callback_return": 1,
+                "callback_exception": 1,
+                "reconciliation_filesystem": 2,
+                "reconciliation_db_query": 2,
+                "reconciliation_api_query": 2,
+                "cryptographic_receipt": 3,
+            }
+            state_certainty_requirements = {
+                ConsequenceState.OUTCOME_UNKNOWN.value: 0,
+                ConsequenceState.SUCCEEDED.value: 1,
+                ConsequenceState.FAILED.value: 1,
+                ConsequenceState.RECONCILED_SUCCEEDED.value: 2,
+                ConsequenceState.RECONCILED_FAILED.value: 2,
+            }
+            
+            ev_certainty = certainty_levels.get(pt, 0)
+            req_certainty = state_certainty_requirements.get(target.value, 0)
+            if req_certainty > ev_certainty:
+                raise ConsequenceInvariantViolation(
+                    f"Certainty invariant failed: Asserted state {target.value} requires certainty {req_certainty}, "
+                    f"but proof {pt} provides certainty {ev_certainty}."
+                )
+
+            try:
+                proof_hash = build_proof_subject_hash(
+                    operation_id=operation_id,
+                    intent_hash=latest.intent_hash,
+                    previous_truth_state=latest.state,
+                    asserted_truth_state=target.value,
+                    consequence_identity=latest.receipt_id or "unknown",
+                    canonical_asserted_proposition=f"{target.value} {latest.action} on {latest.resource or '*'} with_proof {pt}",
+                )
+                # _SITE: completion_reporter
+                ce = ConsequenceExecutionEvent(
+                    event_id=f"evt_{uuid.uuid4().hex}",
+                    operation_id=operation_id,
+                    intent_hash=latest.intent_hash,
+                    state=target.value,
+                    version=latest.version + 1,
+                    receipt_id=latest.receipt_id,
+                    mount_id=latest.mount_id,
+                    execution_id=latest.execution_id,
+                    principal=latest.principal,
+                    action=latest.action,
+                    resource=latest.resource,
+                    completion_proof_type=pt,
+                    error_summary=error_summary,
+                    proof_subject_hash=proof_hash,
+                )
+                db.add(ce)
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                print(f"completion_reporter: append failed: {exc}")
 
         binding = ExecutionBinding(
-            token, 
+            token,
             DatabaseAuditSink(self._db(), row.owner_workspace, None),
-            cappo_evaluator=cappo_evaluator
+            cappo_evaluator=cappo_evaluator,
+            begin_consequence=begin_consequence,
+            completion_reporter=completion_reporter,
         )
-        
+
         if row.terminated:
             binding._terminated = True
         return MountRecord(
@@ -376,6 +620,8 @@ class MountRegistry:
         record = self._record(row)
         if row.terminated:
             reason = "terminated"
+        elif _utc(row.expires_at) <= utc_now():
+            reason = "token_expired"
         elif row.nonce_consumed or token_id != row.token_id or nonce != row.token_nonce:
             reason = (
                 "token_replay"
@@ -384,6 +630,14 @@ class MountRegistry:
             )
         else:
             reason = ""
+
+        # Check budget before continuing
+        if not reason:
+            from cappo_backend.models.capability_lease import CapabilityLease
+            lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
+            if lease and lease.offline_enabled and lease.offline_budget is not None and lease.offline_budget <= 0:
+                reason = "offline_budget_exhausted"
+
         if reason:
             anchor = self.anchor.anchor(
                 "action_decision",
@@ -410,20 +664,23 @@ class MountRegistry:
                 if record.token.biscuit_token:
                     from cappo_backend.security.biscuit import extract_authority_context
                     b_auth = extract_authority_context(record.token.biscuit_token)
-                
-                # Fallback: if no Biscuit token was minted (legacy mounts), derive from
-                # persisted token grants. This is a narrower path — it cannot grant more
-                # than what the token grants already record.
-                if b_auth is None:
-                    b_auth = AuthorityContext(
-                        allowed_actions=set(record.token.grants.reads + record.token.grants.writes + record.token.grants.external_send),
-                        allowed_resources={"*"},
-                        executor_spiffe_id=lease.executor_spiffe_id,
-                        expires_at=record.token.expires_at,
-                        delegation_depth=0,
-                        max_delegation_depth=1,
-                        authority_epoch=lease.authority_epoch,
+                else:
+                    # P3 GOVERNED BOUNDARY ENFORCEMENT
+                    # Metadata alone cannot authorize without Biscuit. 
+                    # We fail closed if there is no cryptographic authority.
+                    anchor = self.anchor.anchor(
+                        "action_decision",
+                        principal=owner_principal,
+                        mount_id=mount_id,
+                        timestamp=utc_now().isoformat(),
+                        action=action,
+                        decision=Decision.DENY.value,
+                        reason="missing_cryptographic_authority",
+                        mount=record.mount,
+                        token=record.token,
                     )
+                    db.commit()
+                    return Decision.DENY, "missing_cryptographic_authority", anchor, None
 
                 # --- Real CapabilityPackage ceiling ---
                 package = self.packages.get(record.token.package_ref)
@@ -582,6 +839,7 @@ class MountRegistry:
         if decision is Decision.ALLOW and anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor, None
+        receipt: CapabilityActionReceipt | None = None
         if decision is Decision.ALLOW:
             row.nonce_consumed = True
             _actioned_at = utc_now()
@@ -648,6 +906,9 @@ class MountRegistry:
                 biscuit_token_sha256=_biscuit_sha256,
                 signed_receipt_cose=_cose_bytes,
             )
+            # NOTE: Consequence lifecycle (AUTHORIZED→STARTED→SUCCEEDED|FAILED|OUTCOME_UNKNOWN)
+            # is tracked via ConsequenceExecutionEvent append-only events, NOT on this receipt.
+            # This receipt is immutable authorization evidence only.
             db.add(receipt)
             from cappo_backend.security.merkle_ops import assign_merkle_leaf_index
             assign_merkle_leaf_index(db, receipt)
@@ -663,8 +924,10 @@ class MountRegistry:
                 "action": action,
                 "decision": decision.value,
                 "reason": reason,
+                "receipt_id": receipt.receipt_id if decision is Decision.ALLOW else None,
             },
         )
+
 
     def terminate(
         self,

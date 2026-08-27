@@ -193,7 +193,9 @@ class ExecutionBinding:
         sink: AuditSink | None = None,
         *,
         clock: Callable[[], datetime] | None = None,
-        cappo_evaluator: Callable[[str, dict[str, object]], tuple[Decision, str]] | None = None,
+        cappo_evaluator: Callable[..., tuple[Decision, str, str | None]] | None = None,
+        begin_consequence: Callable[[str], bool] | None = None,
+        completion_reporter: Callable[..., None] | None = None,
     ) -> None:
         self.token = token
         self.sink = sink or InMemoryAuditSink()
@@ -201,7 +203,10 @@ class ExecutionBinding:
         self._terminated = False
         self._last_hash: str | None = None
         self._profile = CapabilityProfile(token.grants)
+        # P5 bridge callables — injected by MountRegistry._record()
         self._cappo_evaluator = cappo_evaluator
+        self._begin_consequence = begin_consequence
+        self._completion_reporter = completion_reporter
 
     def check_live(self) -> None:
         if self._terminated or is_mount_revoked(self.token.mount_id):
@@ -242,31 +247,136 @@ class ExecutionBinding:
             self._append(action, Decision.DENY, "suppression_not_verified")
             raise PolicyError("suppression_not_verified")
 
-    def compute(self, action: str, fn: Action[T], **kwargs: object) -> T:
-        """Execute pure local computation without external consequences.
-        Applies local capability bounds but does NOT consume nonces, budgets, or PGL receipts."""
+    def evaluate_pure(self, action: str, **kwargs: object) -> None:
+        """Evaluate capability bounds for a pure local action.
+        Does NOT execute any arbitrary callback, structurally preventing side-effect bypasses.
+        Does not consume nonces, budgets, or PGL receipts."""
         self._local_eval(action, kwargs)
-        result = fn(**kwargs)
         self._append(action, Decision.ALLOW, "allowed")
-        return result
 
-    def consequence(self, action: str, fn: Action[T], **kwargs: object) -> T:
+    def consequence(
+        self,
+        action: str,
+        fn: Action[T],
+        *,
+        operation_id: str | None = None,
+        **kwargs: object,
+    ) -> T:
         """Execute a state-mutating or externally observable consequence.
-        Strictly requires CAPPO dominance (nonce consumption, budget check, PGL receipt)
-        before allowing the execution to proceed."""
+
+        P5 — Truth-State Synchronization:
+
+        The consequence lifecycle is tracked as a separate ConsequenceExecution
+        record, entirely distinct from the authorization receipt. These are two
+        different facts:
+
+            CapabilityActionReceipt  → CAPPO said yes (immutable, written once)
+            ConsequenceExecution     → what actually happened as a result
+
+        State machine driven here:
+            (evaluate) → AUTHORIZED   [written inside cappo_evaluator]
+            (here)     → STARTED      [written before fn() — crash after this =
+                                       OUTCOME_UNKNOWN, not FAILED]
+            (here)     → SUCCEEDED    [fn() returned without exception]
+            (here)     → FAILED       [fn() raised, outcome provably failed]
+            (here)     → OUTCOME_UNKNOWN [fn() raised after ambiguous side effect]
+
+        OUTCOME_UNKNOWN is the correct state when Veklom cannot distinguish
+        "consequence happened and callback raised" from "consequence did not happen."
+        Never blindly write FAILED in that case.
+
+        Args:
+            action:       The governed action string.
+            fn:           The consequence callable — the real side effect.
+            operation_id: Optional caller-supplied idempotency key. If None, a
+                          fresh UUID4 is generated. Reuse with the same intent
+                          returns the cached state. Reuse with different intent
+                          raises PolicyError("idempotency_intent_mismatch").
+            **kwargs:     Passed through to fn() and used to compute intent_hash.
+        """
         self._local_eval(action, kwargs)
-        
+
         if not self._cappo_evaluator:
-            # Fail closed if CAPPO evaluator is unconfigured
             self._append(action, Decision.DENY, "cappo_evaluator_missing")
             raise PolicyError("cappo_evaluator_missing")
-            
-        decision, reason = self._cappo_evaluator(action, kwargs)
+
+        # Generate stable operation identity for this consequence attempt.
+        op_id = operation_id or str(uuid4())
+
+        # Build intent hash from canonical fields. Reuse of op_id with different
+        # intent is an idempotency violation and will be denied by the evaluator.
+        from cappo_backend.models.consequence_execution import build_intent_hash
+        normalized_args = {k: str(v) for k, v in kwargs.items()
+                          if k not in ("approval_token", "suppression_evidence", "suppression_confirmed")}
+        i_hash = build_intent_hash(
+            mount_id=self.token.mount_id,
+            execution_id=self.token.execution_id,
+            action=action,
+            resource=str(kwargs.get("resource")) if "resource" in kwargs else None,
+            normalized_args=normalized_args,
+        )
+
+        decision, reason, receipt_id = self._cappo_evaluator(
+            action, kwargs, operation_id=op_id, intent_hash=i_hash
+        )
         if decision != Decision.ALLOW:
             self._append(action, decision, reason)
             raise PolicyError(reason)
+
+        # ConsequenceExecution is now in AUTHORIZED state.
+        # Claim STARTED ownership before touching fn().
+        # If the process crashes after this write but before fn() returns,
+        # the record stays in STARTED — the reconciliation scanner will mark
+        # it OUTCOME_UNKNOWN, not blindly FAILED.
+        owned = True
+        if self._begin_consequence:
+            try:
+                owned = self._begin_consequence(op_id)
+            except Exception:
+                owned = False  # degraded mode — continue but cannot track state
+
+        if not owned:
+            # Another worker already owns this execution. Do not duplicate.
+            self._append(action, Decision.DENY, "consequence_already_started")
+            raise PolicyError("consequence_already_started")
+
+        # Execute the real consequence.
+        # Every branch below must report outcome — success, definite failure, or uncertain.
+        try:
+            result = fn(**kwargs)
+        except Exception as exc:
+            # Callback raised. This does NOT guarantee the consequence didn't happen.
+            # For example: filesystem write succeeded but fsync raised. For pure
+            # in-process Python exceptions before any I/O, FAILED is correct.
+            # For ambiguous cases, callers should set outcome_uncertain=True via
+            # a CappoUncertainError subclass. Default: treat as FAILED (conservative).
+            is_uncertain = type(exc).__name__ == "CappoUncertainError"
             
-        result = fn(**kwargs)
+            if self._completion_reporter:
+                try:
+                    self._completion_reporter(
+                        op_id,
+                        succeeded=False,
+                        error_summary=f"{type(exc).__name__}: {exc}",
+                        proof_type="callback_exception",
+                        outcome_uncertain=is_uncertain,
+                    )
+                except Exception:
+                    pass
+            self._append(action, Decision.DENY, f"consequence_failed:{type(exc).__name__}")
+            raise
+
+        # Consequence returned without exception — write SUCCEEDED.
+        if self._completion_reporter:
+            try:
+                self._completion_reporter(
+                    op_id,
+                    succeeded=True,
+                    proof_type="callback_return",
+                )
+            except Exception:
+                pass  # reporting failure must never undo a real consequence
+
         self._append(action, Decision.ALLOW, "allowed")
         return result
 
