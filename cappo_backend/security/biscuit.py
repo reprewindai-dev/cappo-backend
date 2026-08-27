@@ -41,6 +41,8 @@ def mint_biscuit_capability(
     execution_id: str,
     ttl_seconds: int,
     resources: list[str] | None = None,
+    revocation_scope: str = "workspace",
+    revocation_epoch: int = 0,
 ) -> str:
     kp = get_root_key_pair()
     builder = Biscuit.builder()
@@ -52,6 +54,9 @@ def mint_biscuit_capability(
     
     builder.add_code(f'execution_id("{execution_id}");')
     builder.add_code(f'capability_id("{capability_id}");')
+    builder.add_code(f'revocation_scope("{revocation_scope}");')
+    builder.add_code(f'revocation_epoch({revocation_epoch});')
+    
     if executor_spiffe_id:
         builder.add_code(f'allowed_executor("{executor_spiffe_id}");')
     else:
@@ -120,12 +125,33 @@ def attenuate_biscuit_capability(
     child_token = token.append(builder)
     return child_token.to_base64()
 
+class TrustedRevocationState:
+    """
+    Trusted synchronized revocation state.
+    Provenance (e.g. signed checkpoint, authenticated sync) is NOT yet independently proven (OBA-1).
+    This storage enforces monotonic epoch progression: a stale sync cannot downgrade local authority epochs.
+    """
+    def __init__(self):
+        self.known_epochs: dict[str, int] = {}
+        self.revoked_execution_ids: set[str] = set()
+
+    def sync_epochs(self, incoming_epochs: dict[str, int]):
+        """Merge incoming epochs monotonically."""
+        for scope, ep in incoming_epochs.items():
+            current = self.known_epochs.get(scope, 0)
+            if ep > current:
+                self.known_epochs[scope] = ep
+
+    def revoke_execution(self, execution_id: str):
+        self.revoked_execution_ids.add(execution_id)
+
 def verify_biscuit_capability(
     token_b64: str,
     executor_spiffe_id: str,
     action: str,
     resource: str = "",
-    subject_spiffe_id: str | None = None
+    subject_spiffe_id: str | None = None,
+    trusted_state: TrustedRevocationState | None = None,
 ) -> bool:
     try:
         kp = get_root_key_pair()
@@ -146,8 +172,25 @@ def verify_biscuit_capability(
         auth = auth_builder.build(token)
         auth.authorize()
 
-        # Enforce delegation_depth_max if present in the token facts
         import biscuit_auth
+        # Enforce explicitly revoked execution IDs
+        exec_facts = auth.query(biscuit_auth.Rule('rule($exec_id) <- execution_id($exec_id)'))
+        if exec_facts and trusted_state and trusted_state.revoked_execution_ids:
+            exec_id = str(exec_facts[0].terms[0]).strip('"')
+            if exec_id in trusted_state.revoked_execution_ids:
+                print(f"Biscuit verification failed: Execution ID {exec_id} is explicitly revoked.")
+                return False
+
+        # Enforce known epochs for the given scope
+        scope_facts = auth.query(biscuit_auth.Rule('rule($scope, $ep) <- revocation_scope($scope), revocation_epoch($ep)'))
+        if scope_facts and trusted_state and trusted_state.known_epochs:
+            scope = str(scope_facts[0].terms[0]).strip('"')
+            ep = int(str(scope_facts[0].terms[1]))
+            if scope in trusted_state.known_epochs and ep < trusted_state.known_epochs[scope]:
+                print(f"Biscuit verification failed: Token epoch {ep} is older than required epoch {trusted_state.known_epochs[scope]} for scope {scope}.")
+                return False
+
+        # Enforce delegation_depth_max if present in the token facts
         depth_facts = auth.query(biscuit_auth.Rule('rule($d) <- delegation_depth_max($d)'))
         if depth_facts:
             # depth_facts[0].terms[0] will contain the integer limit

@@ -265,4 +265,4 @@ def test_g0_3b_denial_evidence_binding(client: TestClient) -> None:
     print(f"EXECUTION_ID_BOUND = mount_id={mount_id!r} token_id={token_id!r}")
     print(f"NO_ALLOW_EVIDENCE  = True (0 allow events)")
     print(f"NO_EXECUTION_EVIDENCE = True (0 execution events)")
-    print(f"NO_SIDE_EFFECT     = True (status=deny/expired, token=None)")
+    print(f"NO_SIDE_EFFECT     = True (status=deny/expired, token=None)")

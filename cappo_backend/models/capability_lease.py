@@ -83,6 +83,7 @@ class CapabilityLease(Base):
     
     authority_epoch: Mapped[int] = mapped_column(Integer, default=0)
     revocation_epoch: Mapped[int] = mapped_column(Integer, default=0)
+    revocation_scope: Mapped[str] = mapped_column(String, default="workspace")
     
     delegation_depth: Mapped[int] = mapped_column(Integer, default=0)
     max_delegation_depth: Mapped[int] = mapped_column(Integer, default=0)

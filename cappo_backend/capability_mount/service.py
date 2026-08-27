@@ -18,7 +18,7 @@ from cappo_backend.services.mount_evidence import (
     VerifiedMountEvidence,
 )
 
-from .engine import ExecutionBinding, InMemoryAuditSink, Mounter
+from .engine import ExecutionBinding, InMemoryAuditSink, Mounter, AuditSink
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
     CapabilityPackage,
@@ -28,7 +28,26 @@ from .models import (
     MountPolicy,
     MountScope,
     UnmountReason,
+    ExecutionAuditEvent,
 )
+
+from cappo_backend.services.audit_service import AuditService
+
+class DatabaseAuditSink(AuditSink):
+    """A real consequence sink that durably writes ExecutionBinding events to the audit ledger."""
+    def __init__(self, db: Session, workspace_id: str | None = None, run_id: str | None = None) -> None:
+        self.db = db
+        self.workspace_id = workspace_id
+        self.run_id = run_id
+
+    def append(self, event: ExecutionAuditEvent) -> None:
+        AuditService(self.db).record(
+            operation_type="execution_binding_decision",
+            payload=event.model_dump(mode="json"),
+            workspace_id=self.workspace_id,
+            run_id=self.run_id,
+            forward_to_gnomledger=False,  # Can be adjusted based on sync rules
+        )
 
 
 @dataclass(frozen=True)
@@ -93,8 +112,7 @@ class MountRegistry:
             raise RuntimeError("durable mount storage requires a database session")
         return self.db
 
-    @staticmethod
-    def _record(row: CapabilityMount) -> MountRecord:
+    def _record(self, row: CapabilityMount) -> MountRecord:
         mount = Mount.model_validate(row.mount_json)
         token = EphemeralScopedToken.model_validate(row.token_json).model_copy(
             update={"nonce_consumed": row.nonce_consumed}
@@ -102,7 +120,7 @@ class MountRegistry:
         return MountRecord(
             mount,
             token,
-            ExecutionBinding(token, InMemoryAuditSink()),
+            ExecutionBinding(token, DatabaseAuditSink(self._db(), row.owner_workspace, None)),
             AnchorResult(row.anchor_status, row.anchor_id, row.anchor_detail),
         )
 
@@ -169,6 +187,10 @@ class MountRegistry:
             
             if caller_spiffe_id:
                 from cappo_backend.security.biscuit import mint_biscuit_capability
+                
+                revocation_scope = f"execution:{token.execution_id}"
+                revocation_epoch = 0
+
                 biscuit_token = mint_biscuit_capability(
                     caller_spiffe_id=caller_spiffe_id,
                     executor_spiffe_id=executor_spiffe_id,
@@ -177,6 +199,8 @@ class MountRegistry:
                     writes=token.grants.writes,
                     execution_id=token.execution_id,
                     ttl_seconds=token.ttl_seconds,
+                    revocation_scope=revocation_scope,
+                    revocation_epoch=revocation_epoch,
                 )
                 token = token.model_copy(update={"biscuit_token": biscuit_token})
                 
@@ -234,13 +258,14 @@ class MountRegistry:
             lease_state=LeaseState.ACTIVE.value,
             allowed_actions=set(token.grants.reads + token.grants.writes + token.grants.external_send),
             allowed_resources=set(["*"]),
-            offline_enabled=False
+            offline_enabled=False,
+            revocation_scope=f"execution:{token.execution_id}" if token.execution_id else "workspace"
         )
         db.add(lease)
         
         db.commit()
         return (
-            MountRecord(mount, token, ExecutionBinding(token, InMemoryAuditSink())),
+            MountRecord(mount, token, ExecutionBinding(token, DatabaseAuditSink(db, scope.workspace, None))),
             anchor,
             "mounted",
         )
@@ -474,6 +499,36 @@ class MountRegistry:
             decision, reason = Decision.DENY, "terminated"
         except PolicyError as exc:
             decision, reason = Decision.DENY, str(exc)
+        if row.terminated:
+            decision, reason = Decision.DENY, "terminated"
+
+        # Find the active lease, if any
+        from cappo_backend.models.capability_lease import CapabilityLease
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).first()
+        if lease:
+            # Check expiry
+            if lease.expires_at and _utc(lease.expires_at) < utc_now():
+                decision, reason = Decision.DENY, "lease_expired"
+
+        # Apply offline enforcement if we are operating in disconnected mode
+        from cappo_backend.services.pgl_adapter import VeklomPGLAdapter
+        is_offline = False
+        if isinstance(self.anchor, VeklomPGLAdapter):
+            # Check if the PGL anchor is physically unreachable
+            is_offline = not self.anchor.is_online()
+            
+        if is_offline and lease and decision is Decision.ALLOW:
+            if not lease.offline_enabled:
+                decision, reason = Decision.DENY, "offline_execution_disabled"
+            elif lease.offline_budget <= 0:
+                decision, reason = Decision.DENY, "offline_budget_exhausted"
+            elif lease.offline_side_effect_limit <= 0:
+                decision, reason = Decision.DENY, "offline_side_effect_limit_exhausted"
+            else:
+                # Decrement the limits (enforcement)
+                lease.offline_budget -= 1
+                lease.offline_side_effect_limit -= 1
+                db.add(lease)
 
         if decision is Decision.ALLOW:
             for evidence in verified_evidence:
@@ -636,7 +691,17 @@ class MountRegistry:
         if anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor
+            
         row.terminated = True
+        
+        from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).first()
+        if lease and lease.lease_state in (LeaseState.ISSUED.value, LeaseState.ACTIVE.value):
+            current_epoch = lease.revocation_epoch + 1
+            # "terminate" explicitly means stopping it before natural expiration, 
+            # so we use REVOKED and bump the revocation epoch.
+            lease.transition_state(LeaseState.REVOKED, current_epoch)
+
         db.commit()
         return Decision.ALLOW, "terminated", anchor
 
