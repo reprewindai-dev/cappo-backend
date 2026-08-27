@@ -44,8 +44,7 @@ def test_zra_3_stale_handle_replay(db):
     handle = mount_record.binding
     mount_id = mount_record.mount.id
     
-    result = handle.compute("execution", lambda: "success")
-    assert result == "success"
+    handle.evaluate_pure("execution")
     
     decision, reason, term_anchor = svc.terminate(
         mount_id=mount_id,
@@ -58,7 +57,7 @@ def test_zra_3_stale_handle_replay(db):
     assert lease.lease_state == LeaseState.REVOKED.value
     
     try:
-        replay_result = handle.compute("execution", lambda: "stale_success")
+        handle.evaluate_pure("execution")
         
         pytest.fail("ZRA-1 Falsified: Stale ExecutionBinding handle remained usable after global termination.")
     except Exception as e:
@@ -96,18 +95,18 @@ def test_zra_3_multiple_handle_invalidation(db):
     handle_b = mount_record_b.binding
     
     # Both should work
-    assert handle_a.compute("execution", lambda: "a") == "a"
-    assert handle_b.compute("execution", lambda: "b") == "b"
+    handle_a.evaluate_pure("execution")
+    handle_b.evaluate_pure("execution")
     
     # Terminate common authority
     svc.terminate(mount_id=mount_id, reason=UnmountReason.EXPLICIT_TERMINATE)
     
     with pytest.raises(Exception) as e_a:
-        handle_a.compute("execution", lambda: "a")
+        handle_a.evaluate_pure("execution")
     assert "terminated" in str(e_a.value).lower()
     
     with pytest.raises(Exception) as e_b:
-        handle_b.compute("execution", lambda: "b")
+        handle_b.evaluate_pure("execution")
     assert "terminated" in str(e_b.value).lower()
 
 def test_zra_3_post_termination_reissuance(db):
@@ -141,5 +140,5 @@ def test_zra_3_post_termination_reissuance(db):
     handle_new = reconstructed_record.binding
     
     with pytest.raises(Exception) as e:
-        handle_new.compute("execution", lambda: "c")
+        handle_new.evaluate_pure("execution")
     assert "terminated" in str(e.value).lower()

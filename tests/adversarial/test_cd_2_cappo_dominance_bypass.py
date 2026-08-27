@@ -14,6 +14,7 @@ from cappo_backend.capability_mount.models import (
 )
 from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.capability_mount import CapabilityMount
+from cappo_backend.security.biscuit import mint_biscuit_capability
 
 @pytest.fixture
 def db_session():
@@ -38,17 +39,29 @@ def test_cd_2_cappo_dominance_repair(db_session):
         writes=["fs.write"],
     )
     scope = MountScope(workspace="ws", project="pj", writes=["fs.write"])
-    
+
     class DummyAnchor:
         def anchor(self, *args, **kwargs):
             from cappo_backend.capability_mount.service import AnchorResult
             return AnchorResult("confirmed", "dummy_anchor", "detail")
-            
+
     registry = MountRegistry(db_session, anchor=DummyAnchor())
     registry.register_package(pkg)
-    
+
     mount, token = registry.mounter.mount(pkg, scope)
-    
+
+    # Mint a real biscuit token so P3 strict enforcement (No Biscuit => DENY) is satisfied.
+    _biscuit_b64 = mint_biscuit_capability(
+        caller_spiffe_id="spiffe://test/sub",
+        executor_spiffe_id="spiffe://test/exec",
+        capability_id="test-cap",
+        reads=[],
+        writes=["fs.write"],
+        execution_id=token.execution_id,
+        ttl_seconds=token.ttl_seconds,
+    )
+    token = token.model_copy(update={"biscuit_token": _biscuit_b64})
+
     lease = CapabilityLease(
         lease_id="test-lease",
         mount_id=mount.id,
@@ -66,7 +79,7 @@ def test_cd_2_cappo_dominance_repair(db_session):
         _allowed_actions_json='["fs.write"]',
     )
     db_session.add(lease)
-    
+
     row = CapabilityMount(
         mount_id=mount.id,
         token_id=token.token_id,

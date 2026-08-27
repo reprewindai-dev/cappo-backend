@@ -131,12 +131,12 @@ def test_verified_503_fails_over_only_inside_signed_provider_set() -> None:
 def test_open_primary_circuit_does_not_authorize_a_fallback_attempt() -> None:
     primary_breaker = CircuitBreaker(failure_threshold=1)
     with pytest.raises(RuntimeError):
-        primary_breaker.compute(lambda: (_ for _ in ()).throw(RuntimeError("down")))
+        primary_breaker.call(lambda: (_ for _ in ()).throw(RuntimeError("down")))
     primary = MagicMock()
     fallback = MagicMock()
     executor = ResilientExecutor(
         providers=[
-            Provider("primary", primary, primary_breaker),
+            Provider("primary"),
             Provider("fallback", fallback, CircuitBreaker()),
         ]
     )

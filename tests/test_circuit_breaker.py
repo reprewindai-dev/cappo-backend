@@ -78,7 +78,7 @@ def test_rejects_calls_fast_while_open():
     cb.record_failure()
     assert cb.is_open
     with pytest.raises(CircuitOpenError):
-        cb.compute(lambda: "should not run")
+        cb.call(lambda: "should not run")
 
 
 def test_transitions_to_half_open_after_recovery_timeout():
@@ -123,11 +123,11 @@ def test_half_open_failure_reopens_circuit():
 
 def test_call_records_outcomes():
     cb = CircuitBreaker(failure_threshold=2)
-    assert cb.compute(lambda: 42) == 42
+    assert cb.call(lambda: 42) == 42
     with pytest.raises(RuntimeError):
-        cb.compute(_raise)
+        cb.call(_raise)
     with pytest.raises(RuntimeError):
-        cb.compute(_raise)
+        cb.call(_raise)
     assert cb.is_open
 
 

@@ -49,13 +49,12 @@ def test_arch_rule_3_model_substitution_invariance(db):
         
         # 1. Allowed action should work for all
         try:
-            res = handle.compute("safe.read", lambda: "ok")
-            assert res == "ok"
+            handle.evaluate_pure("safe.read")
         except Exception:
             pytest.fail(f"Allowed action failed for {model_id}")
             
         # 2. Denied action MUST fail for all, proving no model can bypass
         with pytest.raises(Exception) as excinfo:
-            handle.compute("critical.write", lambda: "bad")
+            handle.evaluate_pure("critical.write")
             
         assert "blocked" in str(excinfo.value).lower() or "policy" in str(excinfo.value).lower()

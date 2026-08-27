@@ -77,35 +77,35 @@ def test_cd_1_consequence_domination_sink_inventory(db_session):
         return "db_written"
 
     with pytest.raises(PolicyError, match="not_in_capability_profile"):
-        binding.compute("db.write", fake_db_write)
+        binding.evaluate_pure("db.write")
 
     # Sink 2: Network Egress
     def fake_network_egress():
         return "packet_sent"
 
     with pytest.raises(PolicyError, match="not_in_capability_profile"):
-        binding.compute("network.egress", fake_network_egress)
+        binding.evaluate_pure("network.egress")
 
     # Sink 3: Process Spawn
     def fake_process_spawn():
         return "process_started"
 
     with pytest.raises(PolicyError, match="not_in_capability_profile"):
-        binding.compute("process.spawn", fake_process_spawn)
+        binding.evaluate_pure("process.spawn")
 
     # Sink 4: File Mutations
     def fake_file_write():
         return "file_written"
 
     with pytest.raises(PolicyError, match="not_in_capability_profile"):
-        binding.compute("fs.write", fake_file_write)
+        binding.evaluate_pure("fs.write")
 
     # Sink 5: Cryptographic Signing
     def fake_crypto_sign():
         return "signature_generated"
 
     with pytest.raises(PolicyError, match="not_in_capability_profile"):
-        binding.compute("crypto.sign", fake_crypto_sign)
+        binding.evaluate_pure("crypto.sign")
 
     # Verify that ALL 5 blocked attempts were successfully logged in the actual database ledger
     db_events = db_session.scalars(select(AuditEvent).where(AuditEvent.operation_type == "execution_binding_decision")).all()
@@ -138,7 +138,7 @@ def test_cd_1_explicit_deny_dominates_grant(db_session):
 
     # The call MUST fail with blocked_action, overriding the writes=[] grant
     with pytest.raises(PolicyError, match="blocked_action"):
-        binding.compute("db.write", fake_db_write)
+        binding.evaluate_pure("db.write")
 
     db_events = db_session.scalars(select(AuditEvent).where(AuditEvent.operation_type == "execution_binding_decision")).all()
     assert len(db_events) == 1
