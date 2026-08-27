@@ -245,6 +245,10 @@ def evaluate_action(
         "caller_cert_sha256": request.scope.get("caller_cert_sha256"),
         "svid_not_before": request.scope.get("svid_not_before"),
         "svid_not_after": request.scope.get("svid_not_after"),
+        "eei_id": request.headers.get("x-veklom-eei-id"),
+        "profile_id": request.headers.get("x-veklom-profile-id"),
+        "lease_id": request.headers.get("x-veklom-lease-id"),
+        "operator_id": request.headers.get("x-veklom-operator-id"),
     }
 
     decision, reason, anchor, _ = registry.evaluate(

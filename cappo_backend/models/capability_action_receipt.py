@@ -49,6 +49,13 @@ class CapabilityActionReceipt(Base):
     # SPIFFE Identity Binding
     caller_spiffe_id: Mapped[str | None] = mapped_column(String, nullable=True)
     executor_spiffe_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    
+    # Ephemeral Agent Doctrine (G0A.8)
+    eei_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    profile_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    lease_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    operator_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
     caller_cert_sha256: Mapped[str | None] = mapped_column(String, nullable=True)
     capability_id: Mapped[str | None] = mapped_column(String, nullable=True)
     trust_domain: Mapped[str | None] = mapped_column(String, nullable=True)
