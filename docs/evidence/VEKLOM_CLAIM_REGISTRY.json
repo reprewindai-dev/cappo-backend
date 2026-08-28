@@ -237,5 +237,43 @@
       "no production deployment verification yet"
     ],
     "next_required_gate": "WID-5: PGL refuses evidence without identity chain"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-5-001",
+    "claim": "PGL refuses to append governed evidence unless it contains a complete, coherent, hash-bound identity chain. Evidence without identity is rejected.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/pgl",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "bae5d291d0b78d94ed7b20356d31a2af2e88a373",
+    "source_paths": [
+      "cappo_backend/pgl/identity_chain.py",
+      "cappo_backend/pgl/evidence_validator.py",
+      "cappo_backend/pgl/errors.py",
+      "tests/adversarial/test_wid_5_pgl_identity_chain_enforcement.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "3fb3d3b4eac26f0705862737577b2885333893741235174ba0d081e72b0286a5 (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "3fb3d3b4eac26f0705862737577b2885333893741235174ba0d081e72b0286a5",
+    "verification_method": "Clean adversarial test suite pass on WID-5 PGL identity chain enforcement",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T11:18:08-04:00",
+    "limitations": [
+      "verified locally only",
+      "no runtime service identity or protocol probe yet",
+      "no production deployment verification yet",
+      "no external auditor verification yet",
+      "no WIMSE conformance claim",
+      "no SCITT conformance claim",
+      "no runtime PGL service deployment proof yet"
+    ],
+    "next_required_gate": "WID-6: Runtime proof bundle"
   }
 ]
