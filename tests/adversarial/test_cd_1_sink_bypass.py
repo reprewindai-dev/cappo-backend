@@ -15,24 +15,24 @@ according to the capability profile, leaving no semantic bypasses in the control
 We use the integrated DatabaseAuditSink to prove durable recording.
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from cappo_backend.db.base import Base
-from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.capability_mount.engine import ExecutionBinding
-from cappo_backend.capability_mount.service import DatabaseAuditSink
+from cappo_backend.capability_mount.errors import PolicyError
 from cappo_backend.capability_mount.models import (
     EphemeralScopedToken,
     Grants,
-    TokenDescriptorScope,
     MountPolicy,
+    TokenDescriptorScope,
 )
-from cappo_backend.capability_mount.errors import PolicyError
+from cappo_backend.capability_mount.service import DatabaseAuditSink
+from cappo_backend.db.base import Base
+from cappo_backend.models.audit_event import AuditEvent
 
 
 @pytest.fixture

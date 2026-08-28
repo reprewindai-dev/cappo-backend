@@ -31,7 +31,6 @@ Attack matrix (10 gates):
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -93,7 +92,7 @@ def _mount_package(db, reads: list[str], writes: list[str], ttl: int = 600):
     reg = _build_registry(db)
 
     pkg = CapabilityPackage(
-        id=f"am3.pkg@v1",
+        id="am3.pkg@v1",
         family="test",
         title="AM3 Package",
         purpose="Authority monotonicity testing",

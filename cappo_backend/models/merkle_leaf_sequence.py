@@ -12,8 +12,10 @@ This is the canonical cross-DB safe alternative to SELECT MAX+1, which is
 vulnerable to read-modify-write races under concurrent writers.
 """
 from __future__ import annotations
+
 from sqlalchemy import BigInteger, Integer
 from sqlalchemy.orm import Mapped, mapped_column
+
 from cappo_backend.db.base import Base
 
 

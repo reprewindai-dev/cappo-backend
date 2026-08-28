@@ -12,10 +12,10 @@ Exit codes:
 0: Attack SUCCEEDED (Authority was successfully stolen/smuggled). AI-1 FAILS.
 1: Attack FAILED (Hostile workload remained fully isolated). AI-1 PASSES.
 """
+import json
 import os
 import sys
-import json
-import logging
+
 
 def attack():
     report = {"findings": [], "stolen_tokens": [], "db_breach": False}
@@ -66,8 +66,9 @@ def attack():
     # 4. Attempt to bypass using explicit overrides and actual library calls
     # If the environment allows an override, calling MountRegistry.evaluate should return ALLOW
     try:
-        from cappo_backend.capability_mount.service import MountRegistry
         import sqlalchemy.orm
+
+        from cappo_backend.capability_mount.service import MountRegistry
         
         # If we have a DB URL, try to build a registry and evaluate
         for url in db_urls:

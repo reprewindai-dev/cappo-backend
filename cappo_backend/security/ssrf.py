@@ -1,8 +1,9 @@
 import ipaddress
 import socket
-from urllib.parse import urlparse
 from enum import Enum
 from typing import Tuple
+from urllib.parse import urlparse
+
 
 class EndpointClass(Enum):
     EXTERNAL_PROVIDER = "EXTERNAL_PROVIDER"

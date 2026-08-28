@@ -1,11 +1,8 @@
 import os
-import hashlib
-from typing import Optional, Any
 from datetime import datetime
-import time
 
 import biscuit_auth
-from biscuit_auth import KeyPair, Biscuit, AuthorizerBuilder, PrivateKey, PublicKey
+from biscuit_auth import AuthorizerBuilder, Biscuit, KeyPair, PrivateKey
 
 from cappo_backend.config import get_settings
 
@@ -75,7 +72,7 @@ def mint_biscuit_capability(
         # If no resources bounded, only check action
         builder.add_code('check if current_action($act, $res), allowed_action($act) or current_action("terminate", "");')
 
-    from datetime import datetime, timezone, timedelta
+    from datetime import timedelta, timezone
     issued_dt = datetime.now(timezone.utc)
     expires_dt = issued_dt + timedelta(seconds=ttl_seconds)
     
@@ -117,7 +114,7 @@ def attenuate_biscuit_capability(
             builder.add_code('check if current_action($act, $res), allowed_resource_child($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
 
     if ttl_seconds is not None:
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
         expires_dt = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
         expires_str = expires_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         builder.add_code(f'check if time($time), $time <= {expires_str};')

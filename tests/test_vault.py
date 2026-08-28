@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from cappo_backend.security.vault import encrypt_secret, decrypt_secret, DecryptionError
+
+from cappo_backend.security.vault import DecryptionError, decrypt_secret, encrypt_secret
+
 
 def test_vault_aead_encrypt_decrypt_success() -> None:
     master_key = "some-very-secret-vault-master-key"

@@ -9,37 +9,36 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cappo_backend.capability_mount.engine import mark_mount_revoked
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
+from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import (
     ConsequenceExecutionEvent,
-    ConsequenceState,
     ConsequenceInvariantViolation,
-    build_intent_hash,
+    ConsequenceState,
     build_proof_subject_hash,
 )
-from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
-from cappo_backend.capability_mount.engine import mark_mount_revoked
-from cappo_backend.models.capability_mount import CapabilityMount
+from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.mount_evidence import (
     BoundMountEvidenceVerifier,
     VerifiedMountEvidence,
 )
 
-from .engine import ExecutionBinding, InMemoryAuditSink, Mounter, AuditSink
+from .engine import AuditSink, ExecutionBinding, Mounter
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
     CapabilityPackage,
     Decision,
     EphemeralScopedToken,
+    ExecutionAuditEvent,
     Mount,
     MountPolicy,
     MountScope,
     UnmountReason,
-    ExecutionAuditEvent,
 )
 
-from cappo_backend.services.audit_service import AuditService
 
 class DatabaseAuditSink(AuditSink):
     """A real consequence sink that durably writes ExecutionBinding events to the audit ledger."""
@@ -655,7 +654,12 @@ class MountRegistry:
 
         # ARCH-P2: Enforce CapabilityLease cryptographic authority subset semantics.
         # Authority must be extracted from the actual Biscuit token, not reconstructed from metadata.
-        from cappo_backend.models.capability_lease import CapabilityLease, AuthorityContext, ConnectivityState, InvariantViolationError
+        from cappo_backend.models.capability_lease import (
+            AuthorityContext,
+            CapabilityLease,
+            ConnectivityState,
+            InvariantViolationError,
+        )
         lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
         if lease:
             try:
@@ -875,7 +879,10 @@ class MountRegistry:
                 "pgl_anchor_id": anchor.anchor_id,
             }
             
-            from cappo_backend.security.evidence import get_evidence_key_pair, mint_signed_execution_evidence
+            from cappo_backend.security.evidence import (
+                get_evidence_key_pair,
+                mint_signed_execution_evidence,
+            )
             _evidence_pk = get_evidence_key_pair()
             _cose_bytes = mint_signed_execution_evidence(_receipt_canonical, _evidence_pk)
             

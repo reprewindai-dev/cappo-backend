@@ -6,7 +6,9 @@ Parent hash: SHA-256(0x01 || left || right)
 """
 
 from __future__ import annotations
+
 import hashlib
+
 
 def hash_leaf(data: bytes) -> bytes:
     h = hashlib.sha256()

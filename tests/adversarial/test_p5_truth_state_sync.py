@@ -6,16 +6,11 @@ cryptographic/durable proof, and never writes blind completion records when
 process boundaries crash.
 """
 
+
 import pytest
-import multiprocessing
-import os
-import signal
-import time
-from datetime import datetime, timezone
 from sqlalchemy import select
 
 from cappo_backend.capability_mount.engine import PolicyError
-from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.consequence_execution import (
     ConsequenceExecutionEvent,
     ConsequenceState,
@@ -31,8 +26,10 @@ class CappoUncertainError(Exception):
 
 
 from sqlalchemy.orm import Session
+
+from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, MountScope
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import MountScope, MountPolicy, CapabilityPackage
+
 
 def _setup_binding(db: Session, rules: list[dict]):
     from cappo_backend.db.base import Base
@@ -73,8 +70,9 @@ def _setup_binding(db: Session, rules: list[dict]):
     assert mount_record is not None, f"Mount failed: {reason}"
     
     # Get the binding by fetching the DB row
-    from cappo_backend.models.capability_mount import CapabilityMount
     from sqlalchemy import select
+
+    from cappo_backend.models.capability_mount import CapabilityMount
     row = db.execute(
         select(CapabilityMount).where(CapabilityMount.mount_id == mount_record.mount.id)
     ).scalar_one()

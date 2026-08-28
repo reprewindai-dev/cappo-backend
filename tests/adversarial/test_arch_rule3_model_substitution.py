@@ -1,7 +1,9 @@
 import pytest
-from cappo_backend.capability_mount.service import MountRegistry, MountScope
+
 from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy
+from cappo_backend.capability_mount.service import MountRegistry, MountScope
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
+
 
 def _build_registry(db) -> MountRegistry:
     from cappo_backend.config import Settings

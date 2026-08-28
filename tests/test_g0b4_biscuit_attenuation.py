@@ -1,8 +1,10 @@
-import pytest
-from datetime import datetime, timedelta, timezone
-import time
 
-from cappo_backend.security.biscuit import mint_biscuit_capability, verify_biscuit_capability, attenuate_biscuit_capability
+from cappo_backend.security.biscuit import (
+    attenuate_biscuit_capability,
+    mint_biscuit_capability,
+    verify_biscuit_capability,
+)
+
 
 def test_g0b4_biscuit_attenuation():
     caller_spiffe_id = "spiffe://example.org/workload/cappo-backend"
@@ -31,7 +33,7 @@ def test_g0b4_biscuit_attenuation():
         executor_spiffe_id=executor_spiffe_id,
         action="record.read",
         subject_spiffe_id=caller_spiffe_id
-    ) == True
+    )
 
     # 2. Attenuate Child Token Locally
     child_token_b64 = attenuate_biscuit_capability(
@@ -50,23 +52,23 @@ def test_g0b4_biscuit_attenuation():
         executor_spiffe_id=executor_spiffe_id,
         action="record.read",
         subject_spiffe_id=caller_spiffe_id
-    ) == True
+    )
 
     # 4. Action Widening Denied (write)
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=child_token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="record.write",
         subject_spiffe_id=caller_spiffe_id
-    ) == False
+    )
 
     # 5. Dropped Action Denied (read_all)
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=child_token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="record.read_all",
         subject_spiffe_id=caller_spiffe_id
-    ) == False
+    )
 
     # 6. Expiry Widening Denied
     # If a malicious user tries to append a block to extend expiry, 
@@ -83,12 +85,12 @@ def test_g0b4_biscuit_attenuation():
         ttl_seconds=60
     )
     
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=grandchild_token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="record.read",
         subject_spiffe_id=caller_spiffe_id
-    ) == False
+    )
 
     print("\nG0B.4 = VERIFIED")
 

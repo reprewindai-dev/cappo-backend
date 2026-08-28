@@ -106,7 +106,7 @@ def test_g0a_4_positive_allow_path(client: TestClient) -> None:
     # Nonce consumed
     status_body = client.get(f"/v1/capability/mounts/{mount_id}").json()
     assert status_body["nonce_consumed"] is True, f"EXACTLY_ONCE FAIL: nonce not consumed: {status_body}"
-    assert status_body["token"] is None, f"EXACTLY_ONCE FAIL: token still exposed"
+    assert status_body["token"] is None, "EXACTLY_ONCE FAIL: token still exposed"
 
     # Replay denied
     replay_body = client.post(
@@ -133,8 +133,8 @@ def test_g0a_4_positive_allow_path(client: TestClient) -> None:
     print(f"TIMESTAMP_BOUND    = {ts!r}")
     print(f"EXECUTION_ID_BOUND = mount_id={mount_id!r}")
     print(f"TOKEN_ID_BOUND     = token_id={token_id!r}")
-    print(f"ANCHOR_CONFIRMED   = True")
-    print(f"NONCE_CONSUMED     = True")
-    print(f"REPLAY_DENIED      = True (reason=token_replay)")
-    print(f"EXACTLY_ONE_ALLOW  = True")
-    print(f"NO_GHOST_EXECUTION = True (0 execution-type anchor events)")
+    print("ANCHOR_CONFIRMED   = True")
+    print("NONCE_CONSUMED     = True")
+    print("REPLAY_DENIED      = True (reason=token_replay)")
+    print("EXACTLY_ONE_ALLOW  = True")
+    print("NO_GHOST_EXECUTION = True (0 execution-type anchor events)")

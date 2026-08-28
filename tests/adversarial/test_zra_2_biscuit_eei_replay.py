@@ -17,10 +17,11 @@ Biscuit evaluation lacking revocation/freshness checks).
 
 import pytest
 from sqlalchemy.orm import Session
+
+from cappo_backend.capability_mount.models import Decision, MountPolicy, MountScope, UnmountReason
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import MountScope, MountPolicy, Decision, UnmountReason
-from cappo_backend.services.mount_pgl import AuditPGLAnchor
 from cappo_backend.security.biscuit import verify_biscuit_capability
+from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
 CALLER_SPIFFE  = "spiffe://example.org/workload/cappo-backend"
 EXECUTOR_SPIFFE = "spiffe://example.org/workload/zra1-agent"
@@ -155,7 +156,6 @@ def test_zra_2_transaction_rollback_partial_transition(db: Session, monkeypatch)
     )
     mount_id = mount_record.mount.id
 
-    original_transition = CapabilityLease.transition_state
     def _faulty_transition(*args, **kwargs):
         raise ValueError("Simulated database failure during transition")
     
@@ -194,7 +194,7 @@ def test_zra_2_disconnected_token_crosses_expiry(db: Session, monkeypatch):
     assert disconnected_offline_valid_after is False, "Disconnected verifier must reject expired token"
 
 def test_zra_2_stale_epoch_cannot_overwrite_newer_locally_known(db: Session):
-    from cappo_backend.security.biscuit import mint_biscuit_capability, TrustedRevocationState
+    from cappo_backend.security.biscuit import TrustedRevocationState, mint_biscuit_capability
     scope = "execution:zra1-exec-006"
     
     biscuit_token = mint_biscuit_capability(

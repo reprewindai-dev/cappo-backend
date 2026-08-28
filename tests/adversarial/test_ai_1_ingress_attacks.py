@@ -15,8 +15,9 @@ found and exploited a path to gain authority).
 """
 
 import os
-import sys
 import subprocess
+import sys
+
 import pytest
 
 # Define the declared substrate boundary for CEM-1-R1

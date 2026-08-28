@@ -1,7 +1,12 @@
-import pytest
 import cbor2
+import pytest
 from cryptography.hazmat.primitives.asymmetric import ed25519
-from cappo_backend.security.evidence import mint_signed_execution_evidence, verify_signed_execution_evidence
+
+from cappo_backend.security.evidence import (
+    mint_signed_execution_evidence,
+    verify_signed_execution_evidence,
+)
+
 
 def test_g0b5_signed_evidence():
     priv = ed25519.Ed25519PrivateKey.generate()

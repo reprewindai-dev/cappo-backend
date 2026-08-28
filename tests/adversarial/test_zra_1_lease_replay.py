@@ -9,12 +9,12 @@ is called, the system fails ZRA-1, because downstream systems relying on lease s
 will incorrectly allow execution.
 """
 
-import pytest
 from sqlalchemy.orm import Session
+
+from cappo_backend.capability_mount.models import MountPolicy, MountScope, UnmountReason
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import MountScope, MountPolicy, Decision, UnmountReason
-from cappo_backend.services.mount_pgl import AuditPGLAnchor
 from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
+from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
 CALLER_SPIFFE  = "spiffe://example.org/workload/cappo-backend"
 EXECUTOR_SPIFFE = "spiffe://example.org/workload/zra1-agent"

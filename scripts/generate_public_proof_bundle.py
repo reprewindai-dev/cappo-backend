@@ -1,9 +1,11 @@
-import os
-import json
 import hashlib
+import json
+import os
+
 import cbor2
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
 
 def generate_bundle(out_dir):
     os.makedirs(out_dir, exist_ok=True)

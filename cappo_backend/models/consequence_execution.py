@@ -33,10 +33,8 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime, timezone
-import json
-from uuid import uuid4
 
-from sqlalchemy import DateTime, String, Text, UniqueConstraint, Integer
+from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base

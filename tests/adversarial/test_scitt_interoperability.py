@@ -9,9 +9,10 @@ This test harness prepares the COSE receipts to verify if they meet the structur
 requirements for the SCITT 'receipts' header parameter and the CDDL definitions.
 """
 
-import pytest
 import cbor2
-from cappo_backend.security.evidence import mint_signed_execution_evidence, get_evidence_key_pair
+
+from cappo_backend.security.evidence import mint_signed_execution_evidence
+
 
 def test_scitt_cbor_structure_compliance():
     """
@@ -36,7 +37,7 @@ def test_scitt_cbor_structure_compliance():
     assert isinstance(cose_array, (list, tuple))
     assert len(cose_array) == 4
     
-    unprotected_headers = cose_array[1]
+    cose_array[1]
     
     # In a full SCITT implementation, we would expect the 'receipts' parameter 
     # (label 394) containing the Verifiable Data Structure (label 395) 

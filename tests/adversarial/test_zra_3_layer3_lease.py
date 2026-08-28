@@ -1,10 +1,8 @@
-﻿import pytest
-from datetime import datetime, timezone
-from cappo_backend.capability_mount.service import MountRegistry, MountScope, UnmountReason
-from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, LifecycleState
+﻿from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy
+from cappo_backend.capability_mount.service import MountScope, UnmountReason
 from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
-from cappo_backend.services.mount_pgl import AuditPGLAnchor
 from tests.adversarial.test_zra_3_mount_replay import _build_registry
+
 
 def test_zra_3_cached_lease_object_survival(db):
     """

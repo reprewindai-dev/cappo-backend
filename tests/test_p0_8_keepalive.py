@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
 import time
+
 import httpx
+
 from cappo_backend.config import Settings
 from cappo_backend.services.providers import OllamaExecutor
+
 
 class MockState:
     def __init__(self, keep_alive=300):

@@ -28,7 +28,6 @@ Attack matrix (13 gates):
 """
 
 import tempfile
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -50,7 +49,6 @@ from cappo_backend.models.capability_lease import (
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.security.biscuit import (
     TrustedRevocationState,
-    attenuate_biscuit_capability,
     mint_biscuit_capability,
     verify_biscuit_capability,
 )
@@ -435,10 +433,10 @@ def test_p4_6_snapshot_restore_cannot_resurrect_terminated_lease(db):
         lease.transition_state(LeaseState.ACTIVE, current_epoch=2)
 
     # Confirm evaluate() still DENY even with terminated=False (revoked epoch holds)
-    token = reg._record(row).token
+    reg._record(row).token
     # Re-fetch row after clearing terminated
     from sqlalchemy import select
-    refreshed_row = db.execute(
+    db.execute(
         select(CapabilityMount).where(CapabilityMount.mount_id == mount_id)
     ).scalar_one()
     # The binding should still terminate because the lease is REVOKED

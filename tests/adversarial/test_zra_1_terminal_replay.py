@@ -9,10 +9,10 @@ demonstrate that post-terminal credentials, sockets, mounts, secrets, processes,
 memory residues cannot be recovered or reused.
 """
 
-import pytest
 from sqlalchemy.orm import Session
+
+from cappo_backend.capability_mount.models import Decision, MountPolicy, MountScope
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import MountScope, MountPolicy, Decision
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
 CALLER_SPIFFE  = "spiffe://example.org/workload/cappo-backend"

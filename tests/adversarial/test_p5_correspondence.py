@@ -4,19 +4,18 @@ P5 Correspondence Tests
 Executes the Wave 2 adversarial tests, captures the truth-state traces,
 and verifies them against the TLA+ correspondence model.
 """
-import pytest
 from sqlalchemy import event
-from sqlalchemy.orm import Session
-from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
+
 from cappo_backend.formal.p5_correspondence import (
-    TruthTransitionTrace,
-    extract_traces,
-    verify_trace,
-    verify_no_model_gap,
-    verify_mutation_surface,
     KNOWN_MUTATION_SITES,
     CorrespondenceViolation,
+    extract_traces,
+    verify_mutation_surface,
+    verify_no_model_gap,
+    verify_trace,
 )
+from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
+
 
 def test_p5_formal_mutation_surface():
     """Verify there are no unmodeled truth-state mutation sites in service.py."""

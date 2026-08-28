@@ -1,20 +1,19 @@
-import pytest
-from datetime import datetime, timezone, timedelta
-from uuid import uuid4
+from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, select
+import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from cappo_backend.db.base import Base
-from cappo_backend.capability_mount.engine import ExecutionBinding, Mounter
-from cappo_backend.capability_mount.service import MountRegistry, DatabaseAuditSink
 from cappo_backend.capability_mount.models import (
     CapabilityPackage,
     MountScope,
 )
+from cappo_backend.capability_mount.service import MountRegistry
+from cappo_backend.db.base import Base
 from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.security.biscuit import mint_biscuit_capability
+
 
 @pytest.fixture
 def db_session():

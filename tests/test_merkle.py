@@ -1,6 +1,12 @@
 import os
-import pytest
-from cappo_backend.security.merkle import AppendOnlyMerkleTree, verify_inclusion_proof, verify_consistency_proof, hash_leaf
+
+from cappo_backend.security.merkle import (
+    AppendOnlyMerkleTree,
+    hash_leaf,
+    verify_consistency_proof,
+    verify_inclusion_proof,
+)
+
 
 def test_merkle_tree():
     tree = AppendOnlyMerkleTree()

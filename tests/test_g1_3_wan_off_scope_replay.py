@@ -5,10 +5,14 @@ import contextlib
 import socket
 import uuid
 
-import pytest
 from sqlalchemy.orm import Session
 
-from cappo_backend.capability_mount.models import Decision, MountPolicy, MountScope, CapabilityPackage
+from cappo_backend.capability_mount.models import (
+    CapabilityPackage,
+    Decision,
+    MountPolicy,
+    MountScope,
+)
 from cappo_backend.capability_mount.service import MountRegistry
 
 _LOOPBACK = ("127.", "::1", "localhost")
@@ -41,8 +45,8 @@ ACTION = "echo"
 WRONG_ACTION = "write"
 
 def _build_registry(db: Session) -> MountRegistry:
-    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     from cappo_backend.config import Settings
+    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     
     settings = Settings(
         pgl_ledger_url="http://1.1.1.1:80", 
@@ -74,7 +78,7 @@ def test_g1_3_wan_off_wrong_scope_fails(db: Session):
     )
     assert mount_record is not None, f"Mount failed: {reason}"
     
-    with no_wan() as blocked:
+    with no_wan():
         # Try wrong action offline
         decision, dec_reason, _anchor, binding = reg.evaluate(
             mount_id=mount_record.mount.id, action=WRONG_ACTION, token_id=mount_record.token.token_id, nonce=mount_record.token.nonce,
@@ -99,7 +103,7 @@ def test_g1_3_wan_off_replay_fails(db: Session):
     )
     assert mount_record is not None, f"Mount failed: {reason}"
     
-    with no_wan() as blocked:
+    with no_wan():
         # 1st execute (success)
         d1, _, _, _ = reg.evaluate(
             mount_id=mount_record.mount.id, action=ACTION,

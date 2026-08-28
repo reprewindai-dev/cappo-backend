@@ -29,10 +29,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-import inspect
-import os
 from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # Canonical trace record

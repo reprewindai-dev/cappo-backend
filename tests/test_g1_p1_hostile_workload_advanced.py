@@ -1,12 +1,12 @@
-import pytest
 import os
-import hashlib
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, String
+
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.db.base import Base
+from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+
 
 def test_hostile_workload_environment_isolation():
     assert "BISCUIT_ROOT_PRIVATE_KEY_HEX" not in os.environ
