@@ -166,5 +166,42 @@
       "no WIMSE conformance claim"
     ],
     "next_required_gate": "WID-3: CAPPO refuses profile-only authority"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-3-001",
+    "claim": "CAPPO refuses profile-only authority and enforces strictly-bound consequence authorization.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/authorization",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "e1a319d4461f50300fe238a840c47c9cad9f8d89",
+    "source_paths": [
+      "cappo_backend/authorization/cappo_auth.py",
+      "cappo_backend/authorization/errors.py",
+      "tests/adversarial/test_wid_3_cappo_profile_only_denial.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "4bda5668b2793612bda1e743aff644303dda2f9cb9fda38da5d12f9ab6819a4d (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "4bda5668b2793612bda1e743aff644303dda2f9cb9fda38da5d12f9ab6819a4d",
+    "verification_method": "Clean adversarial test suite pass on WID-3 CAPPO preauthorization logic",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T10:57:33-04:00",
+    "limitations": [
+      "verified locally only",
+      "no distributed replay prevention yet unless DB/Redis-backed replay is implemented",
+      "no runtime service identity or protocol probe yet",
+      "no production deployment verification yet",
+      "no WIMSE conformance claim",
+      "no PGL identity-chain enforcement yet unless explicitly implemented",
+      "no P5 truth-transition identity binding yet unless explicitly implemented"
+    ],
+    "next_required_gate": "WID-4: P5 truth.transition identity binding"
   }
 ]
