@@ -1,0 +1,9 @@
+{
+  "iss": "https://identity.veklom.local",
+  "sub": "wimse://veklom.local/prod/payment/worker/process",
+  "aud": "https://api.veklom.local",
+  "exp": 1700003600,
+  "iat": 1700000000,
+  "jti": "jti_ect",
+  "ephemeral_execution_id": "exec_abc"
+}

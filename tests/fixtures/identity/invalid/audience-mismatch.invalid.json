@@ -1,0 +1,11 @@
+{
+  "iss": "https://identity.veklom.local",
+  "sub": "wimse://veklom.local/prod/payment/worker/process",
+  "aud": "https://wrong.local",
+  "exp": 1700003600,
+  "iat": 1700000000,
+  "jti": "jti_wit",
+  "cnf": {
+    "jwk": {}
+  }
+}
