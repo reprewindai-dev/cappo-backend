@@ -1,16 +1,16 @@
-import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from cappo_backend.capability_mount.engine import ExecutionBinding, PolicyError
-from cappo_backend.capability_mount.service import MountRegistry
+
+from cappo_backend.capability_mount.engine import PolicyError
 from cappo_backend.capability_mount.models import CapabilityPackage, MountScope
+from cappo_backend.capability_mount.service import MountRegistry
 from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.security.biscuit import mint_biscuit_capability
-from datetime import datetime, timezone
-from tests.adversarial.test_cd_2_cappo_dominance_bypass import db_session
+
 
 class DummyAnchor:
     def anchor(self, *args, **kwargs):
@@ -22,8 +22,8 @@ class DummyLedger:
     def append(self, *args, **kwargs):
         self.record_called = True
 
-def _setup_mount(db_session, writes=[]):
-    registry = MountRegistry(db_session, anchor=DummyAnchor())
+def _setup_mount(db, writes=[]):
+    registry = MountRegistry(db, anchor=DummyAnchor())
     registry.ledger = DummyLedger()
 
     pkg = CapabilityPackage(id="test.pkg@v1", family="test", title="t", purpose="t", reads=[], writes=writes)
@@ -59,7 +59,7 @@ def _setup_mount(db_session, writes=[]):
         offline_side_effect_limit=10,
         _allowed_actions_json='["fs.write"]' if writes else '[]',
     )
-    db_session.add(lease)
+    db.add(lease)
 
     row = CapabilityMount(
         mount_id=mount.id,
@@ -74,14 +74,14 @@ def _setup_mount(db_session, writes=[]):
         terminated=False,
         nonce_consumed=False,
     )
-    db_session.add(row)
-    db_session.commit()
+    db.add(row)
+    db.commit()
     
     record = registry._record(row)
     return row, lease, record.binding
 
-def test_real_fs_consequence_bypass_attempt(db_session):
-    _, _, binding = _setup_mount(db_session, writes=["fs.write"])
+def test_real_fs_consequence_bypass_attempt(db):
+    _, _, binding = _setup_mount(db, writes=["fs.write"])
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "bypass.txt"
@@ -91,8 +91,8 @@ def test_real_fs_consequence_bypass_attempt(db_session):
             
         assert not test_file.exists(), "Filesystem mutation occurred despite missing callback support!"
 
-def test_real_fs_consequence_allow(db_session):
-    row, _, binding = _setup_mount(db_session, writes=["fs.write"])
+def test_real_fs_consequence_allow(db):
+    row, _, binding = _setup_mount(db, writes=["fs.write"])
     
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "governed.txt"
@@ -107,11 +107,11 @@ def test_real_fs_consequence_allow(db_session):
         assert test_file.exists()
         assert test_file.read_text() == "SUCCESS"
         
-        db_session.refresh(row)
+        db.refresh(row)
         assert row.nonce_consumed is True
 
-def test_real_fs_consequence_deny(db_session):
-    row, _, binding = _setup_mount(db_session, writes=[])
+def test_real_fs_consequence_deny(db):
+    row, _, binding = _setup_mount(db, writes=[])
     
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "denied.txt"
@@ -125,11 +125,11 @@ def test_real_fs_consequence_deny(db_session):
             
         assert not test_file.exists(), "Consequence executed despite CAPPO DENY!"
         
-        db_session.refresh(row)
+        db.refresh(row)
         assert row.nonce_consumed is False
 
-def test_missing_evaluator_fail_closed(db_session):
-    row, _, binding = _setup_mount(db_session, writes=["fs.write"])
+def test_missing_evaluator_fail_closed(db):
+    row, _, binding = _setup_mount(db, writes=["fs.write"])
     binding._cappo_evaluator = None # Force missing evaluator
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -140,8 +140,8 @@ def test_missing_evaluator_fail_closed(db_session):
             
         assert not test_file.exists()
 
-def test_real_replay_nonce_semantics(db_session):
-    row, _, binding = _setup_mount(db_session, writes=["fs.write"])
+def test_real_replay_nonce_semantics(db):
+    row, _, binding = _setup_mount(db, writes=["fs.write"])
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "replay.txt"
@@ -156,8 +156,8 @@ def test_real_replay_nonce_semantics(db_session):
             
         assert test_file.read_text() == "FIRST", "Replay mutation succeeded!"
 
-def test_callback_failure_semantics(db_session):
-    row, _, binding = _setup_mount(db_session, writes=["fs.write"])
+def test_callback_failure_semantics(db):
+    row, _, binding = _setup_mount(db, writes=["fs.write"])
     
     def failing_callback():
         raise RuntimeError("Callback failed halfway!")
@@ -165,15 +165,15 @@ def test_callback_failure_semantics(db_session):
     with pytest.raises(RuntimeError, match="Callback failed halfway!"):
         binding.consequence("fs.write", failing_callback)
         
-    db_session.refresh(row)
+    db.refresh(row)
     assert row.nonce_consumed is True
 
-def test_real_consequence_revocation(db_session):
-    row, _, binding = _setup_mount(db_session, writes=["fs.write"])
+def test_real_consequence_revocation(db):
+    row, _, binding = _setup_mount(db, writes=["fs.write"])
     
     # Revoke
     row.terminated = True
-    db_session.commit()
+    db.commit()
     
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "revoke.txt"
@@ -183,13 +183,13 @@ def test_real_consequence_revocation(db_session):
             
         assert not test_file.exists()
 
-def test_real_consequence_expiry(db_session):
+def test_real_consequence_expiry(db):
     from datetime import timedelta
-    row, _, binding = _setup_mount(db_session, writes=["fs.write"])
+    row, _, binding = _setup_mount(db, writes=["fs.write"])
     
     # Expire
     row.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
-    db_session.commit()
+    db.commit()
     
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "expire.txt"
@@ -199,12 +199,12 @@ def test_real_consequence_expiry(db_session):
             
         assert not test_file.exists()
 
-def test_real_consequence_budget_exhaustion(db_session):
-    row, lease, binding = _setup_mount(db_session, writes=["fs.write"])
+def test_real_consequence_budget_exhaustion(db):
+    row, lease, binding = _setup_mount(db, writes=["fs.write"])
     
     # Exhaust budget
     lease.offline_budget = 0
-    db_session.commit()
+    db.commit()
     
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "budget.txt"
