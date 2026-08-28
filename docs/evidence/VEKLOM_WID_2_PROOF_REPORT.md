@@ -1,0 +1,34 @@
+# VEKLOM_WID_2_PROOF_REPORT
+
+- **Repository:** cappo-backend
+- **Branch:** main
+- **Commit SHA:** ab6c31f4d3489e4153c1b017acd4267f6bf534cf
+- **Working tree status:** Clean (all middleware and tests committed)
+- **Files created:** 
+  - cappo_backend/identity/__init__.py
+  - cappo_backend/identity/errors.py
+  - cappo_backend/identity/models.py
+  - cappo_backend/identity/validator.py
+  - cappo_backend/identity/replay_cache.py
+  - cappo_backend/identity/middleware.py
+  - tests/adversarial/test_wid_2_token_validation_middleware.py
+  - docs/evidence/VEKLOM_WID_2_PROOF_REPORT.md
+- **Files modified:** None
+- **Test command:** uv run pytest tests/adversarial/test_wid_2_token_validation_middleware.py -v --tb=short
+- **Pass/Fail count:** 24 passed, 0 failed
+- **Artifact Hashes:**
+  - 
+eceipt.cose: 8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd
+  - public-key.pem: dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c
+  - proof.json: 6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6
+  - checkpoint.json: 286f67737dc444ab7f053b53ef6da8aebe90be715f2d30e0392ef2ebd43aa2f8
+- **Known limitations:**
+  - middleware verified locally only
+  - in-memory replay cache only
+  - no distributed replay prevention yet
+  - no CAPPO end-to-end authority enforcement yet
+  - no P5 truth-transition identity binding yet
+  - no PGL identity-chain enforcement yet
+  - no runtime service identity or protocol probe yet
+  - no WIMSE conformance claim
+- **Next required gate:** WID-3: CAPPO refuses profile-only authority

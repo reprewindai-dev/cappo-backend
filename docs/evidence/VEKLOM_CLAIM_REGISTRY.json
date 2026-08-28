@@ -127,5 +127,44 @@
       "no runtime service identity or protocol probe yet"
     ],
     "next_required_gate": "WID-2: Token Validation Middleware"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-2-001",
+    "claim": "Token Validation Middleware implemented with strict governed enforcement.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/identity/middleware",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "ab6c31f4d3489e4153c1b017acd4267f6bf534cf",
+    "source_paths": [
+      "cappo_backend/identity/middleware.py",
+      "cappo_backend/identity/validator.py",
+      "cappo_backend/identity/errors.py",
+      "tests/adversarial/test_wid_2_token_validation_middleware.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "286f67737dc444ab7f053b53ef6da8aebe90be715f2d30e0392ef2ebd43aa2f8 (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "286f67737dc444ab7f053b53ef6da8aebe90be715f2d30e0392ef2ebd43aa2f8",
+    "verification_method": "Clean adversarial test suite pass on WID-2 middleware",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T10:17:00-04:00",
+    "limitations": [
+      "middleware verified locally only",
+      "in-memory replay cache only",
+      "no distributed replay prevention yet",
+      "no CAPPO end-to-end authority enforcement yet",
+      "no P5 truth-transition identity binding yet",
+      "no PGL identity-chain enforcement yet",
+      "no runtime service identity or protocol probe yet",
+      "no WIMSE conformance claim"
+    ],
+    "next_required_gate": "WID-3: CAPPO refuses profile-only authority"
   }
 ]
