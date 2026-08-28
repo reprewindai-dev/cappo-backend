@@ -31,3 +31,25 @@ All P5 tests and ZRA-1 hostile tests passed on the clean commit, demonstrating t
 - **ZRA-1 Status Updated to `CI_VERIFIED`**: Validated in clean local CI boundary. Stale handle survivability structurally denied. Awaiting runtime probe against live environment.
 
 The Canonical Claim Registry has been updated accordingly.
+---
+
+# P5-O1: Durable Outbox Dispatcher
+**Date:** 2026-08-28T10:00:22-04:00
+**Verifier:** Antigravity (Coding Agent)
+**Commit SHA:** cb9afa0cc45449385e2808cd1f4c621c058586b0
+
+## Proof Trace
+`	ext
+uv run pytest tests/adversarial/ -v --tb=short
+======================= 97 passed, 2 warnings in 21.93s =======================
+`
+
+## Artifact Hashes
+- eceipt.cose\: 8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd
+- \public-key.pem\: dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c
+- \proof.json\: 6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6
+- \checkpoint.json\: 82b1810f15a7207f81280de571003c455cc39bd196fd4f6bb5067329546c771d
+
+## Claim Status
+\VEKLOM-CLAIM-P5-O1-001\ is **BOUNDED LOCAL-CI VERIFIED**.
+GitHub Actions status checks are not present. Runtime service identity remains NOT_YET_VERIFIED.
