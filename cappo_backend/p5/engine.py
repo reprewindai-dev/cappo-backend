@@ -22,6 +22,7 @@ Optimistic locking:
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -575,5 +576,31 @@ class P5Engine:
             created_at=created_at_dt,
         )
         self._db.add(event)
+
+        payload = {
+            "event_id": event_id,
+            "operation_id": operation_id,
+            "p5_truth_state": assert_state_str or prev_state_str,
+            "event_hash": event_hash,
+            "previous_event_hash": previous_event_hash,
+        }
+        if proof_subject_hash:
+            payload["proof_subject_hash"] = proof_subject_hash
+        if cappo_decision_id:
+            payload["cappo_decision_id"] = cappo_decision_id
+
+        payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+        
+        outbox_item = P5Outbox(
+            outbox_id=str(uuid.uuid4()),
+            event_id=event_id,
+            target="PGL",
+            payload_hash=payload_hash,
+            status="PENDING",
+            attempts=0,
+            created_at=created_at_dt,
+        )
+        self._db.add(outbox_item)
+
         self._db.flush()
         return event
