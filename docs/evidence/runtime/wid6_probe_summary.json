@@ -1,0 +1,5 @@
+{
+    "status":  "SOURCE_OBSERVED",
+    "timestamp":  "2026-08-28T15:26:27Z",
+    "reason":  "Scripts created. Runtime endpoints for WID-1..WID-5 not yet deployed or accessible for live verification."
+}

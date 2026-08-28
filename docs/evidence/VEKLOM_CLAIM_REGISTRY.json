@@ -275,5 +275,34 @@
       "no runtime PGL service deployment proof yet"
     ],
     "next_required_gate": "WID-6: Runtime proof bundle"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-6-001",
+    "claim": "WID-6 runtime verification scripts created. Probe endpoints and requirements formulated.",
+    "status": "SOURCE_OBSERVED",
+    "component": "cappo_backend/runtime",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "N/A",
+    "source_paths": [
+      "scripts/runtime/wid_6_runtime_probe.sh",
+      "scripts/runtime/wid_6_runtime_probe.ps1"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [],
+    "runtime_service_identity": "NOT_VERIFIED",
+    "runtime_probe": "NOT_VERIFIED",
+    "evidence_bundle_hash": "N/A",
+    "verification_method": "Authored local probe scripts. Live probes not executed.",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T11:26:44-04:00",
+    "limitations": [
+      "Scripts created locally only",
+      "No runtime service identity or protocol probe captured",
+      "Deployed source SHA cannot be proven yet",
+      "No WIMSE conformance claim",
+      "No SCITT conformance claim"
+    ],
+    "next_required_gate": "WID-6: Runtime proof bundle execution"
   }
 ]
