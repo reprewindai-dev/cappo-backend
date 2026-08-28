@@ -90,5 +90,42 @@
       "Runtime service identity and runtime probes remain NOT_YET_VERIFIED."
     ],
     "next_required_gate": "Runtime verification against deployed Server 0 endpoint"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-1-001",
+    "claim": "Workload Identity Schemas implemented and verified against valid/invalid adversarial fixtures.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/identity",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "d2f674478d89dc3d576328ad366542d2824912fe",
+    "source_paths": [
+      "schemas/identity",
+      "tests/fixtures/identity",
+      "tests/adversarial/test_wid_1_identity_schemas.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6",
+      "6f6a8ef25d86156205692a082721b0b5f6e7bbabc8a69adef386911f91ac6e69"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "6f6a8ef25d86156205692a082721b0b5f6e7bbabc8a69adef386911f91ac6e69",
+    "verification_method": "Clean adversarial test suite pass on WID-1 fixtures",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T10:09:56-04:00",
+    "limitations": [
+      "schemas verified locally only",
+      "GitHub Actions status checks not required unless present",
+      "no runtime token middleware yet",
+      "no CAPPO enforcement yet",
+      "no P5 truth-transition identity binding yet",
+      "no PGL identity-chain enforcement yet",
+      "no runtime service identity or protocol probe yet"
+    ],
+    "next_required_gate": "WID-2: Token Validation Middleware"
   }
 ]
