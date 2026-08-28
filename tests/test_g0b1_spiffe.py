@@ -1,7 +1,8 @@
 import os
-from spiffe import WorkloadApiClient
 
 import pytest
+from spiffe import WorkloadApiClient
+
 
 def test_spiffe_workload_api():
     socket_path = os.environ.get("SPIFFE_ENDPOINT_SOCKET")

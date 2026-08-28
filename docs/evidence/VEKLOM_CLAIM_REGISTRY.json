@@ -1,0 +1,308 @@
+[
+  {
+    "claim_id": "VEKLOM-CLAIM-P5-001",
+    "claim": "P5 Truth-State Machine hostile tests passed (invariant enforced, pessimistic ordering)",
+    "status": "BOUNDED CI_VERIFIED",
+    "component": "cappo_backend/p5",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "77158bdeb42be7547fd807907b394e196cfcacbc",
+    "source_paths": [
+      "cappo_backend/p5/",
+      "tests/adversarial/test_p5_truth_invariant.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "f2dbdfe7-677a-40de-a1bc-9512196b3ad0/task-15927",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6",
+      "334df7a3bf227ebb2ab2bedf2f2a36f879fdf927b3277c807c20ef68ad8a2be4"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "334df7a3bf227ebb2ab2bedf2f2a36f879fdf927b3277c807c20ef68ad8a2be4",
+    "verification_method": "Clean adversarial test suite pass on exact commit SHA",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T09:47:35-04:00",
+    "expires_at": "2026-09-28T09:47:35-04:00",
+    "limitations": [
+      "Hostile tests passed for the attached commit and artifact set; full closure remains gated on runtime integration, CAPPO truth-transition enforcement, PGL binding, and claim-registry reconciliation."
+    ],
+    "next_required_gate": "Runtime verification against deployed Server 0 endpoint"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-ZRA-1-001",
+    "claim": "Zero-Trust Runtime Authority: Stale handle survival (Mount/Lease) is denied",
+    "status": "CI_VERIFIED",
+    "component": "cappo_backend/capability_mount",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "77158bdeb42be7547fd807907b394e196cfcacbc",
+    "source_paths": [
+      "tests/adversarial/test_zra_3_layer3_extended.py",
+      "tests/adversarial/test_zra_3_layer3_lease.py",
+      "tests/adversarial/test_zra_3_mount_replay.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "f2dbdfe7-677a-40de-a1bc-9512196b3ad0/task-15927",
+    "ci_artifact_hashes": [],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "N/A",
+    "verification_method": "Clean adversarial test suite pass on exact commit SHA",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T09:47:35-04:00",
+    "expires_at": "2026-09-28T09:47:35-04:00",
+    "limitations": [
+      "Verified in clean local CI boundary. Awaiting runtime probe verification."
+    ],
+    "next_required_gate": "Runtime probe against live CAPPO termination endpoints"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-P5-O1-001",
+    "claim": "Durable Outbox Dispatcher implemented. Dispatcher reliably fan-outs truth-state without data-loss, duplicate evidence, or modifying execution status.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/p5",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "cb9afa0cc45449385e2808cd1f4c621c058586b0",
+    "source_paths": [
+      "cappo_backend/p5/dispatcher.py",
+      "cappo_backend/p5/models.py",
+      "tests/adversarial/test_p5_outbox_dispatcher.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "f2dbdfe7-677a-40de-a1bc-9512196b3ad0/task-16063",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6",
+      "82b1810f15a7207f81280de571003c455cc39bd196fd4f6bb5067329546c771d"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "82b1810f15a7207f81280de571003c455cc39bd196fd4f6bb5067329546c771d",
+    "verification_method": "Clean adversarial test suite pass on exact commit SHA",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T10:00:22-04:00",
+    "expires_at": "2026-09-28T10:00:22-04:00",
+    "limitations": [
+      "Verification was performed by local/adversarial test execution and committed evidence artifacts.",
+      "GitHub Actions status checks are not present for this commit.",
+      "Runtime service identity and runtime probes remain NOT_YET_VERIFIED."
+    ],
+    "next_required_gate": "Runtime verification against deployed Server 0 endpoint"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-1-001",
+    "claim": "Workload Identity Schemas implemented and verified against valid/invalid adversarial fixtures.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/identity",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "d2f674478d89dc3d576328ad366542d2824912fe",
+    "source_paths": [
+      "schemas/identity",
+      "tests/fixtures/identity",
+      "tests/adversarial/test_wid_1_identity_schemas.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "6f6a8ef25d86156205692a082721b0b5f6e7bbabc8a69adef386911f91ac6e69 (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "6f6a8ef25d86156205692a082721b0b5f6e7bbabc8a69adef386911f91ac6e69",
+    "verification_method": "Clean adversarial test suite pass on WID-1 fixtures",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T10:09:56-04:00",
+    "limitations": [
+      "schemas verified locally only",
+      "GitHub Actions status checks not required unless present",
+      "no runtime token middleware yet",
+      "no CAPPO enforcement yet",
+      "no P5 truth-transition identity binding yet",
+      "no PGL identity-chain enforcement yet",
+      "no runtime service identity or protocol probe yet"
+    ],
+    "next_required_gate": "WID-2: Token Validation Middleware"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-2-001",
+    "claim": "Token Validation Middleware implemented with strict governed enforcement.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/identity/middleware",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "ab6c31f4d3489e4153c1b017acd4267f6bf534cf",
+    "source_paths": [
+      "cappo_backend/identity/middleware.py",
+      "cappo_backend/identity/validator.py",
+      "cappo_backend/identity/errors.py",
+      "tests/adversarial/test_wid_2_token_validation_middleware.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "286f67737dc444ab7f053b53ef6da8aebe90be715f2d30e0392ef2ebd43aa2f8 (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "286f67737dc444ab7f053b53ef6da8aebe90be715f2d30e0392ef2ebd43aa2f8",
+    "verification_method": "Clean adversarial test suite pass on WID-2 middleware",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T10:17:00-04:00",
+    "limitations": [
+      "middleware verified locally only",
+      "in-memory replay cache only",
+      "no distributed replay prevention yet",
+      "no CAPPO end-to-end authority enforcement yet",
+      "no P5 truth-transition identity binding yet",
+      "no PGL identity-chain enforcement yet",
+      "no runtime service identity or protocol probe yet",
+      "no WIMSE conformance claim"
+    ],
+    "next_required_gate": "WID-3: CAPPO refuses profile-only authority"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-3-001",
+    "claim": "CAPPO refuses profile-only authority and enforces strictly-bound consequence authorization.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/authorization",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "e1a319d4461f50300fe238a840c47c9cad9f8d89",
+    "source_paths": [
+      "cappo_backend/authorization/cappo_auth.py",
+      "cappo_backend/authorization/errors.py",
+      "tests/adversarial/test_wid_3_cappo_profile_only_denial.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "4bda5668b2793612bda1e743aff644303dda2f9cb9fda38da5d12f9ab6819a4d (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "4bda5668b2793612bda1e743aff644303dda2f9cb9fda38da5d12f9ab6819a4d",
+    "verification_method": "Clean adversarial test suite pass on WID-3 CAPPO preauthorization logic",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T10:57:33-04:00",
+    "limitations": [
+      "verified locally only",
+      "no distributed replay prevention yet unless DB/Redis-backed replay is implemented",
+      "no runtime service identity or protocol probe yet",
+      "no production deployment verification yet",
+      "no WIMSE conformance claim",
+      "no PGL identity-chain enforcement yet unless explicitly implemented",
+      "no P5 truth-transition identity binding yet unless explicitly implemented"
+    ],
+    "next_required_gate": "WID-4: P5 truth.transition identity binding"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-4-001",
+    "claim": "P5 strictly binds truth transitions to identities holding the truth.transition right, rejecting assertions from execute-only or observe-only authorities.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/p5",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "1d099f0cc440be5e7c31046abd95010a298ab5b4",
+    "source_paths": [
+      "cappo_backend/p5/errors.py",
+      "cappo_backend/p5/truth_enforcer.py",
+      "tests/adversarial/test_wid_4_p5_truth_transition_identity_binding.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "66a7f0c4941f4d9699e63f34ad4c372eb39e3d61f6abd2a71e998340c390fd30 (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "66a7f0c4941f4d9699e63f34ad4c372eb39e3d61f6abd2a71e998340c390fd30",
+    "verification_method": "Clean adversarial test suite pass on WID-4 P5 truth transition logic",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T11:12:45-04:00",
+    "limitations": [
+      "verified locally only",
+      "no PGL identity-chain enforcement yet",
+      "no runtime service identity or protocol probe yet",
+      "no production deployment verification yet"
+    ],
+    "next_required_gate": "WID-5: PGL refuses evidence without identity chain"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-5-001",
+    "claim": "PGL refuses to append governed evidence unless it contains a complete, coherent, hash-bound identity chain. Evidence without identity is rejected.",
+    "status": "BOUNDED LOCAL-CI VERIFIED",
+    "component": "cappo_backend/pgl",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "bae5d291d0b78d94ed7b20356d31a2af2e88a373",
+    "source_paths": [
+      "cappo_backend/pgl/identity_chain.py",
+      "cappo_backend/pgl/evidence_validator.py",
+      "cappo_backend/pgl/errors.py",
+      "tests/adversarial/test_wid_5_pgl_identity_chain_enforcement.py"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "3fb3d3b4eac26f0705862737577b2885333893741235174ba0d081e72b0286a5 (checkpoint.json)"
+    ],
+    "runtime_service_identity": "NOT_YET_VERIFIED",
+    "runtime_probe": "NOT_YET_VERIFIED",
+    "evidence_bundle_hash": "3fb3d3b4eac26f0705862737577b2885333893741235174ba0d081e72b0286a5",
+    "verification_method": "Clean adversarial test suite pass on WID-5 PGL identity chain enforcement",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T11:18:08-04:00",
+    "limitations": [
+      "verified locally only",
+      "no runtime service identity or protocol probe yet",
+      "no production deployment verification yet",
+      "no external auditor verification yet",
+      "no WIMSE conformance claim",
+      "no SCITT conformance claim",
+      "no runtime PGL service deployment proof yet"
+    ],
+    "next_required_gate": "WID-6: Runtime proof bundle"
+  },
+  {
+    "claim_id": "VEKLOM-CLAIM-WID-6-001",
+    "claim": "WID-6 runtime verification scripts created. Probe endpoints and requirements formulated.",
+    "status": "SOURCE_OBSERVED",
+    "component": "cappo_backend/runtime",
+    "source_repo": "cappo-backend",
+    "source_commit_sha": "N/A",
+    "source_paths": [
+      "scripts/runtime/wid_6_runtime_probe.sh",
+      "scripts/runtime/wid_6_runtime_probe.ps1"
+    ],
+    "release_artifact_digest": "N/A",
+    "ci_run_id": "local-adversarial-run",
+    "ci_artifact_hashes": [],
+    "runtime_service_identity": "NOT_VERIFIED",
+    "runtime_probe": "NOT_VERIFIED",
+    "evidence_bundle_hash": "N/A",
+    "verification_method": "Authored local probe scripts. Live probes not executed.",
+    "verifier_identity": "Antigravity (Coding Agent)",
+    "verified_at": "2026-08-28T11:26:44-04:00",
+    "limitations": [
+      "Scripts created locally only",
+      "No runtime service identity or protocol probe captured",
+      "Deployed source SHA cannot be proven yet",
+      "No WIMSE conformance claim",
+      "No SCITT conformance claim"
+    ],
+    "next_required_gate": "WID-6: Runtime proof bundle execution"
+  }
+]

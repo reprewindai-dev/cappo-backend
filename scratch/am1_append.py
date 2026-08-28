@@ -1,6 +1,6 @@
 def test_am_1_mount_scope_widening(db: Session):
+    from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, MountScope
     from cappo_backend.capability_mount.service import MountRegistry
-    from cappo_backend.capability_mount.models import CapabilityPackage, MountScope, MountPolicy
     reg = MountRegistry(db)
     
     # Register package with only READ

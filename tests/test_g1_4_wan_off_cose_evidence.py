@@ -1,22 +1,18 @@
 import contextlib
 import socket
-import uuid
-from datetime import datetime, timezone
 
-import pytest
 from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.models import (
+    Decision,
     MountPolicy,
     MountScope,
-    Decision,
 )
 from cappo_backend.capability_mount.service import MountRegistry
 from cappo_backend.models import CapabilityActionReceipt
 from cappo_backend.security.biscuit import (
-    mint_biscuit_capability,
     attenuate_biscuit_capability,
-    verify_biscuit_capability,
+    mint_biscuit_capability,
 )
 from cappo_backend.security.evidence import (
     get_evidence_key_pair,
@@ -54,9 +50,9 @@ ACTION = "contact.read"
 
 
 def _build_registry(db: Session) -> MountRegistry:
-    from cappo_backend.services.mount_pgl import AuditPGLAnchor
-    from cappo_backend.config import Settings
     from cappo_backend.capability_mount.models import CapabilityPackage
+    from cappo_backend.config import Settings
+    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     
     # Configure production PGL anchor that points to the blocked IP
     settings = Settings(
@@ -88,7 +84,7 @@ def test_g1_4_wan_off_cose_evidence_continuity(db: Session):
         execution_id=EXEC_ID,
         ttl_seconds=TTL,
     )
-    child_token_b64 = attenuate_biscuit_capability(
+    attenuate_biscuit_capability(
         token_b64=parent_token_b64,
         reads=[ACTION],
         writes=[],
@@ -119,10 +115,10 @@ def test_g1_4_wan_off_cose_evidence_continuity(db: Session):
 
     tree_before = AppendOnlyMerkleTree(get_merkle_ordered_cose_bytes(db))
     size_before = tree_before.size
-    root_before = tree_before.root()
+    tree_before.root()
 
     # Phase 2: WAN OFF execution 1
-    with no_wan() as blocked:
+    with no_wan():
         decision1, dec_reason1, _anchor1, binding1 = reg.evaluate(
             mount_id=mount_id,
             action=ACTION,
@@ -145,7 +141,7 @@ def test_g1_4_wan_off_cose_evidence_continuity(db: Session):
     root_mid = tree_mid.root()
 
     # Phase 3: WAN OFF execution 2 (new mount to avoid replay block)
-    with no_wan() as blocked2:
+    with no_wan():
         mount_record2, _, _ = reg.request_mount(
             package_ref=CAPABILITY_ID,
             scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),

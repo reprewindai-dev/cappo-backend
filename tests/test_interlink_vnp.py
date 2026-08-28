@@ -4,7 +4,6 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
-
 SLASH_PATH = "/api/internal/interlink/vnp/authorize-slash"
 RELEASE_PATH = "/api/internal/interlink/vnp/authorize-release"
 SECRET = "test-vnp-interlink-secret"

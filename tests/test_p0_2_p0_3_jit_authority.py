@@ -3,24 +3,17 @@
 from __future__ import annotations
 
 import logging
+
 import pytest
 from sqlalchemy.orm import Session
+
 from cappo_backend.config import Settings
-from cappo_backend.db.session import get_session
 from cappo_backend.models.tenant_provider_credential import TenantProviderCredential
 from cappo_backend.security.vault import encrypt_secret
-from cappo_backend.services.executor import (
-    ResilientExecutor,
-    ExecutorUnavailableError,
-    TerminalExecutionError,
-)
 from cappo_backend.services.providers import (
-    build_executor,
     OpenAICompatExecutor,
+    build_executor,
 )
-from cappo_backend.api.routers.exec_router import _execute_run
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
 _MASTER_KEY = "test-master-key-of-at-least-32-chars-long"
 _WORKSPACE = "ws-test-a"
@@ -57,7 +50,7 @@ def test_wrong_workspace_associated_data_fails_decryption(db: Session, jit_setti
     
     # 2. Try to build executor for ws-test-b using ws-test-a's credential
     # But wait, query filter is on workspace_id, so let's simulate by modifying the workspace_id of query or calling decrypt directly
-    from cappo_backend.security.vault import decrypt_secret, DecryptionError
+    from cappo_backend.security.vault import DecryptionError, decrypt_secret
     
     wrong_ad = "ws-test-b:openai:default:1"
     with pytest.raises(DecryptionError):

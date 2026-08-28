@@ -1,0 +1,7 @@
+{
+  "jti": "jti_wpt",
+  "ephemeral_execution_id": "exec_abc",
+  "audience": "https://api.veklom.local",
+  "seen_at": 1700001000,
+  "expires_at": 1700003600
+}

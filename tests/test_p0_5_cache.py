@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock
 import httpx
 
 from cappo_backend.config import Settings
 from cappo_backend.services.providers import (
     build_executor,
-    _shared_http_clients,
-    _test_hot_cache,
-    _test_warm_cache,
 )
-from cappo_backend.services.cache import CachingExecutor, HotCache, cache_key
+
 
 class MockState:
     pass

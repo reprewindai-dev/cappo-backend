@@ -16,7 +16,6 @@ from typing import Any
 import structlog
 
 from .consequence_types import (
-    ActionIntent,
     CapabilityLease,
     EvaluatePolicyRequest,
     EvaluatePolicyResponse,
@@ -24,7 +23,6 @@ from .consequence_types import (
     IssueLeaseResponse,
     PolicyDecision,
     PolicyEvaluationResult,
-    WorkloadIdentity,
 )
 
 log = structlog.get_logger(__name__)

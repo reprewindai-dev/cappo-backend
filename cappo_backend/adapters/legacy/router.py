@@ -5,7 +5,7 @@ Exposes endpoints to manage and monitor legacy enterprise connections.
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from cappo_backend.adapters.legacy.modbus_adapter import ModbusAdapter
 from cappo_backend.adapters.legacy.snmp_adapter import SNMPAdapter

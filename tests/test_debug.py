@@ -1,6 +1,6 @@
 ﻿def test_debug(db):
+    from cappo_backend.capability_mount.models import MountPolicy, MountScope
     from cappo_backend.capability_mount.service import MountRegistry
-    from cappo_backend.capability_mount.models import MountScope, MountPolicy
     
     reg = MountRegistry(db)
     mount_record, anchor, reason = reg.request_mount(

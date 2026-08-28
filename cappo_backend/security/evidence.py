@@ -1,7 +1,9 @@
 import os
+
 import cbor2
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
 
 def get_evidence_key_pair() -> ed25519.Ed25519PrivateKey:
     # check env

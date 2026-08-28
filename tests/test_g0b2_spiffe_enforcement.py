@@ -3,7 +3,6 @@ import datetime
 import ssl
 import threading
 import time
-from typing import AsyncGenerator
 
 import httpx
 import pytest
@@ -11,7 +10,6 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from fastapi import FastAPI
 from uvicorn import Config, Server
 
 from cappo_backend.config import get_settings
@@ -100,6 +98,8 @@ server_cert, server_key = generate_cert(name="127.0.0.1", issuer_key=ca_key, iss
 save_pem(server_cert, server_key, "server.pem", "server.key")
 
 from starlette.middleware.base import BaseHTTPMiddleware
+
+
 class InjectTLSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if "X-Test-Inject-Cert" in request.headers:
@@ -148,6 +148,8 @@ def run_uvicorn_in_thread(app, port):
     return server
 
 from cappo_backend.capability_mount.models import CapabilityPackage
+
+
 def register_test_pkg():
     pkg = CapabilityPackage(
         id="echo@v1",
@@ -314,4 +316,4 @@ async def _test_g0b2_spiffe_enforcement(uvicorn_server):
         assert a2.status_code == 200
         assert a2.json()["decision"] == "deny"
         
-    print(f"G0B.2 = VERIFIED")
+    print("G0B.2 = VERIFIED")

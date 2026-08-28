@@ -49,7 +49,6 @@ NETWORK_CALLS_DURING_EXECUTION   = 0
 """
 import contextlib
 import socket
-import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -74,7 +73,6 @@ from cappo_backend.security.evidence import (
 )
 from cappo_backend.security.merkle import AppendOnlyMerkleTree, hash_leaf
 from cappo_backend.security.merkle_ops import get_merkle_ordered_cose_bytes
-
 
 # ── WAN-off context manager ───────────────────────────────────────────────────
 
@@ -129,8 +127,8 @@ def _now() -> datetime:
 
 
 def _build_registry(db: Session) -> MountRegistry:
-    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     from cappo_backend.config import Settings
+    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     
     # Configure production PGL anchor that points to the blocked IP
     settings = Settings(

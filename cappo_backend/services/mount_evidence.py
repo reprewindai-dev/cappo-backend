@@ -17,7 +17,11 @@ from typing import Any, Callable, Literal
 from uuid import uuid4
 
 from cappo_backend.capability_mount.models import Mount
-from cappo_backend.services.canonical import canonical_json, sign_payload_hmac, verify_signature_hmac
+from cappo_backend.services.canonical import (
+    canonical_json,
+    sign_payload_hmac,
+    verify_signature_hmac,
+)
 
 EvidenceKind = Literal["human_approval", "suppression_check"]
 TOKEN_VERSION = 1

@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Ephemeral Execution Identity",
+  "type": "object",
+  "properties": {
+    "ephemeral_execution_id": { "type": "string" },
+    "profile_id": { "type": "string" },
+    "workload_identifier": {
+      "type": "string",
+      "pattern": "^wimse://[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+$"
+    },
+    "task_id": { "type": "string" },
+    "candidate_act_hash": { "type": "string" },
+    "issued_at": { "type": "integer" },
+    "expires_at": { "type": "integer" },
+    "jti": { "type": "string" },
+    "key_id": { "type": "string" },
+    "cnf": {
+      "type": "object",
+      "properties": {
+        "jwk": { "type": "object" }
+      }
+    }
+  },
+  "required": [
+    "ephemeral_execution_id",
+    "profile_id",
+    "workload_identifier",
+    "task_id",
+    "candidate_act_hash",
+    "issued_at",
+    "expires_at",
+    "jti",
+    "key_id",
+    "cnf"
+  ],
+  "additionalProperties": false
+}

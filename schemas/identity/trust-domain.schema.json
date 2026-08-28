@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Trust Domain",
+  "type": "object",
+  "properties": {
+    "trust_domain": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9.-]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "issuer_uri": {
+      "type": "string",
+      "format": "uri"
+    }
+  },
+  "required": ["trust_domain", "issuer_uri"],
+  "additionalProperties": false
+}

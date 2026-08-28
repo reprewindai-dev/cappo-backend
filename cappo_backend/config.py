@@ -207,8 +207,8 @@ class Settings(BaseSettings):
     def reject_known_insecure_keys(cls, v: Any) -> Any:
         if isinstance(v, str):
             import hashlib
-            import secrets
             import os
+            import secrets
             
             _KNOWN_COMPROMISED_KEY_FINGERPRINT = "d2623fa3f2c01611397de54f7724fbe483a53fbec78d46b76aa283dbe02600d8"
             keys = [k.strip() for k in v.split(",")]

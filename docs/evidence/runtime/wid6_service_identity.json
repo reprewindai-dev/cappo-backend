@@ -1,0 +1,6 @@
+{
+    "environment":  "production",
+    "hostname":  "cappo.veklom.com",
+    "service":  "cappo-backend",
+    "deployed_sha":  "NOT_VERIFIED"
+}

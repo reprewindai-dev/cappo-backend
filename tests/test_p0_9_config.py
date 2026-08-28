@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
-import os
-import hashlib
-from cappo_backend.config import Settings, InsecureProductionConfigError
+
+from cappo_backend.config import InsecureProductionConfigError, Settings
+
 
 def test_compromised_key_rejected_in_production(monkeypatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")

@@ -29,9 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import sys
-import base64
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,8 +41,8 @@ sys.path.insert(0, str(ROOT))
 
 try:
     import cbor2
-    from cryptography.hazmat.primitives.asymmetric import ed25519
     from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
 except ImportError as e:
     sys.exit(f"Missing dependency: {e}\n  pip install cbor2 cryptography")
 
@@ -182,7 +180,7 @@ def main() -> None:
     print(f"[+] receipt.cose  ({len(cose_bytes)} bytes)")
 
     (out / "public-key.pem").write_bytes(pub_pem)
-    print(f"[+] public-key.pem")
+    print("[+] public-key.pem")
 
     proof_doc = {
         "protocol_version": 1,

@@ -11,11 +11,15 @@ Test: Attempt to use lifecycle changes, attenuations, or offline/online transiti
 to gain permissions not in the original token.
 """
 
-import pytest
 from sqlalchemy.orm import Session
-from cappo_backend.security.biscuit import mint_biscuit_capability, attenuate_biscuit_capability, verify_biscuit_capability
+
+from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, MountScope
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import CapabilityPackage, MountScope, MountPolicy
+from cappo_backend.security.biscuit import (
+    attenuate_biscuit_capability,
+    mint_biscuit_capability,
+    verify_biscuit_capability,
+)
 
 CALLER_SPIFFE  = "spiffe://example.org/workload/cappo-backend"
 EXECUTOR_SPIFFE = "spiffe://example.org/workload/am1-agent"
@@ -111,6 +115,7 @@ def test_am_1_mount_scope_widening(db: Session):
     )
     
     from unittest.mock import MagicMock
+
     from cappo_backend.capability_mount.service import AnchorResult
     
     mock_anchor = AnchorResult("confirmed", "mock-anchor-id", None)

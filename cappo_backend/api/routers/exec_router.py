@@ -31,10 +31,10 @@ from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
 from cappo_backend.services.executor import (
     ExecutorUnavailableError,
-    TerminalExecutionError,
     ProviderCredentialRejectedError,
     ProviderPolicyRejectedError,
     ProviderRateLimitedError,
+    TerminalExecutionError,
 )
 from cappo_backend.services.orchestrator import (
     GovernanceDeniedError,

@@ -9,7 +9,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 
 class DecryptionError(ValueError):
     """Raised when AEAD decryption fails due to corrupted data, wrong key, or associated data mismatch."""

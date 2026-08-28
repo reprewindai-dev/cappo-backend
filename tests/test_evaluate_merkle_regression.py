@@ -8,12 +8,14 @@ test-side manual intervention.
 """
 
 from sqlalchemy.orm import Session
-from cappo_backend.capability_mount.models import CapabilityPackage, MountScope, MountPolicy
+
+from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, MountScope
 from cappo_backend.capability_mount.service import MountRegistry
+from cappo_backend.config import Settings
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
-from cappo_backend.config import Settings
 from tests.test_g0b3_biscuit_issuance import mint_biscuit_capability
+
 
 def test_evaluate_assigns_merkle_leaf_index(db: Session):
     CAPABILITY_ID = "regression.echo@v1"
@@ -34,7 +36,7 @@ def test_evaluate_assigns_merkle_leaf_index(db: Session):
         )
     )
 
-    parent_token_b64 = mint_biscuit_capability(
+    mint_biscuit_capability(
         caller_spiffe_id="spiffe://example.org/workload/regression",
         executor_spiffe_id="spiffe://example.org/workload/cappo-backend",
         capability_id=CAPABILITY_ID,

@@ -19,16 +19,16 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cappo_backend.capability_mount.engine import PolicyError
+from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, MountScope
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import MountScope, MountPolicy, CapabilityPackage
 from cappo_backend.models.consequence_execution import (
     ConsequenceExecutionEvent,
     ConsequenceInvariantViolation,
     ConsequenceState,
-    build_proof_subject_hash,
     build_intent_hash,
+    build_proof_subject_hash,
 )
+
 
 class ConfirmedAnchor:
     def anchor(self, *args, **kwargs):

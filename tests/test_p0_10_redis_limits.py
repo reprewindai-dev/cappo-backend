@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 import redis
-import time
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from cappo_backend.config import Settings
-from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
 from cappo_backend.db.base import Base
+from cappo_backend.services.payment_gate import PaymentGate, PaymentRequiredError
+
 
 # Setup clean ephemeral memory DB for testing database constraints
 @pytest.fixture

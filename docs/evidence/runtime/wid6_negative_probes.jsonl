@@ -1,0 +1,5 @@
+{"probe": "missing_wid", "status": "NOT_VERIFIED"}
+{"probe": "missing_ect", "status": "NOT_VERIFIED"}
+{"probe": "missing_wpt", "status": "NOT_VERIFIED"}
+{"probe": "missing_veklom_authority", "status": "NOT_VERIFIED"}
+{"probe": "pgl_missing_identity_chain", "status": "NOT_VERIFIED"}

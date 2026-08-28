@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
+
 from cappo_backend.config import Settings
+from cappo_backend.security.ssrf import SSRFValidationError
+from cappo_backend.services.executor import LocalAuthorizerUnavailableError
 from cappo_backend.services.providers import (
     OllamaEndpointResolver,
     build_executor,
 )
-from cappo_backend.services.executor import LocalAuthorizerUnavailableError
-from cappo_backend.security.ssrf import SSRFValidationError
+
 
 class MockState:
     pass
@@ -63,7 +65,7 @@ def test_local_ollama_fails_closed_without_authorizer() -> None:
 
 def test_tenant_byok_ollama_does_not_fail_closed() -> None:
     # Tenant-managed/BYOK Ollama does not require the local authorizer because it is tenant-controlled
-    settings = Settings(
+    Settings(
         _env_file=None,
         executor_mode="ollama",
         llm_provider_name="ollama",

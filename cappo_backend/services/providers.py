@@ -10,7 +10,6 @@ is ``ollama``.
 from __future__ import annotations
 
 import logging
-import os
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -28,13 +27,12 @@ from cappo_backend.services.executor import (
     EchoExecutor,
     Executor,
     Provider,
-    ProviderExecutionError,
-    ResilientExecutor,
-    TerminalExecutionError,
-    VerifiedProviderUnavailableError,
     ProviderCredentialRejectedError,
+    ProviderExecutionError,
     ProviderPolicyRejectedError,
     ProviderRateLimitedError,
+    ResilientExecutor,
+    VerifiedProviderUnavailableError,
 )
 
 if TYPE_CHECKING:
@@ -496,7 +494,7 @@ def OllamaEndpointResolver(upstream_url: str, settings: Settings, allow_disabled
     if not upstream_url:
         raise ValueError("OLLAMA_UPSTREAM_URL is empty.")
     
-    from cappo_backend.security.ssrf import validate_endpoint, EndpointClass
+    from cappo_backend.security.ssrf import EndpointClass, validate_endpoint
     validated_url, _ = validate_endpoint(upstream_url, EndpointClass.VEKLOM_MANAGED_LOCAL_OLLAMA)
     return validated_url
 
@@ -516,7 +514,7 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
         
     keys_by_provider = {k.provider.lower(): k for k in tenant_keys}
     
-    from cappo_backend.security.ssrf import validate_endpoint, EndpointClass
+    from cappo_backend.security.ssrf import EndpointClass, validate_endpoint
 
     # Add BYOK Providers based on Tenant keys (OpenAI, Groq, HuggingFace, Ollama)
     if keys_by_provider:

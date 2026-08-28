@@ -11,8 +11,11 @@ from cappo_backend.services.canonical import (
     sign_payload_hmac,
     verify_signature_ed25519,
 )
-from cappo_backend.services.ei_builder import Ed25519Signer, ExecutionIdentityBuilder, canonical_body
-
+from cappo_backend.services.ei_builder import (
+    Ed25519Signer,
+    ExecutionIdentityBuilder,
+    canonical_body,
+)
 
 SEED = "crypto-boundary-test-seed"
 

@@ -3,17 +3,18 @@ G1.2 - WAN OFF: Expired capability fails locally
 """
 import contextlib
 import socket
-import uuid
 import time
-from datetime import datetime, timezone
+import uuid
 
-import pytest
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 
-from cappo_backend.capability_mount.models import Decision, MountPolicy, MountScope, CapabilityPackage
+from cappo_backend.capability_mount.models import (
+    CapabilityPackage,
+    Decision,
+    MountPolicy,
+    MountScope,
+)
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.models import CapabilityActionReceipt
 
 _LOOPBACK = ("127.", "::1", "localhost")
 
@@ -44,8 +45,8 @@ CAPABILITY_ID = "echo@v1"
 ACTION = "echo"
 
 def _build_registry(db: Session) -> MountRegistry:
-    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     from cappo_backend.config import Settings
+    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     
     settings = Settings(
         pgl_ledger_url="http://1.1.1.1:80", 
@@ -85,10 +86,9 @@ def test_g1_2_wan_off_expired_authority_fails(db: Session):
     token_id = mount_record.token.token_id
     nonce = mount_record.token.nonce
 
-    import time
     time.sleep(2)
 
-    with no_wan() as blocked:
+    with no_wan():
         decision, dec_reason, _anchor, binding = reg.evaluate(
             mount_id=mount_id,
             action=ACTION,
