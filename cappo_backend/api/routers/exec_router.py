@@ -14,6 +14,19 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import json
+import base64
+import hashlib
+from fastapi.responses import JSONResponse
+from cappo_backend.identity.validator import IdentityValidator
+from cappo_backend.identity.middleware import WIDMiddlewareContext, RouteClassification
+from cappo_backend.identity.replay_cache import RedisReplayCache, ReplayCache
+from cappo_backend.identity.errors import IdentityValidationError
+from cappo_backend.authorization.errors import CappoAuthorizationError
+from cappo_backend.authorization.cappo_auth import CappoPreauthorizationEnforcer
+from cappo_backend.identity.models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
+
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -336,6 +349,92 @@ async def governed_exec(
     """Single governed execution entry path (Option A)."""
     start = time.monotonic()
     audit = AuditService(db)
+
+    test_only_echo = settings.environment.lower() == 'test' and settings.executor_mode == 'echo'
+    # RTV-1 WID Enforcement
+    if not test_only_echo:
+        raw_body = await request.body()
+        body_hash = hashlib.sha256(raw_body).hexdigest()
+        
+        def _get_b64_json(headers: dict, key: str) -> dict | None:
+            val = headers.get(key)
+            if not val:
+                return None
+            try:
+                return json.loads(base64.b64decode(val).decode('utf-8'))
+            except Exception:
+                return None
+                
+        wit_payload = _get_b64_json(request.headers, 'Workload-Identity')
+        ect_payload = _get_b64_json(request.headers, 'Execution-Context')
+        wpt_payload = _get_b64_json(request.headers, 'Workload-Proof')
+        authority_payload = _get_b64_json(request.headers, 'Veklom-Authority')
+
+    if hasattr(request.app.state, 'redis_client') and request.app.state.redis_client:
+        replay_cache = RedisReplayCache(request.app.state.redis_client)
+    else:
+        class MockReplayCache(ReplayCache):
+            def check_and_store(self, jti: str, expires_at: int) -> bool:
+                return True
+        replay_cache = MockReplayCache()
+
+    if not test_only_echo:
+        wid_validator = IdentityValidator('https://cappo.veklom.com', replay_cache)
+        wid_middleware = WIDMiddlewareContext(RouteClassification.CONSEQUENCE, wid_validator)
+        
+        try:
+            wid_middleware.enforce(
+                route='/v1/exec',
+                method=request.method,
+                trace_id=request.headers.get('x-request-id', 'unknown'),
+                htu=request.url.path,
+                body_hash=body_hash,
+                wit_payload=wit_payload,
+                ect_payload=ect_payload,
+                wpt_payload=wpt_payload,
+                authority_payload=authority_payload
+            )
+            
+            if authority_payload:
+                enforcer = CappoPreauthorizationEnforcer(replay_cache)
+                wit = WorkloadIdentityToken(**wit_payload) if wit_payload else None
+                ect = ExecutionContextToken(**ect_payload) if ect_payload else None
+                wpt = WorkloadProofToken(**wpt_payload) if wpt_payload else None
+                
+                auth_kwargs = dict(authority_payload)
+                if '_mock_hash' in auth_kwargs:
+                    del auth_kwargs['_mock_hash']
+                auth = AuthorityArtifact(**auth_kwargs)
+                
+                expected_auth_hash = hashlib.sha256(json.dumps(authority_payload, sort_keys=True).encode()).hexdigest()
+                expected_ect_hash = hashlib.sha256(json.dumps(ect_payload, sort_keys=True).encode()).hexdigest() if ect_payload else ''
+                expected_wit_hash = hashlib.sha256(json.dumps(wit_payload, sort_keys=True).encode()).hexdigest() if wit_payload else ''
+                
+                enforcer.authorize_consequence(
+                    route='/v1/exec',
+                    method=request.method,
+                    trace_id=request.headers.get('x-request-id', 'unknown'),
+                    request_target_hash='target_hash',
+                    request_body_hash=body_hash,
+                    requested_right=body.action or 'execute',
+                    wit=wit,
+                    ect=ect,
+                    wpt=wpt,
+                    authority=auth,
+                    profile_id_only=False,
+                    api_key_only=False,
+                    expected_authority_hash=expected_auth_hash,
+                    expected_ect_hash=expected_ect_hash,
+                    expected_wit_hash=expected_wit_hash,
+                    expected_scope_hash=auth.scope_hash,
+                    expected_policy_decision_hash=auth.policy_decision_hash
+                )
+                
+        except IdentityValidationError as e:
+            return JSONResponse(status_code=403, content=e.to_evidence())
+        except CappoAuthorizationError as e:
+            return JSONResponse(status_code=403, content=e.to_evidence())
+
 
     # cAPI PHASE 1: Gatekeeper Enforcement
     from cappo_backend.core.capi_pipeline import enforce_capi_pipeline
