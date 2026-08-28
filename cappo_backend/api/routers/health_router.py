@@ -21,6 +21,28 @@ router = APIRouter(tags=["health"])
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
+@router.get("/runtime/identity")
+def runtime_identity(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    # Need to import os and subprocess if not already, or we can just fetch from env vars
+    import os
+    import subprocess
+    import time
+    
+    sha = os.environ.get("SOURCE_COMMIT_SHA", "NOT_VERIFIED")
+    if sha == "NOT_VERIFIED":
+        try:
+            sha = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+        except Exception:
+            pass
+
+    return {
+        "service": "cappo-backend",
+        "environment": os.environ.get("ENVIRONMENT", "production"),
+        "source_commit_sha": sha,
+        "build_timestamp": os.environ.get("BUILD_TIMESTAMP", str(int(time.time()))),
+        "artifact_digest": os.environ.get("ARTIFACT_DIGEST", "N/A")
+    }
+
 _PROBE_TIMEOUT_SECONDS = 2.0
 _WORST_STATE = {"healthy": 0, "degraded": 1, "unconfigured": 1, "unavailable": 2}
 _DATABASE_PROBE_LOCK = asyncio.Lock()

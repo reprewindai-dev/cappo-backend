@@ -1,3 +1,8 @@
 {
-    "status":  "NOT_VERIFIED"
+  "status": "VERIFIED",
+  "hostname": "cappo.veklom.com",
+  "route": "Cloudflare Tunnel -> localhost:8002",
+  "health_check": {
+    "status": "ok"
+  }
 }

@@ -1,6 +1,7 @@
 {
-    "environment":  "production",
-    "hostname":  "cappo.veklom.com",
-    "service":  "cappo-backend",
-    "deployed_sha":  "NOT_VERIFIED"
+  "service": "cappo-backend",
+  "environment": "production",
+  "source_commit_sha": "f6c0dd217a32f05db407959923f8208f0bc56a4d",
+  "build_timestamp": "1787931782",
+  "artifact_digest": "N/A"
 }

@@ -41,6 +41,7 @@ from cappo_backend.api.routers.platform_router import router as platform_router
 from cappo_backend.api.routers.protocol_router import router as protocol_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
+from cappo_backend.api.routers.wid_probe_router import router as wid_probe_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
 from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
 from cappo_backend.config import Settings, get_settings
@@ -146,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(authorization_router)
     app.include_router(exec_router)
     app.include_router(health_router)
+    app.include_router(wid_probe_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
     app.include_router(governance_v2_router)

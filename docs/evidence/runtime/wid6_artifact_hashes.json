@@ -1,5 +1,10 @@
 {
-    "hashes":  {
-
-               }
+  "hashes": {
+    "wid6_positive_probe.json": "cf91c26965ad56020abebc8da21f845be19c61062fa9e3b81a217d93bfcb863a",
+    "wid6_probe_summary.json": "8b886540b29a40f31bc12b69a55ecbde588a9fb081950504e23731f3ee2a0f75",
+    "wid6_redaction_manifest.json": "17a07b19ae0db178dde5f6ba04cc4be6c32f7a9a2dc20f01e689e24b5a172947",
+    "wid6_route_listener_proof.json": "2e6ecb0fc4a8702a617a27ebf35b07d903ad53151bcd542d1b793f074dd60f47",
+    "wid6_service_identity.json": "ee81e34e9085c3f144cc5e9f334d1a74a49865b2c39146bba2e5b87c231def0a",
+    "wid6_negative_probes.jsonl": "18f21a75ae2140c6f891d6a268a86a42dd934b5ff1e3d563e2f593a4b5ca483c"
+  }
 }

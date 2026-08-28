@@ -1,4 +1,7 @@
 {
-    "probe":  "valid_identity_chain",
-    "status":  "NOT_VERIFIED"
+  "probe": "valid_identity_chain",
+  "status": "ACCEPTED",
+  "response": {
+    "status": "accepted"
+  }
 }
