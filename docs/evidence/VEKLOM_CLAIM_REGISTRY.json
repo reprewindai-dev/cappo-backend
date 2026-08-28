@@ -279,7 +279,7 @@
   {
     "claim_id": "VEKLOM-CLAIM-WID-6-001",
     "claim": "WID-6 runtime verification scripts created. Probe endpoints and requirements formulated.",
-    "status": "RUNTIME_VERIFIED",
+    "status": "REPORTED_RUNTIME",
     "component": "cappo_backend/runtime",
     "source_repo": "cappo-backend",
     "source_commit_sha": "N/A",
@@ -291,12 +291,15 @@
     "ci_run_id": "local-adversarial-run",
     "ci_artifact_hashes": [],
     "runtime_service_identity": "cappo-backend",
-    "runtime_probe": "VERIFIED",
+    "runtime_probe": "PROBE-HARNESS OBSERVED",
     "evidence_bundle_hash": "N/A",
-    "verification_method": "Live route tracing and WID identity protocol execution.",
+    "verification_method": "Runtime probe harness endpoints were reachable through cappo.veklom.com and returned expected positive/negative probe responses. Full production-path runtime verification remains pending because the probes use dedicated harness endpoints, mock replay behavior, hardcoded hashes, and the claim registry does not bind the runtime result to a deployed artifact digest or exact deployed source SHA.",
     "verifier_identity": "Antigravity (Coding Agent)",
     "verified_at": "2026-08-28T11:26:44-04:00",
     "limitations": [
+      "Probes use dedicated harness endpoints rather than real production routes.",
+      "Mock replay behavior and hardcoded hashes used.",
+      "Claim registry does not bind the runtime result to a deployed artifact digest or exact deployed source SHA.",
       "No WIMSE conformance claim",
       "No SCITT conformance claim"
     ],

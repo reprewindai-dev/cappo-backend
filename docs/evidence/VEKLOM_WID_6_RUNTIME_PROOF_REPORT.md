@@ -2,7 +2,7 @@
 
 **Subject:** Runtime Identity and Evidence Probes  
 **Claim ID:** `VEKLOM-CLAIM-WID-6-001`  
-**Status:** RUNTIME_VERIFIED  
+**Status:** REPORTED_RUNTIME  
 **Date:** 2026-08-28
 
 ## Verifier Context
@@ -33,13 +33,15 @@
 
 This report supports only the following claim:
 
-> WID-6 live runtime probes were successfully executed against `https://cappo.veklom.com`. The service identity was authenticated and the identity boundaries (WID-2 through WID-5) successfully rejected all negative protocol probes. A valid identity chain correctly authorized consequence paths.
+> WID-6 live runtime probes were successfully executed against `https://cappo.veklom.com`. The service identity was authenticated and the identity boundaries (WID-2 through WID-5) successfully rejected all negative protocol probes. A valid identity chain correctly authorized consequence paths through the probe harness.
 
 ## Limitations
 
+- The probes use dedicated harness endpoints, mock replay behavior, and hardcoded hashes rather than the real production consequence and append routes.
+- The claim registry does not bind the runtime result to a deployed artifact digest or exact deployed source SHA. The reported deployed SHA (`f6c0dd2`) was a previous commit rather than the probe commit.
 - No WIMSE conformance claim.
 - No SCITT conformance claim.
 
 ## Next Required Gate
 
-`WID-7` (Identity and Capability Boundary Enforcer integration)
+`RTV-1` (Runtime Verification Hardening)
