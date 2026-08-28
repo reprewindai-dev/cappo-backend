@@ -7,7 +7,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
 
-
 def generate_bundle(out_dir):
     """Generate a synthetic proof fixture for verifier-structure testing only."""
     os.makedirs(out_dir, exist_ok=True)
