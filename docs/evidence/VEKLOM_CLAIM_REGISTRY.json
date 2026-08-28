@@ -106,10 +106,10 @@
     "release_artifact_digest": "N/A",
     "ci_run_id": "local-adversarial-run",
     "ci_artifact_hashes": [
-      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd",
-      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c",
-      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6",
-      "6f6a8ef25d86156205692a082721b0b5f6e7bbabc8a69adef386911f91ac6e69"
+      "8a9abf6ab984c6307392675dc92ccdfa00af93ffc514aa21d65b3f005bbb42bd (receipt.cose)",
+      "dc08c86fb448f53db85daa694c9cca3214057deae6eeaeef117861b819a65b4c (public-key.pem)",
+      "6a728982a106ef848e016b0f14cd0bdc8a1c208c2278ce667f15fb616d90a3d6 (proof.json)",
+      "6f6a8ef25d86156205692a082721b0b5f6e7bbabc8a69adef386911f91ac6e69 (checkpoint.json)"
     ],
     "runtime_service_identity": "NOT_YET_VERIFIED",
     "runtime_probe": "NOT_YET_VERIFIED",
