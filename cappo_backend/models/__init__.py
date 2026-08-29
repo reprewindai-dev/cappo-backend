@@ -97,3 +97,5 @@ __all__ = [
 ]
 
 from cappo_backend.models.tenant_provider_credential import TenantProviderCredential
+from cappo_backend.models.n8n_governed_target_models import ExecutionRegistry, RevocationPolicy, LeaseStateRecord
+from cappo_backend.models.kms_models import KMSKeyRecord

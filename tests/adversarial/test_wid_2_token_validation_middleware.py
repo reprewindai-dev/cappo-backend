@@ -147,12 +147,15 @@ def test_12_uri_mismatch(validator):
                     wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=wpt)
 
 def test_13_candidate_act_mismatch(validator):
+    import json, hashlib
     auth = make_valid_authority()
-    auth["candidate_act_hash"] = "WRONG_ACT_HASH"
+    auth["candidate_act_hash"] = "wrong"
+    wpt = make_valid_wpt()
+    wpt["authority_hash"] = hashlib.sha256(json.dumps(auth, sort_keys=True).encode()).hexdigest()
     ctx = WIDMiddlewareContext(RouteClassification.CONSEQUENCE, validator)
     with pytest.raises(CandidateActMismatchError):
         ctx.enforce("/transfer", "POST", "t1", "https://api.veklom.local/submit", "body_hash_val",
-                    wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=make_valid_wpt(), authority_payload=auth)
+                    wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=wpt, authority_payload=auth)
 
 def test_14_authority_hash_mismatch(validator):
     auth = make_valid_authority()
@@ -170,12 +173,15 @@ def test_15_malformed_workload_identifier(validator):
         ctx.enforce("/data", "GET", "t1", "/data", "", wit_payload=wit, ect_payload=make_valid_ect())
 
 def test_16_profile_only_authority_denied(validator):
+    import json, hashlib
     auth = make_valid_authority()
     auth["ephemeral_execution_id"] = ""
+    wpt = make_valid_wpt()
+    wpt["authority_hash"] = hashlib.sha256(json.dumps(auth, sort_keys=True).encode()).hexdigest()
     ctx = WIDMiddlewareContext(RouteClassification.CONSEQUENCE, validator)
     with pytest.raises(ProfileOnlyDeniedError):
         ctx.enforce("/transfer", "POST", "t1", "https://api.veklom.local/submit", "body_hash_val",
-                    wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=make_valid_wpt(), authority_payload=auth)
+                    wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=wpt, authority_payload=auth)
 
 def test_17_replayed_wit_jti(validator):
     wit = make_valid_wit()
@@ -201,9 +207,13 @@ def test_19_valid_governed_request_passes(validator):
     ctx.enforce("/data", "GET", "t1", "/data", "", wit_payload=make_valid_wit(), ect_payload=make_valid_ect())
 
 def test_20_valid_consequence_request_passes(validator):
+    import json, hashlib
+    auth = make_valid_authority()
+    wpt = make_valid_wpt()
+    wpt["authority_hash"] = hashlib.sha256(json.dumps(auth, sort_keys=True).encode()).hexdigest()
     ctx = WIDMiddlewareContext(RouteClassification.CONSEQUENCE, validator)
     ctx.enforce("/transfer", "POST", "t1", "https://api.veklom.local/submit", "body_hash_val",
-                wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=make_valid_wpt(), authority_payload=make_valid_authority())
+                wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=wpt, authority_payload=auth)
 
 def test_21_denial_emits_structured_evidence(validator):
     ctx = WIDMiddlewareContext(RouteClassification.GOVERNED, validator)

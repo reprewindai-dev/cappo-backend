@@ -53,17 +53,27 @@ class WIDMiddlewareContext:
         wpt = WorkloadProofToken(**wpt_payload)
         
         # In a real system, we compute sha256(authority_token_raw).
-        # For WID-2 we mock this by checking a static value or a value injected for the test.
-        # If the payload contains an injected '_mock_hash', we use that, otherwise use 'auth_hash_val' (the valid one).
-        expected_auth_hash = authority_payload.get('_mock_hash', 'auth_hash_val') if authority_payload else None
+        import json
+        import hashlib
+        if authority_payload:
+            auth_bytes = json.dumps(authority_payload, sort_keys=True).encode()
+            expected_auth_hash = hashlib.sha256(auth_bytes).hexdigest()
+        else:
+            expected_auth_hash = None
+            
+        wit_bytes = json.dumps(wit_payload, sort_keys=True).encode() if wit_payload else b''
+        expected_wit_hash = hashlib.sha256(wit_bytes).hexdigest() if wit_payload else wpt.wit_hash
+        
+        ect_bytes = json.dumps(ect_payload, sort_keys=True).encode() if ect_payload else b''
+        expected_ect_hash = hashlib.sha256(ect_bytes).hexdigest() if ect_payload else wpt.ect_hash
         
         self.validator.validate_wpt(
             wpt=wpt,
             expected_method=method,
             expected_htu=htu,
             expected_body_hash=body_hash,
-            expected_wit_hash=wpt.wit_hash,  # assume match for test
-            expected_ect_hash=wpt.ect_hash,
+            expected_wit_hash=expected_wit_hash,
+            expected_ect_hash=expected_ect_hash,
             expected_authority_hash=expected_auth_hash,
             route=route,
             trace_id=trace_id
@@ -76,5 +86,8 @@ class WIDMiddlewareContext:
         if not authority_payload:
             raise MissingAuthorityError(route=route, method=method, trace_id=trace_id, workload_identifier=wit.sub, ephemeral_execution_id=ect.ephemeral_execution_id)
             
-        authority = AuthorityArtifact(**authority_payload)
+        auth_kwargs = dict(authority_payload)
+        if "_mock_hash" in auth_kwargs:
+            del auth_kwargs["_mock_hash"]
+        authority = AuthorityArtifact(**auth_kwargs)
         self.validator.validate_authority(authority, ect, route, method, trace_id)
