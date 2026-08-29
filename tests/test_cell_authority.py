@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import pytest
 
 from cappo_backend.config import Settings
-from cappo_backend.services.canonical import verify_signature_ed25519
 from cappo_backend.services.cell_authority import (
     CellAuthorityBuilder,
     CellAuthorityError,
@@ -15,6 +14,7 @@ from cappo_backend.services.cell_authority import (
     cell_authority_public_key_b64url,
     semantic_intent_digest,
 )
+from cappo_backend.services.canonical import verify_signature_ed25519
 
 
 IMAGE_DIGEST = "sha256:" + "b" * 64
