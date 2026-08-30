@@ -63,9 +63,15 @@ def _lease_from_mount(mounted: dict[str, object]) -> dict[str, str]:
     }
 
 
+def _workspace_headers() -> dict[str, str]:
+    return {"X-Workspace-ID": "w1"}
+
+
 def test_governed_exec_consumes_backend_issued_lease_once(client: TestClient) -> None:
     _prepare(client)
-    mounted_response = client.post("/v1/capability/mounts", json=_mount_payload())
+    mounted_response = client.post(
+        "/v1/capability/mounts", json=_mount_payload(), headers=_workspace_headers()
+    )
     assert mounted_response.status_code == 200
     lease = _lease_from_mount(mounted_response.json())
 
@@ -79,14 +85,14 @@ def test_governed_exec_consumes_backend_issued_lease_once(client: TestClient) ->
         "capability_lease": lease,
     }
 
-    allowed = client.post("/v1/exec", json=execution)
+    allowed = client.post("/v1/exec", json=execution, headers=_workspace_headers())
     assert allowed.status_code == 200
     body = allowed.json()
     assert body["execution_id"]
     assert body["capability_lease"]["mount_id"] == lease["mount_id"]
     assert body["capability_lease"]["decision"] == "allow"
 
-    replay = client.post("/v1/exec", json=execution)
+    replay = client.post("/v1/exec", json=execution, headers=_workspace_headers())
     assert replay.status_code == 403
     assert replay.json()["detail"]["error"] == "CAPABILITY_LEASE_DENIED"
     assert replay.json()["detail"]["reason"] == "token_replay"
@@ -94,11 +100,14 @@ def test_governed_exec_consumes_backend_issued_lease_once(client: TestClient) ->
 
 def test_governed_exec_denies_action_outside_backend_lease(client: TestClient) -> None:
     _prepare(client)
-    mounted = client.post("/v1/capability/mounts", json=_mount_payload()).json()
+    mounted = client.post(
+        "/v1/capability/mounts", json=_mount_payload(), headers=_workspace_headers()
+    ).json()
     lease = _lease_from_mount(mounted)
 
     response = client.post(
         "/v1/exec",
+        headers=_workspace_headers(),
         json={
             "prompt": "export credentials",
             "pgl_id": "test-user-id",
@@ -117,11 +126,14 @@ def test_governed_exec_denies_action_outside_backend_lease(client: TestClient) -
 
 def test_governed_write_requires_target_precondition_before_execution(client: TestClient) -> None:
     _prepare(client)
-    mounted = client.post("/v1/capability/mounts", json=_mount_payload()).json()
+    mounted = client.post(
+        "/v1/capability/mounts", json=_mount_payload(), headers=_workspace_headers()
+    ).json()
     lease = _lease_from_mount(mounted)
 
     response = client.post(
         "/v1/exec",
+        headers=_workspace_headers(),
         json={
             "prompt": "write a draft",
             "pgl_id": "test-user-id",
