@@ -110,3 +110,28 @@ def test_activation_observer_is_workspace_bound(db: Session) -> None:
     assert other_workspace["consequence_count"] == 0
     assert other_workspace["consequence_id"] is None
     assert other_workspace["persisted"] is False
+
+
+def test_activation_target_completion_proof_reobserves_persisted_row(db: Session) -> None:
+    executor = ActivationTargetExecutor(db)
+    result = executor.execute(_request())
+
+    proof_type, proof_ref = executor.completion_proof(result)
+
+    observed = observe_activation_consequence(
+        db,
+        execution_id="exec-activation-1",
+        workspace_id="ws-activation",
+    ).as_dict()
+    assert proof_type == "durable_target_row"
+    assert proof_ref == observed["content_hash"]
+    assert observed["consequence_count"] == 1
+
+
+def test_activation_target_completion_proof_rejects_tampered_result(db: Session) -> None:
+    executor = ActivationTargetExecutor(db)
+    result = executor.execute(_request())
+    result["activation_target"]["content_hash"] = "tampered"
+
+    with pytest.raises(ActivationTargetInvariantError):
+        executor.completion_proof(result)

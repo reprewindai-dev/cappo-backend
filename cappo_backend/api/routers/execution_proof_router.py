@@ -458,6 +458,36 @@ def execution_measurements_projection(
                 "ACTIVATION_TARGET_RESULT_MISMATCH",
                 "Persisted execution result disagrees with the independently observed target row.",
             )
+        if len(operations) != 1:
+            _fail(
+                "ACTIVATION_LIFECYCLE_OPERATION_COUNT_INVALID",
+                "Activation must contain exactly one consequence operation stream.",
+            )
+        stream = next(iter(operations.values()))
+        if [event.state for event in stream] != ["authorized", "started", "succeeded"]:
+            _fail(
+                "ACTIVATION_LIFECYCLE_SEQUENCE_INVALID",
+                "Activation lifecycle must be exactly AUTHORIZED -> STARTED -> SUCCEEDED.",
+            )
+        if any(
+            event.receipt_id != evidence["authorization"]["receipt_id"]
+            or event.mount_id != evidence["authorization"]["mount_id"]
+            or event.action != ACTIVATION_WRITE_ACTION
+            for event in stream
+        ):
+            _fail(
+                "ACTIVATION_LIFECYCLE_AUTHORITY_BINDING_MISMATCH",
+                "Activation lifecycle is not bound to the same mount, receipt, and action as the target consequence.",
+            )
+        terminal = stream[-1]
+        if (
+            terminal.completion_proof_type != "durable_target_row"
+            or terminal.completion_proof_ref != observation["content_hash"]
+        ):
+            _fail(
+                "ACTIVATION_LIFECYCLE_TARGET_PROOF_MISMATCH",
+                "Activation SUCCEEDED state is not proven by the independently observed durable target row.",
+            )
         target_observation = observation
 
     elapsed_ms = max(0.0, (run.updated_at - run.created_at).total_seconds() * 1000)
