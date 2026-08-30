@@ -1,0 +1,31 @@
+VEKLOM INBOUND TRUTH v1.0.1 - SANDBOXED FULL-SUITE TRANSCRIPT
+
+Command:
+  $env:OLLAMA_KEEP_ALIVE='300'; .\.venv\Scripts\python.exe -m pytest -ra
+
+Environment:
+  platform win32 -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+  collected 773 items / 1 skipped
+  execution context: restricted Codex filesystem/process sandbox
+
+Observed environment-blocked tests:
+  FAILED tests/test_g1_p1_hostile_workload_container.py::test_container_cannot_access_docker_sock
+  FAILED tests/test_g1_p1_hostile_workload_container.py::test_container_cannot_access_cappo_filesystem
+  FAILED tests/test_g1_p1_hostile_workload_container.py::test_container_cannot_access_spire_socket
+  FAILED tests/test_g1_p1_hostile_workload_container.py::test_container_cannot_connect_to_postgres
+
+Shared Docker client error returned before each hostile workload could execute:
+  WARNING: Error loading config file: open C:\Users\antho\.docker\config.json: Access is denied.
+  permission denied while trying to connect to the docker API at npipe:////./pipe/docker_engine
+
+Pytest terminal summary:
+  4 failed, 747 passed, 23 skipped, 44 warnings in 62.93s (0:01:02)
+
+Classification:
+  SANDBOXED_FULL_SUITE = 747_PASS / 23_SKIP / 4_ENVIRONMENT_BLOCKED
+  The four tests did not reach their Docker-hosted hostile probes because the
+  execution sandbox denied the Docker named pipe. They were rerun with approved
+  host Docker access (6 passed), followed by the authoritative full-suite run
+  in that same host-capable environment (751 passed / 23 skipped / 0 failed).
+
+The complete skip reasons are preserved in skip-inventory.txt.

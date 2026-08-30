@@ -45,6 +45,15 @@
       }
     ]
   },
+  "result_classes": {
+    "PYTHON_3_14_HYDRATION": "ENVIRONMENT_INCOMPATIBLE",
+    "INITIAL_MISSING_FASTAPI": "TEST_DID_NOT_EXECUTE",
+    "SANDBOXED_FULL_SUITE": "747_PASS / 23_SKIP / 4_ENVIRONMENT_BLOCKED",
+    "HOST_DOCKER_PROBE": "6_PASS / 0_FAIL",
+    "AUTHORITATIVE_FULL_SUITE": "751_PASS / 23_SKIP / 0_FAIL",
+    "TARGETED_BOUNDARY_MATRIX": "21_PASS / 0_FAIL",
+    "FINAL_STATUS": "SEAL_CANDIDATE"
+  },
   "dependency_state": {
     "declared": [
       {
@@ -87,6 +96,10 @@
     {
       "path": "evidence/inbound-truth-v1.0.1/targeted-boundary-matrix.txt",
       "sha256": "0074417de5dae0d4e265c3b997be7ec3817a1aede93eaa6a8395567fd1faff1c"
+    },
+    {
+      "path": "evidence/inbound-truth-v1.0.1/sandboxed-full-suite.txt",
+      "sha256": "94a210738884eab391e56bd234216350853f0916a47d6c3f6615fb7c91bfa397"
     },
     {
       "path": "evidence/inbound-truth-v1.0.1/full-suite.txt",
