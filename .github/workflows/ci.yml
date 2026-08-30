@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Maintained runtime lint
+    name: Runtime integrity and boundary lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,11 +27,25 @@ jobs:
       - name: Compile maintained runtime
         run: python -m compileall -q cappo_backend
 
-      - name: Ruff maintained runtime and activation proof tests
+      - name: Reject fatal Python defects across maintained runtime
+        run: ruff check cappo_backend --select E9,F63,F7,F82
+
+      - name: Lint the authority, execution, and proof boundary strictly
         run: |
-          ruff check cappo_backend \
+          ruff check \
+            cappo_backend/api/routers/exec_router.py \
+            cappo_backend/api/routers/execution_proof_router.py \
+            cappo_backend/authorization/cappo_auth.py \
+            cappo_backend/identity/middleware.py \
+            cappo_backend/identity/validator.py \
+            cappo_backend/security/http_signatures.py \
+            cappo_backend/services/consequence_lifecycle.py \
+            cappo_backend/services/orchestrator.py \
+            tests/test_consequence_lifecycle_executor.py \
             tests/test_execution_evidence_lifecycle.py \
-            tests/test_execution_proof_projection.py
+            tests/test_execution_proof_projection.py \
+            tests/test_exec_protection.py \
+            tests/adversarial/test_wid_2_token_validation_middleware.py
 
   build:
     name: Docker Build
