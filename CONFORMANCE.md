@@ -1,23 +1,21 @@
 # VEKLOM FOUNDATIONAL CONFORMANCE BASELINE v1 — SEALED
 
-**Date Sealed:** 2026-08-30
-**Status:** SEALED
+**Date:** August 30, 2026
 
-This document establishes the sealed Foundational Conformance Baseline for the Veklom Consequence Infrastructure (CAPPO / PGL).
+The constitutional architecture has demonstrated its core invariants across the defined foundational test suite. The following six invariants are officially sealed:
+1. **Bounded Consequence Authority** 
+2. **Fail-Closed Rejection**
+3. **Disruption-Safe Finality**
+4. **Offline Authority Behavior**
+5. **Independent Public Ingress**
+6. **Evidence-Backed Replay/Idempotency Behavior**
 
-## 1. The 6 Sealed Invariants
+### The Foundational Governance Doctrine
+**No new foundational proof gate may be added unless failure of that gate would invalidate an already-sealed constitutional invariant.**
 
-The following invariants have been machine-versioned, tested, and independently corroborated across the infrastructure. They constitute the non-negotiable core of Veklom's execution authority:
+Everything else from this point forward becomes a bug, feature, connector conformance issue, operational hardening task, or product improvement. We do not reopen the question of whether Veklom fundamentally works. 
 
-1. **Authority Monotonicity:** Authority may only attenuate as it traverses the stack; it can never widen.
-2. **Composition Intersection:** The authority of a composed system is strictly bounded by the intersection of its components' authorities.
-3. **Metadata Non-Authority:** Metadata and context retrieval cannot mint or alter execution authority.
-4. **Offline Containment:** The authority to act must be verifiable completely offline without relying on continuous upstream oracle availability.
-5. **Explicit Finality (OUTCOME_UNKNOWN):** Execution states must reach definitive finality, cleanly distinguishing between success, failure, and explicitly ambiguous/unknown outcomes.
-6. **Ledger Tamper Evidence & Fail-Closed Execution:** Execution requires tamper-evident ledgering (PGL), and any failure in authorization or verification defaults immediately to a closed/deny state.
+### The Activation Definition (Next Milestone)
+The first product milestone is reached when a new user can connect an automation, grant bounded authority, create one governed consequence, observe one intentional denial, and inspect the evidence in under 60 minutes without developer assistance.
 
-## 2. Foundational Governance Rule
-
-To prevent scope creep and ensure the stability of the foundation:
-
-> **No new foundational proof gate may be added unless failure of that gate would invalidate an already-sealed constitutional invariant.**
+**The Next Milestone:** Veklom Activation v1.

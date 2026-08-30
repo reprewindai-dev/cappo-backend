@@ -117,5 +117,8 @@ class CappoPreauthorizationEnforcer:
         if "truth.transition" == requested_right and "truth.transition" not in authority.rights:
             raise RightNotGrantedError(**base_kwargs)
 
+        if authority and getattr(authority, 'inbound_truth_state', 'ADMISSIBLE') != getattr(authority, 'required_truth_state', 'ADMISSIBLE'):
+            raise Exception('InboundTruthRequirementFailed: Context certification state is below required policy.')
+
         # All checks passed, CAPPO preauthorization successful.
         return True

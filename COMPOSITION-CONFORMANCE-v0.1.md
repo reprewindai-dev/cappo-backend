@@ -1,30 +1,30 @@
-# VEKLOM COMPOSITION CONFORMANCE v0.1
+# Governed Composability v0.1
 
-**Date:** 2026-08-30
-**Status:** ACTIVE SPECIFICATION
+A **Governed Composition Chain** is defined as a sequence of independently operating systems that exchange constrained authority toward a possible consequence. 
 
-This document defines the architectural rules for the **Governed Composition Chain**. As Veklom shifts from foundational proving to multi-hop orchestration and product activation, this conformance specification governs how nodes connect.
+## The Composition Invariant
 
-## 1. The Composition Invariant
-
-**Composition must not create authority.**
-
-Mathematically expressed:
 $$A_{n+1} \subseteq A_n$$
-or
-$$Authority(A \rightarrow B \rightarrow C) \subseteq Authority(A) \cap Authority(B) \cap Authority(C)$$
 
-Every transition across an interstitial boundary can preserve or attenuate authority, but it must never implicitly widen it.
+Where $A_n$ is the effective authority at hop $n$. No downstream component may receive more effective authority than its upstream delegator possessed. Authority may move across a chain only by preservation or attenuation.
 
-## 2. Governed Composition Chain Test Requirements
+### Associated Conditions
+1. **$I_{n+1} = I_n$** (Identity continuity must be preserved)
+2. **$C_{n+1} \subseteq C_n$** (Constraints may narrow but never widen)
+3. **$E_{final} \leftrightarrow (I, A, C, X)$** (Final evidence must bind identity, authority, constraints, and the actual consequence)
+4. **Unknown outcomes remain unknown until reconciliation.**
 
-To be considered a conforming Governed Composition Chain, any multi-hop execution flow must demonstrate and test the following properties:
+## Conformance Profile
 
-1. **Identity Continuity:** The cryptographic identity (Execution Identity, EI) of the initiating actor must remain mathematically unbroken across all hops.
-2. **Authority Attenuation:** At each handoff, the receiving node must explicitly enforce that its granted authority does not exceed the authority of the sending node.
-3. **Constraint Continuity:** Budgetary, temporal (leases), and geographic (PII/Law 25) constraints must propagate synchronously with the payload.
-4. **Resource Equivalence:** The resource consumed by a composition must map equitably back to the authorized limits of the originating tenant.
-5. **Consequence Singularity:** A single intended action must yield exactly one verifiable consequence; side-effects must be tracked or explicitly forbidden.
-6. **Epistemic Discipline:** Retrieval finds claims. Governance determines authority. Evidence establishes what may safely be treated as fact. AI reasons only *after* this discipline is applied.
-7. **Evidence Continuity:** The cryptographic receipt (Proof-of-Graph) must contain the full unbroken chain of custody from origin to execution.
-8. **Explicit Uncertainty:** Any hop that loses confidence in the state of its predecessor or successor must halt and emit `OUTCOME_UNKNOWN` rather than guessing.
+A multi-system execution chain is conformant only when all of the following are demonstrated:
+
+| Property | Testable Requirement |
+| :--- | :--- |
+| **Identity continuity** | Each downstream event remains attributable to the originating workspace, subject, operation, execution, and delegation chain. |
+| **Authority attenuation** | No downstream hop can obtain an action, resource, time window, budget, credential reference, or audience broader than its inherited ceiling. |
+| **Constraint continuity** | Policy-relevant fields—purpose, residency, resource grammar, classification, revocation, nonce, and evidence obligations—survive or narrow across hops. |
+| **Resource equivalence** | All parties resolve the governed resource to the same canonical identity before a consequence occurs. |
+| **Consequence singularity**| Concurrency, duplicate dispatch, retries, crashes, and reconnects cannot create an unaccounted duplicate effect. |
+| **Epistemic discipline** | A component’s reported status cannot cause a final success claim without valid consequence-bound evidence. |
+| **Evidence continuity** | The receipt can bind the original intent, capability/lease, each material transition, target evidence, and final truth classification. |
+| **Explicit uncertainty** | If any material link cannot prove its result, the chain enters a fenced reconciliation state rather than fabricating finality. |
