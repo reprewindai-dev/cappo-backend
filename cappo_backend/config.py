@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # Signing key for ExecutionIdentityV1. Must be overridden in production.
     ei_signing_key: str = INSECURE_EI_SIGNING_KEY
     ei_signing_provider: str = "ed25519"
+    # Stable Ed25519 seed for COSE_Sign1 authorization evidence.
+    # Development may generate a local key; production must inject exactly
+    # 32 bytes as 64 hexadecimal characters.
+    evidence_root_private_key_hex: str = ""
 
     # --- PGL ledger (gnomledger) forwarding ---
     # When PGL_LEDGER_URL is set, every governance event is mirrored into
@@ -268,6 +272,21 @@ class Settings(BaseSettings):
                 bytes.fromhex(self.ei_signing_key)
             except ValueError:
                 problems.append("EI_SIGNING_KEY must be a valid hex string.")
+        if not self.evidence_root_private_key_hex.strip():
+            problems.append(
+                "EVIDENCE_ROOT_PRIVATE_KEY_HEX must be configured in production "
+                "so signed authorization evidence remains stable across restarts and replicas."
+            )
+        elif len(self.evidence_root_private_key_hex.strip()) != 64:
+            problems.append(
+                "EVIDENCE_ROOT_PRIVATE_KEY_HEX must contain exactly 64 hexadecimal characters "
+                "(a 32-byte Ed25519 private seed)."
+            )
+        else:
+            try:
+                bytes.fromhex(self.evidence_root_private_key_hex.strip())
+            except ValueError:
+                problems.append("EVIDENCE_ROOT_PRIVATE_KEY_HEX must be valid hexadecimal.")
         if not self.cappo_require_persistent_pgl:
             problems.append(
                 "CAPPO_REQUIRE_PERSISTENT_PGL must be true in production "
