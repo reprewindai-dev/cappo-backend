@@ -82,7 +82,7 @@ def verify_signed_execution_evidence(
 
     if not isinstance(decoded_tag, cbor2.CBORTag) or decoded_tag.tag != 18:
         raise ValueError("Not a valid COSE_Sign1 tagged object")
-    if not isinstance(decoded_tag.value, list) or len(decoded_tag.value) != 4:
+    if not isinstance(decoded_tag.value, (list, tuple)) or len(decoded_tag.value) != 4:
         raise ValueError("COSE_Sign1 array must have exactly 4 elements")
 
     protected_header, unprotected_header, payload, signature = decoded_tag.value
