@@ -93,6 +93,7 @@ jobs:
 
     env:
       DATABASE_URL: "postgresql+psycopg2://cappo:cappo_ci@localhost:5432/cappo_test"
+      RLS_DATABASE_URL: "postgresql+psycopg2://cappo_app:cappo_app_ci@localhost:5432/cappo_test"
       SECRET_KEY: "ci-test-secret-key"
       ENVIRONMENT: "test"
 
@@ -108,6 +109,36 @@ jobs:
 
       - name: Run migrations
         run: alembic upgrade head
+
+      - name: Create non-bypass application role for RLS proof
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"], isolation_level="AUTOCOMMIT")
+          with engine.connect() as conn:
+              conn.execute(text("DROP ROLE IF EXISTS cappo_app"))
+              conn.execute(
+                  text(
+                      "CREATE ROLE cappo_app LOGIN PASSWORD 'cappo_app_ci' "
+                      "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS"
+                  )
+              )
+              conn.execute(text("GRANT CONNECT ON DATABASE cappo_test TO cappo_app"))
+              conn.execute(text("GRANT USAGE ON SCHEMA public TO cappo_app"))
+              conn.execute(
+                  text(
+                      "GRANT SELECT, INSERT, UPDATE, DELETE "
+                      "ON ALL TABLES IN SCHEMA public TO cappo_app"
+                  )
+              )
+              conn.execute(
+                  text(
+                      "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO cappo_app"
+                  )
+              )
+          PY
 
       - name: Run tests
         run: pytest -q --tb=short --maxfail=1
