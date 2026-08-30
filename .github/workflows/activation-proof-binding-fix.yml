@@ -1,64 +1,13 @@
-name: Activation one-shot target proof binding
+name: Retired Activation target proof helper
 
 on:
-  push:
-    branches: [activation-e2e-authority-binding]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: activation-target-proof-binding
-  cancel-in-progress: true
+  contents: read
 
 jobs:
-  bind:
-    if: ${{ !contains(github.event.head_commit.message, '[auto-target-proof]') }}
+  retired:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: activation-e2e-authority-binding
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: pip install -e '.[dev]' aiosqlite
-      - name: Bind Activation lifecycle terminal proof to observed row
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('cappo_backend/api/routers/execution_proof_router.py')
-          text = path.read_text(encoding='utf-8')
-          marker = 'ACTIVATION_LIFECYCLE_TARGET_PROOF_MISMATCH'
-          if marker not in text:
-              anchor = '''        target_observation = observation\n\n    elapsed_ms = max(0.0, (run.updated_at - run.created_at).total_seconds() * 1000)\n'''
-              replacement = '''        if len(operations) != 1:\n            _fail(\n                "ACTIVATION_LIFECYCLE_OPERATION_COUNT_INVALID",\n                "Activation must contain exactly one consequence operation stream.",\n            )\n        stream = next(iter(operations.values()))\n        if [event.state for event in stream] != ["authorized", "started", "succeeded"]:\n            _fail(\n                "ACTIVATION_LIFECYCLE_SEQUENCE_INVALID",\n                "Activation lifecycle must be exactly AUTHORIZED -> STARTED -> SUCCEEDED.",\n            )\n        if any(\n            event.receipt_id != evidence["authorization"]["receipt_id"]\n            or event.mount_id != evidence["authorization"]["mount_id"]\n            or event.action != ACTIVATION_WRITE_ACTION\n            for event in stream\n        ):\n            _fail(\n                "ACTIVATION_LIFECYCLE_AUTHORITY_BINDING_MISMATCH",\n                "Activation lifecycle is not bound to the same mount, receipt, and action as the target consequence.",\n            )\n        terminal = stream[-1]\n        if (\n            terminal.completion_proof_type != "durable_target_row"\n            or terminal.completion_proof_ref != observation["content_hash"]\n        ):\n            _fail(\n                "ACTIVATION_LIFECYCLE_TARGET_PROOF_MISMATCH",\n                "Activation SUCCEEDED state is not proven by the independently observed durable target row.",\n            )\n        target_observation = observation\n\n    elapsed_ms = max(0.0, (run.updated_at - run.created_at).total_seconds() * 1000)\n'''
-              if anchor not in text:
-                  raise SystemExit('execution proof target anchor missing')
-              text = text.replace(anchor, replacement, 1)
-              path.write_text(text, encoding='utf-8')
-
-          test_path = Path('tests/test_activation_target.py')
-          test_text = test_path.read_text(encoding='utf-8')
-          if 'test_activation_target_completion_proof_reobserves_persisted_row' not in test_text:
-              test_text += '''\n\ndef test_activation_target_completion_proof_reobserves_persisted_row(db: Session) -> None:\n    executor = ActivationTargetExecutor(db)\n    result = executor.execute(_request())\n\n    proof_type, proof_ref = executor.completion_proof(result)\n\n    observed = observe_activation_consequence(\n        db,\n        execution_id="exec-activation-1",\n        workspace_id="ws-activation",\n    ).as_dict()\n    assert proof_type == "durable_target_row"\n    assert proof_ref == observed["content_hash"]\n    assert observed["consequence_count"] == 1\n\n\ndef test_activation_target_completion_proof_rejects_tampered_result(db: Session) -> None:\n    executor = ActivationTargetExecutor(db)\n    result = executor.execute(_request())\n    result["activation_target"]["content_hash"] = "tampered"\n\n    with pytest.raises(ActivationTargetInvariantError):\n        executor.completion_proof(result)\n'''
-              test_path.write_text(test_text, encoding='utf-8')
-          PY
-      - name: Verify target proof binding
-        run: |
-          ruff check cappo_backend/api/routers/execution_proof_router.py tests/test_activation_target.py
-          python -m compileall -q cappo_backend
-          pytest -q tests/test_activation_target.py tests/test_execution_evidence_lifecycle.py
-      - name: Commit verified proof binding
-        run: |
-          if git diff --quiet; then
-            echo 'No target-proof changes required.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add cappo_backend/api/routers/execution_proof_router.py tests/test_activation_target.py
-          git commit -m 'proof: bind Activation success to durable target row [auto-target-proof]'
-          git push origin HEAD:activation-e2e-authority-binding
+      - run: echo "Retired. Activation target proof binding is committed to product code and verified by canonical CI."
