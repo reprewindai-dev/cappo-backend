@@ -68,11 +68,14 @@ def compute_valid_hash(op_id, from_state, to_state, actor="exec_abc", sink="paym
     return compute_proof_subject_hash(
         operation_id=op_id,
         intent_hash=intent,
+        candidate_act_hash="dummy_act",
+        authority_id="dummy_auth",
+        execution_identity=actor,
+        sink_id=sink,
         previous_truth_state=from_state.value,
         asserted_truth_state=to_state.value,
-        consequence_id=cons,
-        actor_identity=actor,
-        sink_identity=sink
+        consequence_identity=cons,
+        proof_type="truth.transition",
     )
 
 def test_1_execute_only_authority_cannot_assert_completed_success(truth_enforcer, active_operation):

@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cappo_backend.p5 import (
+from cappo_backend.p5.engine import (
     ClassERetryDenied,
     ForbiddenTransition,
     P5Engine,
@@ -56,11 +56,14 @@ def _valid_proof_hash(op: P5Operation, actor_identity: str, target_state: TruthS
     return compute_proof_subject_hash(
         operation_id=op.operation_id,
         intent_hash=op.intent_hash,
+        candidate_act_hash="dummy_act_hash",
+        authority_id="dummy_auth_id",
+        execution_identity=actor_identity,
+        sink_id=op.sink_class,
         previous_truth_state=op.current_truth_state,
-        asserted_truth_state=target_state,
-        consequence_id=op.consequence_id,
-        actor_identity=actor_identity,
-        sink_identity=op.sink_class,
+        asserted_truth_state=target_state.value,
+        consequence_identity=op.consequence_id,
+        proof_type="truth.transition",
     )
 
 
