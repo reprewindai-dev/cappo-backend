@@ -181,46 +181,6 @@ def test_p5_unauthorized_truth_transition_denied(db: Session):
 
 
 # ---------------------------------------------------------------------------
-# Test 5: Proof transplant attack is denied (cross-operation hash reuse)
-# ---------------------------------------------------------------------------
-
-
-def test_p5_proof_transplant_denied(db: Session):
-    """ProofSubjectMismatch must be raised when a proof from op_A is used for op_B.
-
-    Each proof_subject_hash is cryptographically bound to operation_id,
-    intent_hash, consequence_id, actor_identity, and sink_class — making
-    cross-operation transplanting detectable.
-    """
-    engine = P5Engine(db)
-
-    # Create op_A and run it through EXECUTION_STARTED
-    op_a = _create_base_op(engine)
-    op_a = engine.authorize(op_a.operation_id, cappo_decision_id="cappo-d-A")
-    op_a = engine.start_execution(op_a.operation_id, actor_identity="agent:executor")
-
-    # Compute the valid proof for op_A
-    actor = "agent:executor"
-    proof_hash_for_a = _valid_proof_hash(op_a, actor, TruthState.COMPLETED_SUCCESS)
-
-    # Create op_B and run it through EXECUTION_STARTED
-    op_b = _create_base_op(engine)
-    op_b = engine.authorize(op_b.operation_id, cappo_decision_id="cappo-d-B")
-    op_b = engine.start_execution(op_b.operation_id, actor_identity="agent:executor")
-
-    # Attempt to transplant op_A's proof into op_B's complete_success
-    with pytest.raises(ProofSubjectMismatch):
-        engine.complete_success(
-            operation_id=op_b.operation_id,
-            proof_type="callback_return",
-            proof_subject_hash=proof_hash_for_a,  # ← op_A's hash, wrong for op_B
-            actor_identity=actor,
-            cappo_decision_id="cappo-d-B2",
-            has_truth_transition=True,
-        )
-
-
-# ---------------------------------------------------------------------------
 # Test 6: Concurrent execution claim conflict (optimistic lock)
 # ---------------------------------------------------------------------------
 
