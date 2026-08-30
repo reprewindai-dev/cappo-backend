@@ -32,6 +32,7 @@ from cappo_backend.api.routers.capability_beacon_router import router as capabil
 from cappo_backend.api.routers.capability_mount_router import router as capability_mount_router
 from cappo_backend.api.routers.exec_router import router as exec_router
 from cappo_backend.api.routers.execution_keys_router import router as execution_keys_router
+from cappo_backend.api.routers.execution_projection_router import router as execution_projection_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.health_router import router as health_router
@@ -147,6 +148,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(authorization_router)
     app.include_router(exec_router)
     app.include_router(execution_keys_router)
+    app.include_router(execution_projection_router)
+    from cappo_backend.api.routers.reconciler_router import router as reconciler_router
+    app.include_router(reconciler_router)
     app.include_router(health_router)
     app.include_router(admin_router)
     app.include_router(audit_router)

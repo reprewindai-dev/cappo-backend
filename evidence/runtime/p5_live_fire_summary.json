@@ -1,0 +1,101 @@
+[
+    {
+        "url":  "https://cappo.veklom.com/v2/governance/authorize",
+        "test_name":  "CAPPO: Unauthorized Cloud Action Proposed",
+        "method":  "POST",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:29.4690171-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  "{\r\n    \"sink_class\":  \"EXTERNAL_CLOUD\",\r\n    \"intent_hash\":  \"malicious\"\r\n}"
+    },
+    {
+        "url":  "https://cappo.veklom.com/v2/governance/execute",
+        "test_name":  "CAPPO: Expired Authority Execution",
+        "method":  "POST",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:29.5756100-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  "{\r\n    \"operation_id\":  \"op_123\"\r\n}"
+    },
+    {
+        "url":  "https://cappo.veklom.com/v2/governance/record-truth",
+        "test_name":  "CAPPO: Proof Transplant Attempt",
+        "method":  "POST",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:29.6600516-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  "{\r\n    \"proof_subject_hash\":  \"transplanted\",\r\n    \"operation_id\":  \"op_456\",\r\n    \"asserted_truth_state\":  \"COMPLETED_SUCCESS\"\r\n}"
+    },
+    {
+        "url":  "https://cappo.veklom.com/v2/governance/record-truth",
+        "test_name":  "CAPPO: Stale Handle Rejection",
+        "method":  "POST",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:29.7445187-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  "{\r\n    \"proof_subject_hash\":  \"valid\",\r\n    \"is_stale\":  true,\r\n    \"operation_id\":  \"op_789\",\r\n    \"asserted_truth_state\":  \"COMPLETED_SUCCESS\"\r\n}"
+    },
+    {
+        "url":  "https://api.veklom.com/api/v1/workspace",
+        "test_name":  "BYOS: Public unauthenticated request to protected BYOS route",
+        "method":  "GET",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:29.8234670-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  ""
+    },
+    {
+        "url":  "https://api.veklom.com/api/v1/workspace",
+        "test_name":  "BYOS: Authenticated but unauthorized tenant request",
+        "method":  "GET",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:29.8633774-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  ""
+    },
+    {
+        "url":  "https://api.veklom.com/api/v1/ai/execute",
+        "test_name":  "BYOS: Valid-looking request without CAPPO authority",
+        "method":  "POST",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:29.9564477-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  "{\r\n    \"command\":  \"ls\"\r\n}"
+    },
+    {
+        "url":  "https://api.veklom.com/api/v1/ai/execute",
+        "test_name":  "BYOS: Expired CAPPO authority",
+        "method":  "POST",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:30.0686866-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  "{\r\n    \"command\":  \"ls\"\r\n}"
+    },
+    {
+        "url":  "https://api.veklom.com/api/v1/ai/execute",
+        "test_name":  "BYOS: Wrong tenant / wrong workspace authority",
+        "method":  "POST",
+        "response":  "",
+        "expected":  401,
+        "timestamp":  "2026-08-29T02:44:30.1569233-04:00",
+        "passed":  false,
+        "status":  502,
+        "request_body":  "{\r\n    \"command\":  \"ls\",\r\n    \"workspace_id\":  \"ws_wrong\"\r\n}"
+    }
+]

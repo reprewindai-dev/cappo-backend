@@ -34,8 +34,8 @@ class P5TruthEnforcer:
         
         base_kwargs = {
             "operation_id": operation_id,
-            "previous_truth_state": str(op.current_truth_state),
-            "attempted_truth_state": str(asserted_truth_state),
+            "previous_truth_state": getattr(op.current_truth_state, "value", str(op.current_truth_state)),
+            "attempted_truth_state": getattr(asserted_truth_state, "value", str(asserted_truth_state)),
             "ephemeral_execution_id": authority.ephemeral_execution_id if authority else None,
             "authority_id": authority.authority_id if authority else None,
             "proof_subject_hash": proof_subject_hash
@@ -82,11 +82,14 @@ class P5TruthEnforcer:
         expected_hash = compute_proof_subject_hash(
             operation_id=operation_id,
             intent_hash=op.intent_hash,
-            previous_truth_state=op.current_truth_state,
-            asserted_truth_state=asserted_truth_state.value,
-            consequence_id=op.consequence_id,
-            actor_identity=actor_identity,
-            sink_identity=op.sink_class,
+            candidate_act_hash=authority.candidate_act_hash if authority else "None",
+            authority_id=authority.authority_id if authority else "None",
+            execution_identity=actor_identity or "None",
+            sink_id=getattr(op.sink_class, "value", str(op.sink_class)),
+            previous_truth_state=getattr(op.current_truth_state, "value", str(op.current_truth_state)),
+            asserted_truth_state=getattr(asserted_truth_state, "value", str(asserted_truth_state)),
+            consequence_identity=str(op.consequence_id),
+            proof_type=proof_type,
         )
 
         if jti and not self.replay_cache.check_and_store(jti, authority.expires_at):

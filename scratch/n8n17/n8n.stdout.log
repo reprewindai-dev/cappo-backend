@@ -1,0 +1,515 @@
+Initializing n8n process
+n8n ready on ::, port 5678
+n8n Task Broker ready on 127.0.0.1, port 5679
+Failed to start Python task runner in internal mode. because its virtual environment is missing from this system. Launching a Python runner in internal mode is intended only for debugging and is not recommended for production. Users are encouraged to deploy in external mode. See: https://docs.n8n.io/hosting/configuration/task-runners/#setting-up-external-mode
+
+There are deprecations related to your n8n setup. Please take the recommended actions to update your configuration:
+ - N8N_UNVERIFIED_PACKAGES_ENABLED -> The default for this variable will change to `false` in a future version. Set it to `true` explicitly to keep installing unverified community packages.
+ - N8N_RUNNERS_TASK_TIMEOUT -> The default for this variable will be reduced from 300 (5 minutes) to 60 (1 minute) in a future version. Set it explicitly to keep your current task timeout.
+ - N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES -> The default for this variable will be reduced from 2 GiB to 256 MiB in a future version. Set it explicitly to keep your current limit.
+ - N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES -> The default for this variable will be reduced from 5000 to 1000 in a future version. Set it explicitly to keep your current limit.
+ - Running n8n outside a container is deprecated. Future versions will require running n8n via the official Docker image. See https://docs.n8n.io/deploy/host-n8n/install-options/install-with-docker
+
+[license SDK] Skipping renewal on init: license cert is not initialized
+Registered runner "JS Task Runner" (tnDVSL7U8i_V6sXx1TOEf) 
+Database ping failed (1): Database connection timed out
+Database ping failed (2): Database connection timed out
+Database ping failed (3): Database connection timed out
+Database ping failed (4): Database connection timed out
+Database ping failed (5): Database connection timed out
+Database connection recovered
+Instance registered
+Discovered 4 cluster checks
+Sandbox: enabled=false provider=n8n-sandbox (from env)
+timeout of 6000ms exceeded
+AxiosError: timeout of 6000ms exceeded
+    at createTimeoutError (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3562:14)
+    at RedirectableRequest.handleTimeout (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:4080:15)
+    at RedirectableRequest.emit (node:events:509:28)
+    at Timeout._onTimeout (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:233:12)
+    at listOnTimeout (node:internal/timers:635:17)
+    at processTimers (node:internal/timers:571:7)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at runNextTicks (node:internal/process/task_queues:69:3)
+    at processTimers (node:internal/timers:568:9)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at httpRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\request.ts:213:5)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:193:12)
+    at paginatedRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n\src\utils\strapi-utils.ts:87:15)
+    at McpRegistryApiClient.fetchAllServers (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n\src\modules\mcp-registry\registry\mcp-registry-api.client.ts:19:10)
+    at McpRegistryService.refreshFromApiInternal (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n\src\modules\mcp-registry\registry\mcp-registry.service.ts:168:22)
+
+Error fetching from Strapi API (https://api.n8n.io/api/mcp-servers): timeout of 6000ms exceeded
+Failed to refresh MCP registry
+Version: 2.36.8
+Building workflow dependency index...
+Start Active Workflows:
+Finished building workflow dependency index. Processed 0 draft workflows, 1 published workflows.
+Activated workflow "Governed Execution Workflow" (ID: W6r3rV1OqR)
+
+Editor is now accessible via:
+http://localhost:5678
+The value in the "JSON Body" field is not valid JSON
+The value in the "JSON Body" field is not valid JSON
+The value in the "JSON Body" field is not valid JSON
+The value in the "JSON Body" field is not valid JSON
+The value in the "JSON Body" field is not valid JSON
+The value in the "JSON Body" field is not valid JSON
+The service refused the connection - perhaps it is offline
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at AxiosError.from (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:1355:24)
+    at RedirectableRequest.handleRequestError (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:4026:25)
+    at RedirectableRequest.emit (node:events:521:24)
+    at ClientRequest.eventHandlers.<computed> (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:56:24)
+    at ClientRequest.emit (node:events:509:28)
+    at emitErrorEvent (node:_http_client:112:11)
+    at Socket.socketErrorListener (node:_http_client:745:5)
+    at Socket.emit (node:events:521:24)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1864:16)
+
+The service refused the connection - perhaps it is offline
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at AxiosError.from (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:1355:24)
+    at RedirectableRequest.handleRequestError (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:4026:25)
+    at RedirectableRequest.emit (node:events:521:24)
+    at ClientRequest.eventHandlers.<computed> (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:56:24)
+    at ClientRequest.emit (node:events:509:28)
+    at emitErrorEvent (node:_http_client:112:11)
+    at Socket.socketErrorListener (node:_http_client:745:5)
+    at Socket.emit (node:events:521:24)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1864:16)
+
+The service refused the connection - perhaps it is offline
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at AxiosError.from (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:1355:24)
+    at RedirectableRequest.handleRequestError (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:4026:25)
+    at RedirectableRequest.emit (node:events:521:24)
+    at ClientRequest.eventHandlers.<computed> (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:56:24)
+    at ClientRequest.emit (node:events:509:28)
+    at emitErrorEvent (node:_http_client:112:11)
+    at Socket.socketErrorListener (node:_http_client:745:5)
+    at Socket.emit (node:events:521:24)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1864:16)
+
+The service refused the connection - perhaps it is offline
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at AxiosError.from (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:1355:24)
+    at RedirectableRequest.handleRequestError (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:4026:25)
+    at RedirectableRequest.emit (node:events:521:24)
+    at ClientRequest.eventHandlers.<computed> (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:56:24)
+    at ClientRequest.emit (node:events:509:28)
+    at emitErrorEvent (node:_http_client:112:11)
+    at Socket.socketErrorListener (node:_http_client:745:5)
+    at Socket.emit (node:events:521:24)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+connect ECONNREFUSED 127.0.0.1:8099
+Error: connect ECONNREFUSED 127.0.0.1:8099
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1864:16)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: resource is outside lease scope\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+
+Forbidden - perhaps check your credentials?
+403 - "{\"detail\":\"DENY: authority verification failed\"}"
+AxiosError: Request failed with status code 403
+    at settle (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:2199:12)
+    at RedirectableRequest.handleResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:3965:9)
+    at RedirectableRequest.emit (node:events:521:24)
+    at RedirectableRequest._processResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:424:10)
+    at ClientRequest.RedirectableRequest._onNativeResponse (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\follow-redirects\index.js:109:12)
+    at Object.onceWrapper (node:events:631:26)
+    at ClientRequest.emit (node:events:509:28)
+    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:950:27)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17)
+    at Socket.socketOnData (node:_http_client:785:22)
+    at Axios.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\node_modules\axios\dist\node\axios.cjs:5427:41)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at invokeAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\axios\invoke.ts:15:10)
+    at executeLegacyRequest (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\legacy-request.ts:83:6)
+    at Object.requestLegacy (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\@n8n\backend-network\src\http\outbound-http.ts:204:13)
+    at proxyRequestToAxios (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\legacy-request-adapter.ts:31:9)
+    at Object.request (C:\Users\antho\AppData\Local\npm-cache\_npx\a8a7eec953f1f314\node_modules\n8n-core\src\execution-engine\node-execution-context\utils\request-helpers\factory.ts:166:11)
+

@@ -65,7 +65,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         path = request.url.path
-        if path in PUBLIC_PATHS or request.method == "OPTIONS":
+        if (
+            path in PUBLIC_PATHS
+            or path.startswith("/api/v1/execution/keys/")
+            or path.startswith("/api/v1/reconcile/")
+            or request.method == "OPTIONS"
+        ):
             return await call_next(request)
 
         api_key = request.headers.get("X-API-Key")

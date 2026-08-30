@@ -1,0 +1,2 @@
+EXPECTED: 'sandbox-file:C:/tmp/n8n_governed_append.log'
+PROVIDED: {'sandbox-file:C:/Users/antho/.windsurf/cappo-backend/scratch/n8n17/n8n_governed_append.jsonl'}

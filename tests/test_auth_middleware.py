@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
+from cappo_backend.execution.kms import LocalKMSProvider
 from cappo_backend.main import create_app
 
 _KEY = "test-api-key"
@@ -76,6 +77,15 @@ class TestAuthEnabled:
 
     def test_health_is_public(self, auth_client: TestClient) -> None:
         assert auth_client.get("/health").status_code == 200
+
+    def test_execution_verification_key_is_public(
+        self, auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(LocalKMSProvider, "get_public_key", lambda self, kid: b"k" * 32)
+        response = auth_client.get("/api/v1/execution/keys/test-kid")
+        assert response.status_code == 200
+        assert response.json()["kid"] == "test-kid"
+        assert "private_key" not in response.json()
 
     def test_admin_route_requires_key(self, auth_client: TestClient) -> None:
         resp = auth_client.put("/v1/kill-switch/ws1", json={"active": True})

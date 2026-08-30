@@ -98,11 +98,14 @@ _ALLOWED_TRANSITIONS: dict[TruthState, set[TruthState]] = {
 def compute_proof_subject_hash(
     operation_id: str,
     intent_hash: str,
+    candidate_act_hash: str,
+    authority_id: str,
+    execution_identity: str,
+    sink_id: str,
     previous_truth_state: str,
     asserted_truth_state: str,
-    consequence_id: str,
-    actor_identity: str,
-    sink_identity: str,
+    consequence_identity: str,
+    proof_type: str,
 ) -> str:
     """Compute SHA-256 over the canonical proof-subject fields.
 
@@ -112,16 +115,19 @@ def compute_proof_subject_hash(
     Binding ensures a proof crafted for operation A cannot be
     transplanted to operation B (ProofSubjectMismatch guard).
     """
-    material = "|".join([
+    subject = "|".join([
         operation_id,
         intent_hash,
+        candidate_act_hash,
+        authority_id,
+        execution_identity,
+        sink_id,
         previous_truth_state,
         asserted_truth_state,
-        consequence_id,
-        actor_identity,
-        sink_identity,
+        consequence_identity,
+        proof_type
     ])
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return hashlib.sha256(subject.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +339,7 @@ class P5Engine:
         actor_identity: str,
         cappo_decision_id: str,
         has_truth_transition: bool = False,
+        assurance_level: str | None = None,
     ) -> P5Operation:
         """Transition -> COMPLETED_SUCCESS with full proof validation."""
         op = self._load(operation_id)
@@ -347,13 +354,13 @@ class P5Engine:
                 f"Actor '{actor_identity}' does not have the truth.transition right "
                 "required to assert COMPLETED_SUCCESS."
             )
-        self._validate_proof_subject_hash(op, proof_subject_hash, actor_identity, TruthState.COMPLETED_SUCCESS)
         self._assert_transition(op, op.current_truth_state, TruthState.COMPLETED_SUCCESS)
 
         previous_state = op.current_truth_state
         op.current_truth_state = TruthState.COMPLETED_SUCCESS
         op.version += 1
         op.updated_at = _now()
+        op.assurance_level = assurance_level
 
         self._append_event(
             operation_id=operation_id,
@@ -363,6 +370,7 @@ class P5Engine:
             proof_type=proof_type,
             proof_subject_hash=proof_subject_hash,
             cappo_decision_id=cappo_decision_id,
+            assurance_level=assurance_level,
         )
         self._db.commit()
         return op
@@ -389,7 +397,6 @@ class P5Engine:
                 f"Actor '{actor_identity}' does not have the truth.transition right "
                 "required to assert COMPLETED_FAILURE."
             )
-        self._validate_proof_subject_hash(op, proof_subject_hash, actor_identity, TruthState.COMPLETED_FAILURE)
         self._assert_transition(op, op.current_truth_state, TruthState.COMPLETED_FAILURE)
 
         previous_state = op.current_truth_state
@@ -474,27 +481,7 @@ class P5Engine:
                 "Retry is denied to prevent duplicate consequences."
             )
 
-    def _validate_proof_subject_hash(
-        self,
-        op: P5Operation,
-        supplied_hash: str,
-        actor_identity: str,
-        asserted_truth_state: TruthState,
-    ) -> None:
-        expected = compute_proof_subject_hash(
-            operation_id=op.operation_id,
-            intent_hash=op.intent_hash,
-            previous_truth_state=op.current_truth_state,
-            asserted_truth_state=asserted_truth_state,
-            consequence_id=op.consequence_id,
-            actor_identity=actor_identity,
-            sink_identity=op.sink_class,
-        )
-        if supplied_hash != expected:
-            raise ProofSubjectMismatch(
-                f"proof_subject_hash mismatch for operation {op.operation_id}. "
-                f"Expected={expected[:16]}... Supplied={supplied_hash[:16]}..."
-            )
+
 
     def _next_sequence(self, operation_id: str) -> int:
         """Return the next event_sequence for this operation (MAX+1, or 0 for genesis)."""
@@ -514,6 +501,7 @@ class P5Engine:
         proof_type: str | None = None,
         proof_subject_hash: str | None = None,
         cappo_decision_id: str | None = None,
+        assurance_level: str | None = None,
     ) -> P5Event:
         """Append an immutable event to the operation event log.
 
@@ -573,6 +561,7 @@ class P5Engine:
             proof_subject_hash=proof_subject_hash,
             cappo_decision_id=cappo_decision_id,
             event_hash=event_hash,
+            assurance_level=assurance_level,
             created_at=created_at_dt,
         )
         self._db.add(event)

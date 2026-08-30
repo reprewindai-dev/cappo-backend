@@ -22,13 +22,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://127.0.0.1:8099/protected/action",
+        "url": "http://127.0.0.1:8099/connectors/sandbox-file-append",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "X-Veklom-Authority",
-              "value": "={{ $json.body.veklom_authority }}"
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.body.veklom_authority }}"
             }
           ]
         },
