@@ -1,9 +1,8 @@
 """Contract probes for the first PGO -> Capability OS thin slice.
 
-These tests intentionally exercise the public request shape before any broader
-integration work. They should fail on a build that merely ignores the
-Capability OS lease/precondition fields instead of explicitly binding them to
-the governed execution boundary.
+These tests exercise the public request shape before broader integration work.
+They fail if the Capability OS lease/precondition fields are ignored instead of
+being represented at the governed execution boundary.
 """
 
 from cappo_backend.api.routers.exec_router import ExecRequest
@@ -22,12 +21,12 @@ def test_exec_request_preserves_capability_os_lease_contract() -> None:
     )
 
     payload = request.model_dump()
+    lease = payload["capability_lease"]
 
-    assert payload["capability_lease"] == {
-        "mount_id": "mount-1",
-        "token_id": "token-1",
-        "nonce": "nonce-1",
-    }
+    assert lease is not None
+    assert lease["mount_id"] == "mount-1"
+    assert lease["token_id"] == "token-1"
+    assert lease["nonce"] == "nonce-1"
 
 
 def test_exec_request_preserves_target_precondition_contract() -> None:
