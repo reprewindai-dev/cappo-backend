@@ -1,4 +1,4 @@
-"""Strict RFC 9421 response verification for provider failover signals."""
+"""Strict RFC 9421 verification for CAPPO requests and provider responses."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 
 class SignatureVerificationError(RuntimeError):
-    """The provider response is not an authenticated failover signal."""
+    """The signed HTTP message failed the configured integrity profile."""
 
 
 def verify_rfc9421_response(
@@ -25,12 +25,7 @@ def verify_rfc9421_response(
     public_key_hex: str,
     max_age_seconds: int = 5,
 ) -> None:
-    """Verify the Veklom provider-failover response profile.
-
-    A usable 503 must bind its ``@status`` and ``content-digest`` with an
-    Ed25519 RFC 9421 signature.  This establishes message integrity only; the
-    executor separately enforces CAPPO's authorized-provider set.
-    """
+    """Verify the Veklom provider-failover response profile."""
     if status_code != 503:
         raise SignatureVerificationError("only HTTP 503 may be a failover signal")
     _verify_message(
@@ -51,19 +46,24 @@ def verify_rfc9421_request(
     body: bytes,
     public_key_hex: str,
     max_age_seconds: int = 5,
+    required_header_components: set[str] | None = None,
 ) -> None:
     """Verify the CAPPO consequence-bearing request signature profile.
 
-    Request integrity is independent from semantic authorization.  The caller
-    must run CAPPO's authority evaluation only after this succeeds.
+    The mandatory derived components bind method, exact target and body digest.
+    Consequence callers can additionally require trust-bearing headers to be
+    signature-covered so identity/authority metadata cannot be swapped after
+    the trusted intermediary signs the request.
     """
     if method.upper() != "POST":
         raise SignatureVerificationError("only POST may use the CAPPO execution request profile")
+    required = {"@method", "@target-uri", "content-digest"}
+    required.update(component.lower() for component in (required_header_components or set()))
     _verify_message(
         headers=headers,
         body=body,
         public_key_hex=public_key_hex,
-        required_components={"@method", "@target-uri", "content-digest"},
+        required_components=required,
         derived={"@method": method.upper(), "@target-uri": target_uri},
         max_age_seconds=max_age_seconds,
     )
@@ -96,7 +96,7 @@ def _verify_message(
     input_match = re.fullmatch(r"sig1=\((?P<fields>[^)]*)\)(?P<params>(?:;[^;=]+(?:=[^;]+)?)+)", signature_input)
     if not input_match:
         raise SignatureVerificationError("invalid Signature-Input format")
-    fields = tuple(re.findall(r'"([^"]+)"', input_match.group("fields")))
+    fields = tuple(field.lower() for field in re.findall(r'"([^"]+)"', input_match.group("fields")))
     if not required_components.issubset(fields):
         required = ", ".join(sorted(required_components))
         raise SignatureVerificationError(f"signature must cover {required}")
@@ -113,10 +113,10 @@ def _verify_message(
         if field in derived:
             base_lines.append(f'"{field}": {derived[field]}')
             continue
-        value = normalized.get(field.lower())
+        value = normalized.get(field)
         if value is None:
             raise SignatureVerificationError(f"signed field {field} missing from headers")
-        base_lines.append(f'"{field.lower()}": {value}')
+        base_lines.append(f'"{field}": {value}')
     base_lines.append(f'"@signature-params": ({input_match.group("fields")}){input_match.group("params")}')
 
     signature_match = re.fullmatch(r"sig1=:([^:]+):", signature)
@@ -134,13 +134,7 @@ def _verify_message(
 
 
 def _load_ed25519_public_key(encoded_key: str) -> Ed25519PublicKey:
-    """Load the key forms already used by Veklom federation services.
-
-    Existing provider configuration uses raw 32-byte hexadecimal keys, while
-    cAPI/Covenant publishes Ed25519 keys as Base64-encoded SPKI DER.  Both
-    identify the same primitive; accepting those explicit formats keeps the
-    signature profile interoperable without downgrading verification.
-    """
+    """Load raw hexadecimal or Base64 SPKI Ed25519 public keys."""
     try:
         return Ed25519PublicKey.from_public_bytes(bytes.fromhex(encoded_key))
     except ValueError:
