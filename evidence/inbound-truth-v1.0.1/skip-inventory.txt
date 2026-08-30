@@ -1,0 +1,22 @@
+SKIPPED [1] tests\test_postgres_integration.py:9: psycopg2 not installed � skipping PostgreSQL integration tests
+SKIPPED [2] tests\capability_mount\test_concurrency_postgres.py:29: row-lock concurrency test requires PostgreSQL DATABASE_URL
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:14: To be implemented: network partition simulation
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:18: To be implemented: kill PGL container during execution
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:22: To be implemented: libfaketime injection
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:26: To be implemented: direct Redis mutation
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:30: To be implemented: delay cache invalidation signal
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:34: To be implemented: concurrent key rotation
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:38: To be implemented: concurrent healer execution
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:42: To be implemented: SIGKILL during connector execution
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:46: To be implemented: DB snapshot rollback
+SKIPPED [1] tests\test_dan_ollama.py:12: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_dan_ollama.py:20: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_dan_ollama.py:28: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_dan_ollama.py:48: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_g0b1_spiffe.py:10: SPIFFE_ENDPOINT_SOCKET not set, skipping live SPIRE test
+SKIPPED [1] tests\test_gpc_router_benchmark.py:13: benchmark fixture not available
+SKIPPED [1] tests\test_rls_isolation.py:39: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:65: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:83: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:120: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:126: RLS adversarial tests require PostgreSQL.

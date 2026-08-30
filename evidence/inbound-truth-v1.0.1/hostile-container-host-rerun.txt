@@ -1,0 +1,12 @@
+......                                                                   [100%]
+============================== warnings summary ===============================
+.venv\Lib\site-packages\websockets\legacy\__init__.py:6
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\.venv\Lib\site-packages\websockets\legacy\__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+.venv\Lib\site-packages\_pytest\cacheprovider.py:469
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\.venv\Lib\site-packages\_pytest\cacheprovider.py:469: PytestCacheWarning: could not create cache path C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\.pytest_cache\v\cache\nodeids: [WinError 5] Access is denied: 'C:\\Users\\antho\\OneDrive\\Desktop\\Documents\\ChatGPT\\veklom\\cappo-truth-v101\\.pytest_cache\\v\\cache'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+6 passed, 2 warnings in 5.69s

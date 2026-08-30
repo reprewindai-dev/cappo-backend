@@ -1,0 +1,8 @@
+72632a2c3b335d79254a8850374bdc9f75c5811604453fa038e7a803d39c1e21  pyproject.toml
+dc21da50eaa502d570c5916baef765d5e783f17cb09346e553b2e4faf768d80e  uv.lock
+d5b81139ef7f0843cd39017de1acee0e7164af695e91537e4b9b1e9691672e22  evidence/inbound-truth-v1.0.1/evidence.json
+0074417de5dae0d4e265c3b997be7ec3817a1aede93eaa6a8395567fd1faff1c  evidence/inbound-truth-v1.0.1/targeted-boundary-matrix.txt
+67fb0d9c37b59ddd4149b0269bffafd269d4b913c24a91d40cda5130da462801  evidence/inbound-truth-v1.0.1/full-suite.txt
+cf603bfc4335b6e49de374abfa149ecd09a9f2f787365ea040ed942bc6b86648  evidence/inbound-truth-v1.0.1/hostile-container-host-rerun.txt
+22639f525bcb83bcffe248af6c2de361bb2dbc35a1e2c0b1a60bba177fade43a  evidence/inbound-truth-v1.0.1/resolved-dependencies.txt
+300f06dc5a5cd3c3d988641c754f682ef01039d2cf91c15d76a2de4af1943f93  evidence/inbound-truth-v1.0.1/skip-inventory.txt

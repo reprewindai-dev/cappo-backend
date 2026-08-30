@@ -1,0 +1,99 @@
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+...........ss........................sssssssss.......................... [ 37%]
+........................................................................ [ 46%]
+...........................................ssss......................... [ 55%]
+........................................................................ [ 65%]
+..........s...........................................................s. [ 74%]
+........................................................................ [ 83%]
+........................................................................ [ 93%]
+.............sssss...................................                    [100%]
+============================== warnings summary ===============================
+.venv\Lib\site-packages\websockets\legacy\__init__.py:6
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\.venv\Lib\site-packages\websockets\legacy\__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests\test_g0b2_spiffe_enforcement.py:31
+tests\test_g0b2_spiffe_enforcement.py:31
+tests\test_g0b2_spiffe_enforcement.py:31
+tests\test_g0b2_spiffe_enforcement.py:31
+tests\test_g0b2_spiffe_enforcement.py:31
+tests\test_g0b2_spiffe_enforcement.py:31
+tests\test_g0b2_spiffe_enforcement.py:31
+tests\test_g0b2_spiffe_enforcement.py:31
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\tests\test_g0b2_spiffe_enforcement.py:31: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    not_before = datetime.datetime.utcnow() - datetime.timedelta(days=2) if expired else datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
+
+tests\test_g0b2_spiffe_enforcement.py:32
+tests\test_g0b2_spiffe_enforcement.py:32
+tests\test_g0b2_spiffe_enforcement.py:32
+tests\test_g0b2_spiffe_enforcement.py:32
+tests\test_g0b2_spiffe_enforcement.py:32
+tests\test_g0b2_spiffe_enforcement.py:32
+tests\test_g0b2_spiffe_enforcement.py:32
+tests\test_g0b2_spiffe_enforcement.py:32
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\tests\test_g0b2_spiffe_enforcement.py:32: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    not_after = datetime.datetime.utcnow() - datetime.timedelta(days=1) if expired else datetime.datetime.utcnow() + datetime.timedelta(days=1)
+
+tests/capability_mount/test_g0a7_clean_node.py::test_g0a7_clean_node_reproducibility
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+tests/integration/test_governance_pipeline.py: 6 warnings
+tests/integration/test_standard_verifier.py: 6 warnings
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\cappo_backend\core\governance\enforcement_engine.py:38: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+
+tests/test_g0b2_spiffe_enforcement.py::test_g0b2_spiffe_enforcement
+tests/test_g0b2_spiffe_enforcement.py::test_g0b2_spiffe_enforcement
+tests/test_g0b2_spiffe_enforcement.py::test_g0b2_spiffe_enforcement
+tests/test_g0b2_spiffe_enforcement.py::test_g0b2_spiffe_enforcement
+tests/test_g0b2_spiffe_enforcement.py::test_g0b2_spiffe_enforcement
+tests/test_g0b2_spiffe_enforcement.py::test_g0b2_spiffe_enforcement
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\cappo_backend\security\spiffe_middleware.py:68: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.datetime.utcnow()
+
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_accepts_hmac_signed_payload
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_rejects_placeholder_signature
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_rejects_missing_verifier_key
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_rejects_payload_tampering_after_signature
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\tests\test_mcp_gateway_approval_tokens.py:25: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": (datetime.utcnow() + timedelta(minutes=5)).timestamp(),
+
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_accepts_hmac_signed_payload
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_rejects_placeholder_signature
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_rejects_missing_verifier_key
+tests/test_mcp_gateway_approval_tokens.py::test_bound_approval_token_rejects_payload_tampering_after_signature
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\cappo_backend\security\mcp_gateway.py:1188: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if datetime.utcnow().timestamp() > expiry:
+
+.venv\Lib\site-packages\_pytest\cacheprovider.py:469
+  C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\.venv\Lib\site-packages\_pytest\cacheprovider.py:469: PytestCacheWarning: could not create cache path C:\Users\antho\OneDrive\Desktop\Documents\ChatGPT\veklom\cappo-truth-v101\.pytest_cache\v\cache\nodeids: [WinError 5] Access is denied: 'C:\\Users\\antho\\OneDrive\\Desktop\\Documents\\ChatGPT\\veklom\\cappo-truth-v101\\.pytest_cache\\v\\cache'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_postgres_integration.py:9: psycopg2 not installed � skipping PostgreSQL integration tests
+SKIPPED [2] tests\capability_mount\test_concurrency_postgres.py:29: row-lock concurrency test requires PostgreSQL DATABASE_URL
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:14: To be implemented: network partition simulation
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:18: To be implemented: kill PGL container during execution
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:22: To be implemented: libfaketime injection
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:26: To be implemented: direct Redis mutation
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:30: To be implemented: delay cache invalidation signal
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:34: To be implemented: concurrent key rotation
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:38: To be implemented: concurrent healer execution
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:42: To be implemented: SIGKILL during connector execution
+SKIPPED [1] tests\chaos\test_chaos_resilience.py:46: To be implemented: DB snapshot rollback
+SKIPPED [1] tests\test_dan_ollama.py:12: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_dan_ollama.py:20: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_dan_ollama.py:28: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_dan_ollama.py:48: dan_router is not wired to the production app in P0
+SKIPPED [1] tests\test_g0b1_spiffe.py:10: SPIFFE_ENDPOINT_SOCKET not set, skipping live SPIRE test
+SKIPPED [1] tests\test_gpc_router_benchmark.py:13: benchmark fixture not available
+SKIPPED [1] tests\test_rls_isolation.py:39: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:65: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:83: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:120: RLS adversarial tests require PostgreSQL.
+SKIPPED [1] tests\test_rls_isolation.py:126: RLS adversarial tests require PostgreSQL.
+751 passed, 23 skipped, 45 warnings in 65.18s (0:01:05)

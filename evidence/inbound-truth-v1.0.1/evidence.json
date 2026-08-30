@@ -1,0 +1,104 @@
+{
+  "schema": "veklom.inbound_truth.seal_evidence.v1",
+  "candidate": "inbound-truth-conformance-v1.0.1",
+  "status": "SEAL_CANDIDATE",
+  "generated_date": "2026-08-30",
+  "lineage": {
+    "superseded_tag": "inbound-truth-conformance-v1",
+    "superseded_tag_commit": "4559f6c1fcdbed23ec14e9bba0dda6290fff0673",
+    "superseded_status": "SUPERSEDED_EVIDENCE",
+    "historical_reported_result": {
+      "passed": 745,
+      "skipped": 23,
+      "failed": 0,
+      "provenance": "reported local execution; not a committed CI artifact"
+    },
+    "falsifier": "InferenceGateway accepted any non-empty receipt signature and allowed CORROBORATED claims.",
+    "tested_source_commit": "c33450d3bd4b47270ceaba05caa39e37d1a08940"
+  },
+  "environment": {
+    "os": "Windows",
+    "python": "3.12.13",
+    "pip": "25.0.1",
+    "venv": ".venv",
+    "venv_command": "C:\\Users\\antho\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe -m venv .venv",
+    "install_command": ".\\.venv\\Scripts\\python.exe -m pip install -e \".[dev]\"",
+    "test_environment_overrides": {
+      "OLLAMA_KEEP_ALIVE": "300"
+    },
+    "reproducibility_events": [
+      {
+        "classification": "TEST_DID_NOT_EXECUTE",
+        "event": "Initial clean-clone pytest import failed because dependencies were not installed."
+      },
+      {
+        "classification": "DEPENDENCY_ENVIRONMENT_INCOMPATIBILITY",
+        "event": "System Python 3.14 could not build biscuit-python 0.4.0 because embedded PyO3 0.24.1 supports at most Python 3.13. The venv was recreated with bundled Python 3.12.13; no compatibility bypass was used."
+      },
+      {
+        "classification": "ENVIRONMENT_CONFIGURATION_MISMATCH",
+        "event": "Machine OLLAMA_KEEP_ALIVE=10m conflicts with CAPPO's integer setting. Verification explicitly used canonical value 300."
+      },
+      {
+        "classification": "SANDBOX_DOCKER_ACCESS_DENIAL",
+        "event": "The sandboxed full suite produced four hostile-container failures because Docker's named pipe was denied. A host-authorized rerun passed 6/6, and the authoritative host-capable full run passed."
+      }
+    ]
+  },
+  "dependency_state": {
+    "declared": [
+      {
+        "path": "pyproject.toml",
+        "sha256": "72632a2c3b335d79254a8850374bdc9f75c5811604453fa038e7a803d39c1e21"
+      },
+      {
+        "path": "uv.lock",
+        "sha256": "dc21da50eaa502d570c5916baef765d5e783f17cb09346e553b2e4faf768d80e"
+      }
+    ],
+    "resolved": {
+      "path": "evidence/inbound-truth-v1.0.1/resolved-dependencies.txt",
+      "sha256": "22639f525bcb83bcffe248af6c2de361bb2dbc35a1e2c0b1a60bba177fade43a"
+    }
+  },
+  "gates": {
+    "forged_nonempty_signature": "REJECT",
+    "model_invocations_after_forgery": 0,
+    "valid_signed_admissible_receipt": "ACCEPT",
+    "mutated_claim_after_signing": "REJECT",
+    "model_invocations_after_mutation": 0,
+    "corroborated_only_context": "REJECT",
+    "tenant_mismatch": "REJECT",
+    "workspace_mismatch": "REJECT",
+    "policy_digest_mismatch": "REJECT",
+    "policy_version_mismatch": "REJECT",
+    "targeted_matrix": {
+      "passed": 21,
+      "failed": 0
+    },
+    "full_suite": {
+      "passed": 751,
+      "skipped": 23,
+      "failed": 0,
+      "warnings": 45
+    }
+  },
+  "artifacts": [
+    {
+      "path": "evidence/inbound-truth-v1.0.1/targeted-boundary-matrix.txt",
+      "sha256": "0074417de5dae0d4e265c3b997be7ec3817a1aede93eaa6a8395567fd1faff1c"
+    },
+    {
+      "path": "evidence/inbound-truth-v1.0.1/full-suite.txt",
+      "sha256": "67fb0d9c37b59ddd4149b0269bffafd269d4b913c24a91d40cda5130da462801"
+    },
+    {
+      "path": "evidence/inbound-truth-v1.0.1/hostile-container-host-rerun.txt",
+      "sha256": "cf603bfc4335b6e49de374abfa149ecd09a9f2f787365ea040ed942bc6b86648"
+    },
+    {
+      "path": "evidence/inbound-truth-v1.0.1/skip-inventory.txt",
+      "sha256": "300f06dc5a5cd3c3d988641c754f682ef01039d2cf91c15d76a2de4af1943f93"
+    }
+  ]
+}
