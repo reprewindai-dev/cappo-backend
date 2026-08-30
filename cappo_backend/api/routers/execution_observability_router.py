@@ -20,7 +20,8 @@ from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.models.vnp_models import APIState, ProbeEvent
 from cappo_backend.services.canonical import sha256_json
-from cappo_backend.services.eee import EEEBuilder, EEEVerifier, VerificationVerdict
+from cappo_backend.services.capability_beacon import verification_keys
+from cappo_backend.services.eee import EEEVerifier, VerificationVerdict
 
 router = APIRouter(prefix="/v1")
 
@@ -55,13 +56,8 @@ def _require_run(execution_id: str, request: Request, db: Session, error: str) -
 
 
 def _eee_verifier(settings: Settings) -> EEEVerifier:
-    """Verify the currently configured CAPPO evidence signing identity."""
-    builder = EEEBuilder(
-        signing_key=settings.ei_signing_key,
-        issuer=settings.capability_beacon_issuer,
-        kid=settings.capability_beacon_kid,
-    )
-    return EEEVerifier({settings.capability_beacon_kid: builder.public_key_bytes})
+    """Verify against the full configured keyset so old evidence survives rotation."""
+    return EEEVerifier(verification_keys(settings))
 
 
 def _execution_probe_aggregates(probes: list[ProbeEvent]) -> list[dict[str, Any]]:
@@ -137,7 +133,10 @@ def get_execution_evidence(
         VerificationVerdict.INVALID: "failed",
         VerificationVerdict.UNSUPPORTED_VERSION: "unknown",
     }[report.verdict]
-    if report.verdict in {VerificationVerdict.INVALID, VerificationVerdict.UNSUPPORTED_VERSION}:
+    if report.verdict in {
+        VerificationVerdict.INVALID,
+        VerificationVerdict.UNSUPPORTED_VERSION,
+    }:
         raise HTTPException(
             status_code=409,
             detail={
