@@ -51,7 +51,7 @@ LOG_FILE = Path("agent_041_activity.jsonl")
 OUTPUT_DIR = Path("generated_posts")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-DEVTO_API_KEY = os.environ.get("DEVTO_API_KEY", "")
+# DEVTO_API_KEY removed to enforce LAW 1 (ambient credentials)
 openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 # Topics to rotate through — each generates one post
@@ -152,10 +152,8 @@ def generate_blog_post(topic: dict) -> str:
 
 # ── Publishing ────────────────────────────────────────────────────────────────
 def publish_to_devto(topic: dict, content: str, dry_run: bool = False) -> str | None:
-    if not DEVTO_API_KEY:
-        print("[SKIP] No DEVTO_API_KEY set — skipping dev.to publish")
-        return None
-
+    # LAW 1: Agents must not hold ambient credentials to act directly on external systems.
+    # Instead, we formulate a CAPPO intent payload.
     payload = {
         "article": {
             "title": topic["title"],
@@ -166,22 +164,25 @@ def publish_to_devto(topic: dict, content: str, dry_run: bool = False) -> str | 
         }
     }
 
+    intent = {
+        "agent_id": "041",
+        "intent_type": "publish_article",
+        "sink_class": "EXTERNAL_PLATFORM_DEVTO",
+        "payload": payload
+    }
+
     if dry_run:
-        print(f"[DRY RUN] Would publish to dev.to: {topic['title']}")
+        print(f"[DRY RUN] Would formulate intent for dev.to: {topic['title']}")
         return "dry-run"
 
-    response = requests.post(
-        "https://dev.to/api/articles",
-        headers={"api-key": DEVTO_API_KEY, "Content-Type": "application/json"},
-        json=payload,
-        timeout=30,
-    )
-
-    if response.status_code in (200, 201):
-        data = response.json()
-        url = data.get("url", "unknown")
-        log_activity("PUBLISHED_DEVTO", {"title": topic["title"], "url": url, "tags": topic["tags"]})
-        return url
+    # Submit intent to CAPPO gateway instead of calling the API directly
+    print(f"[INTENT LOG] Formulated DEVTO publish intent for CAPPO authorization:\n{json.dumps(intent, indent=2)}")
+    
+    # In a full deployment, this is where the agent hits the CAPPO proxy.
+    # CAPPO then authorizes, executes via a Connector, and records to PGL.
+    # We return a simulated tracking ID.
+    log_activity("FORMULATED_INTENT", {"title": topic["title"], "sink": "EXTERNAL_PLATFORM_DEVTO"})
+    return f"cappo-intent-{topic['title'][:10].replace(' ','-')}"
     else:
         log_activity("ERROR", {"title": topic["title"], "message": f"dev.to API error: {response.status_code} {response.text[:200]}"})
         return None
@@ -230,3 +231,4 @@ if __name__ == "__main__":
         time.sleep(5)
 
     print("\n=== Agent 041 complete ===")
+
