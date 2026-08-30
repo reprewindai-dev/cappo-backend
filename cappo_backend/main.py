@@ -5,7 +5,9 @@ Middleware stack order, outermost → innermost:
     2. CORS
     3. Amphoteric sensing
     4. Auth
-    5. Ollama lifecycle policy signal
+    5. Consequence replay prerequisite
+    6. SPIFFE/SVID enforcement
+    7. Ollama lifecycle policy signal
 
 Budget / kill-switch and EI / LAW 0 remain enforced inside the governed
 execution pipeline. There is no public bypass for ``/v1/exec``.
@@ -54,6 +56,9 @@ from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
+from cappo_backend.security.consequence_replay_prerequisite import (
+    ConsequenceReplayPrerequisiteMiddleware,
+)
 from cappo_backend.security.spiffe_middleware import SVIDEnforcementMiddleware
 
 
@@ -123,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(OllamaBleedSanitizerMiddleware)
     app.add_middleware(SVIDEnforcementMiddleware, settings=settings)
+    app.add_middleware(ConsequenceReplayPrerequisiteMiddleware, settings=settings)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(AmphotericSensingMiddleware)
     app.add_middleware(
