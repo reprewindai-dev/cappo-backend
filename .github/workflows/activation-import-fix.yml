@@ -1,0 +1,66 @@
+name: Activation one-shot import repair
+
+on:
+  push:
+    branches: [activation-e2e-authority-binding]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[auto-import-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: activation-e2e-authority-binding
+          fetch-depth: 0
+
+      - name: Apply exact missing-import repairs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path('cappo_backend/security/mcp_gateway.py'): [
+                  ('import os\n', 'import os\nimport time\nimport uuid\n'),
+              ],
+              Path('cappo_backend/services/payment_gate.py'): [
+                  ('from datetime import datetime, timezone\n', 'from datetime import datetime, timezone\nfrom typing import Any\n'),
+              ],
+              Path('cappo_backend/services/providers.py'): [
+                  ('if TYPE_CHECKING:\n    from cappo_backend.config import Settings\n', 'if TYPE_CHECKING:\n    from sqlalchemy.orm import Session\n\n    from cappo_backend.config import Settings\n'),
+              ],
+          }
+
+          for path, edits in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              original = text
+              for old, new in edits:
+                  if new in text:
+                      continue
+                  if old not in text:
+                      raise SystemExit(f'expected anchor missing in {path}: {old!r}')
+                  text = text.replace(old, new, 1)
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify repaired names
+        run: |
+          python -m compileall -q cappo_backend
+          pip install ruff
+          ruff check cappo_backend --select E9,F63,F7,F82
+
+      - name: Commit repair to branch
+        run: |
+          if git diff --quiet; then
+            echo 'No import repair required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cappo_backend/security/mcp_gateway.py cappo_backend/services/payment_gate.py cappo_backend/services/providers.py
+          git commit -m 'fix: repair runtime imports [auto-import-fix]'
+          git push origin HEAD:activation-e2e-authority-binding
