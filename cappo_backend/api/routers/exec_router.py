@@ -1,42 +1,31 @@
-"""Governed /v1/exec route (Option A — routes through orchestrator).
-
-Migration note §5 / EI Plan §/v1/exec migration: replaces the old ungoverned
-``POST /v1/exec`` with a single governed entry path that inherits governance,
-PGL, EI minting, execution, and attestation from the orchestrator. Preserves
-the ``ExecResponse`` contract (response/model/provider/tokens/latency/log_id/conversation_id).
-
-There is deliberately no alternate execution path; the old public-allowlist
-bypass is gone.
-"""
+"""Governed /v1/exec route — the sole public consequence boundary."""
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import time
 from typing import Any
 
-import json
-import base64
-import hashlib
-from fastapi.responses import JSONResponse
-from cappo_backend.identity.validator import IdentityValidator
-from cappo_backend.identity.middleware import WIDMiddlewareContext, RouteClassification
-from cappo_backend.identity.replay_cache import RedisReplayCache, ReplayCache
-from cappo_backend.identity.errors import IdentityValidationError
-from cappo_backend.authorization.errors import CappoAuthorizationError
-from cappo_backend.authorization.cappo_auth import CappoPreauthorizationEnforcer
-from cappo_backend.identity.models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
-
-
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from cappo_backend.api.routers.capability_mount_router import get_registry
+from cappo_backend.authorization.cappo_auth import CappoPreauthorizationEnforcer
+from cappo_backend.authorization.errors import CappoAuthorizationError
+from cappo_backend.capability_mount.models import Decision
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
-from cappo_backend.security.http_signatures import (
-    SignatureVerificationError,
-    verify_rfc9421_request,
-)
+from cappo_backend.identity.errors import IdentityValidationError
+from cappo_backend.identity.middleware import RouteClassification, WIDMiddlewareContext
+from cappo_backend.identity.models import AuthorityArtifact, ExecutionContextToken, WorkloadIdentityToken, WorkloadProofToken
+from cappo_backend.identity.replay_cache import RedisReplayCache, ReplayCache
+from cappo_backend.identity.validator import IdentityValidator
+from cappo_backend.security.http_signatures import SignatureVerificationError, verify_rfc9421_request
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.eee import EEEBuilder, build_terminal_eee
@@ -63,12 +52,27 @@ from cappo_backend.services.revocation_service import RevocationService
 router = APIRouter(prefix="/v1")
 
 
-# ---------- request/response shapes ----------
+class CapabilityLeaseRef(BaseModel):
+    """Proof-of-possession handle for an already persisted CAPPO mount.
+
+    The field is excluded from the legacy semantic cAPI payload because cAPI
+    provides request integrity, not authority. The exact raw request including
+    this object is still bound by RFC 9421 and the lease is independently
+    verified/consumed by CAPPO before provider dispatch.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mount_id: str = Field(min_length=1)
+    token_id: str = Field(min_length=1)
+    nonce: str = Field(min_length=1)
+    execution_id: str = Field(min_length=1)
+
 
 class ExecRequest(BaseModel):
     prompt: str
-    agent_id: str | None = None  # Veklom agent ID (e.g., "agent_alpha")
-    pgl_id: str | None = None    # User's PGL identity
+    agent_id: str | None = None
+    pgl_id: str | None = None
     workspace_id: str = "default"
     tenant_id: str = "default"
     delegation_depth: int = 0
@@ -83,7 +87,7 @@ class ExecRequest(BaseModel):
     risk_tier: str | None = None
     security: dict[str, Any] | None = None
     execution_mode: str = "live"
-
+    capability_lease: CapabilityLeaseRef | None = Field(default=None, exclude=True)
 
 
 class ExecResponse(BaseModel):
@@ -97,12 +101,17 @@ class ExecResponse(BaseModel):
     log_id: str | None = None
     run_id: str | None = None
     execution_id: str | None = None
+    capability_lease: dict[str, Any] | None = None
     links: dict[str, Any] | None = None
 
 
-# ---------- route ----------
-
-def _check_payment(db: Session, workspace_id: str, cost_cents: int, settings: Settings, app: Any = None) -> PaymentGate:
+def _check_payment(
+    db: Session,
+    workspace_id: str,
+    cost_cents: int,
+    settings: Settings,
+    app: Any = None,
+) -> PaymentGate:
     redis_client = getattr(app.state, "redis_client", None) if app and hasattr(app, "state") else None
     gate = PaymentGate(db, redis_client=redis_client, settings=settings)
     try:
@@ -114,13 +123,19 @@ def _check_payment(db: Session, workspace_id: str, cost_cents: int, settings: Se
         )
     return gate
 
-def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, workspace_id: str, app: Any = None) -> RunOrchestrator:
+
+def _build_orchestrator(
+    db: Session,
+    settings: Settings,
+    audit: AuditService,
+    workspace_id: str,
+    app: Any = None,
+) -> RunOrchestrator:
     pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
     signer = create_enterprise_signer_from_settings(settings)
     builder = ExecutionIdentityBuilder(signer=signer)
     executor = build_executor(settings, db=db, workspace_id=workspace_id, app=app)
     revocation = RevocationService(db, audit)
-    # The gateway enforces LAW 0 *inside* the pipeline, before the side effect.
     gateway = MCPGateway(
         audit,
         pgl_lookup=pgl.get_certificate,
@@ -130,6 +145,7 @@ def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, wo
     from cappo_backend.adapters.local import SQLiteGraphAdapter, SQLiteStoreAdapter
     from cappo_backend.api.routers.genome_router import _global_cache, _global_queue
     from cappo_backend.services.genome_service import GenomeService
+
     genome_service = GenomeService(
         store=SQLiteStoreAdapter(db),
         graph=SQLiteGraphAdapter(db),
@@ -148,11 +164,12 @@ def _build_orchestrator(db: Session, settings: Settings, audit: AuditService, wo
         runtime_instance=settings.runtime_instance,
     )
 
+
 def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Session) -> dict[str, Any]:
     try:
         return orchestrator.run_governed(payload)
     except EIValidationError as exc:
-        db.commit()  # persist the FAILED run + law0_violation audit event
+        db.commit()
         raise HTTPException(
             status_code=403,
             detail={
@@ -164,7 +181,7 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
             },
         )
     except MissingGovernanceDecisionError as exc:
-        db.commit()  # persist the FAILED run + audit event
+        db.commit()
         raise HTTPException(
             status_code=400,
             detail={
@@ -174,7 +191,7 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
             },
         )
     except GovernanceDeniedError as exc:
-        db.commit()  # persist the FAILED run + audit event
+        db.commit()
         raise HTTPException(
             status_code=403,
             detail={
@@ -239,11 +256,10 @@ def _execute_run(orchestrator: RunOrchestrator, payload: dict[str, Any], db: Ses
             },
         )
 
+
 def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -> str:
-    """Return the configured cAPI verification key or fail closed when needed."""
     public_key = settings.capi_gatekeeper_public_key.strip()
     has_security = body.security is not None
-
     if not has_security:
         if not settings.capi_external_validation_enabled and not settings.is_production:
             return ""
@@ -254,7 +270,6 @@ def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -
                 "detail": "/v1/exec requests must include a signed security envelope.",
             },
         )
-
     if not public_key:
         raise HTTPException(
             status_code=503,
@@ -263,18 +278,10 @@ def _resolve_capi_gatekeeper_public_key(settings: Settings, body: ExecRequest) -
                 "detail": "cAPI Gatekeeper requires CAPI_GATEKEEPER_PUBLIC_KEY to be configured.",
             },
         )
-
     return public_key
 
 
 async def _verify_exec_request_integrity(request: Request, public_key: str) -> None:
-    """Fail closed before authority if the signed /v1/exec message was altered.
-
-    RFC 9421 establishes the authenticity and integrity of the transmitted
-    request.  It deliberately does not produce, replace, or widen a CAPPO
-    authority decision.  ``Request.body()`` is cached by Starlette, so this
-    verification uses the same bytes FastAPI parsed into ``ExecRequest``.
-    """
     try:
         verify_rfc9421_request(
             method=request.method,
@@ -282,6 +289,14 @@ async def _verify_exec_request_integrity(request: Request, public_key: str) -> N
             headers=request.headers,
             body=await request.body(),
             public_key_hex=public_key,
+            required_header_components={
+                "workload-identity",
+                "execution-context",
+                "workload-proof",
+                "veklom-authority",
+                "x-veklom-actor",
+                "x-veklom-nonce",
+            },
         )
     except SignatureVerificationError as exc:
         raise HTTPException(
@@ -295,16 +310,14 @@ async def _verify_exec_request_integrity(request: Request, public_key: str) -> N
 
 
 def _build_capi_payload(body: ExecRequest) -> dict[str, Any]:
-    """Build the signed cAPI intent without recursively hashing its signature."""
     return {
         "action": body.action or "execute",
-        "data": body.model_dump(exclude={"security"}),
+        "data": body.model_dump(exclude={"security", "capability_lease"}),
         "security": body.security,
     }
 
 
 def _eee_builder(settings: Settings) -> EEEBuilder:
-    """Use CAPPO's published beacon signing identity for EEE records."""
     return EEEBuilder(
         signing_key=settings.ei_signing_key,
         issuer=settings.capability_beacon_issuer,
@@ -320,12 +333,6 @@ async def _seal_terminal_eee(
     capi_evidence: dict[str, Any],
     builder: EEEBuilder,
 ) -> dict[str, Any]:
-    """Bind a terminal CAPPO run to one signed EEE and the existing PGL seal.
-
-    This is evidence persistence only. It receives a completed or denied run
-    from the sole governed execution path and cannot make an authorization,
-    select a provider, or trigger execution.
-    """
     from cappo_backend.core.capi_pipeline import seal_evidence_pack
 
     envelope = build_terminal_eee(run, result=result, builder=builder)
@@ -339,6 +346,77 @@ async def _seal_terminal_eee(
     orchestrator.record_evidence_seal(run, seal)
     return envelope
 
+
+def _resolve_capability_lease(
+    *,
+    body: ExecRequest,
+    request: Request,
+    db: Session,
+    workspace_id: str,
+):
+    lease_ref = body.capability_lease
+    if lease_ref is None:
+        return None
+    principal = request.scope.get("auth_principal")
+    if not isinstance(principal, str) or not principal:
+        raise HTTPException(status_code=401, detail={"error": "AUTHENTICATION_REQUIRED"})
+
+    registry = get_registry(request, db)
+    record, state = registry.status(
+        lease_ref.mount_id,
+        owner_principal=principal,
+        owner_workspace=workspace_id,
+    )
+    if record is None or state != "mounted":
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "CAPABILITY_LEASE_NOT_ACTIVE", "detail": state},
+        )
+    if record.token.scope.workspace != workspace_id or record.mount.scope.workspace != workspace_id:
+        raise HTTPException(status_code=403, detail={"error": "WORKSPACE_SCOPE_MISMATCH"})
+    if not hmac.compare_digest(record.token.token_id, lease_ref.token_id):
+        raise HTTPException(status_code=403, detail={"error": "CAPABILITY_PROOF_INVALID"})
+    if not hmac.compare_digest(record.token.nonce, lease_ref.nonce):
+        raise HTTPException(status_code=403, detail={"error": "CAPABILITY_PROOF_INVALID"})
+    if not hmac.compare_digest(record.token.execution_id, lease_ref.execution_id):
+        raise HTTPException(status_code=403, detail={"error": "CAPABILITY_EXECUTION_ID_MISMATCH"})
+    if not record.token.biscuit_token:
+        raise HTTPException(status_code=403, detail={"error": "CRYPTOGRAPHIC_AUTHORITY_REQUIRED"})
+
+    action = body.action or "execute"
+    allowed = set(record.token.grants.reads + record.token.grants.writes + record.token.grants.external_send)
+    if action not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "CAPABILITY_ACTION_OUT_OF_SCOPE", "action": action},
+        )
+    return registry, record, principal
+
+
+def _bind_orchestrator_execution_id(
+    orchestrator: RunOrchestrator,
+    execution_id: str,
+    db: Session,
+) -> None:
+    """Make the persisted mount execution id the run/EI id before governance.
+
+    RunOrchestrator allocates and flushes a UUID in create_run. No downstream
+    evidence exists at that point, so changing the new row's identifier and
+    flushing it immediately keeps one semantic execution identity across the
+    lease, PGL certificate, EI and response without accepting a caller-selected
+    run id.
+    """
+    original_create_run = orchestrator.create_run
+
+    def create_bound_run(payload: dict[str, Any]):
+        run = original_create_run(payload)
+        run.run_id = execution_id
+        db.flush()
+        return run
+
+    orchestrator.create_run = create_bound_run  # type: ignore[method-assign]
+
+
 @router.post("/exec", response_model=ExecResponse)
 async def governed_exec(
     body: ExecRequest,
@@ -346,31 +424,29 @@ async def governed_exec(
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> ExecResponse:
-    """Single governed execution entry path (Option A)."""
     start = time.monotonic()
     audit = AuditService(db)
+    test_only_echo = settings.environment.lower() == "test" and settings.executor_mode == "echo"
 
-    test_only_echo = settings.environment.lower() == 'test' and settings.executor_mode == 'echo'
-    # RTV-1 WID Enforcement
     if not test_only_echo:
         raw_body = await request.body()
         body_hash = hashlib.sha256(raw_body).hexdigest()
-        
-        def _get_b64_json(headers: dict, key: str) -> dict | None:
+
+        def _get_b64_json(headers: Any, key: str) -> dict | None:
             val = headers.get(key)
             if not val:
                 return None
             try:
-                return json.loads(base64.b64decode(val).decode('utf-8'))
+                return json.loads(base64.b64decode(val).decode("utf-8"))
             except Exception:
                 return None
-                
-        wit_payload = _get_b64_json(request.headers, 'Workload-Identity')
-        ect_payload = _get_b64_json(request.headers, 'Execution-Context')
-        wpt_payload = _get_b64_json(request.headers, 'Workload-Proof')
-        authority_payload = _get_b64_json(request.headers, 'Veklom-Authority')
 
-    if hasattr(request.app.state, 'redis_client') and request.app.state.redis_client:
+        wit_payload = _get_b64_json(request.headers, "Workload-Identity")
+        ect_payload = _get_b64_json(request.headers, "Execution-Context")
+        wpt_payload = _get_b64_json(request.headers, "Workload-Proof")
+        authority_payload = _get_b64_json(request.headers, "Veklom-Authority")
+
+    if hasattr(request.app.state, "redis_client") and request.app.state.redis_client:
         replay_cache = RedisReplayCache(request.app.state.redis_client)
     else:
         class MockReplayCache(ReplayCache):
@@ -379,44 +455,38 @@ async def governed_exec(
         replay_cache = MockReplayCache()
 
     if not test_only_echo:
-        wid_validator = IdentityValidator('https://cappo.veklom.com', replay_cache)
+        wid_validator = IdentityValidator("https://cappo.veklom.com", replay_cache)
         wid_middleware = WIDMiddlewareContext(RouteClassification.CONSEQUENCE, wid_validator)
-        
         try:
             wid_middleware.enforce(
-                route='/v1/exec',
+                route="/v1/exec",
                 method=request.method,
-                trace_id=request.headers.get('x-request-id', 'unknown'),
+                trace_id=request.headers.get("x-request-id", "unknown"),
                 htu=request.url.path,
                 body_hash=body_hash,
                 wit_payload=wit_payload,
                 ect_payload=ect_payload,
                 wpt_payload=wpt_payload,
-                authority_payload=authority_payload
+                authority_payload=authority_payload,
             )
-            
             if authority_payload:
                 enforcer = CappoPreauthorizationEnforcer(replay_cache)
                 wit = WorkloadIdentityToken(**wit_payload) if wit_payload else None
                 ect = ExecutionContextToken(**ect_payload) if ect_payload else None
                 wpt = WorkloadProofToken(**wpt_payload) if wpt_payload else None
-                
                 auth_kwargs = dict(authority_payload)
-                if '_mock_hash' in auth_kwargs:
-                    del auth_kwargs['_mock_hash']
+                auth_kwargs.pop("_mock_hash", None)
                 auth = AuthorityArtifact(**auth_kwargs)
-                
                 expected_auth_hash = hashlib.sha256(json.dumps(authority_payload, sort_keys=True).encode()).hexdigest()
-                expected_ect_hash = hashlib.sha256(json.dumps(ect_payload, sort_keys=True).encode()).hexdigest() if ect_payload else ''
-                expected_wit_hash = hashlib.sha256(json.dumps(wit_payload, sort_keys=True).encode()).hexdigest() if wit_payload else ''
-                
+                expected_ect_hash = hashlib.sha256(json.dumps(ect_payload, sort_keys=True).encode()).hexdigest() if ect_payload else ""
+                expected_wit_hash = hashlib.sha256(json.dumps(wit_payload, sort_keys=True).encode()).hexdigest() if wit_payload else ""
                 enforcer.authorize_consequence(
-                    route='/v1/exec',
+                    route="/v1/exec",
                     method=request.method,
-                    trace_id=request.headers.get('x-request-id', 'unknown'),
-                    request_target_hash='target_hash',
+                    trace_id=request.headers.get("x-request-id", "unknown"),
+                    request_target_hash="target_hash",
                     request_body_hash=body_hash,
-                    requested_right=body.action or 'execute',
+                    requested_right=body.action or "execute",
                     wit=wit,
                     ect=ect,
                     wpt=wpt,
@@ -427,77 +497,104 @@ async def governed_exec(
                     expected_ect_hash=expected_ect_hash,
                     expected_wit_hash=expected_wit_hash,
                     expected_scope_hash=auth.scope_hash,
-                    expected_policy_decision_hash=auth.policy_decision_hash
+                    expected_policy_decision_hash=auth.policy_decision_hash,
                 )
-                
-        except IdentityValidationError as e:
-            return JSONResponse(status_code=403, content=e.to_evidence())
-        except CappoAuthorizationError as e:
-            return JSONResponse(status_code=403, content=e.to_evidence())
+        except IdentityValidationError as exc:
+            return JSONResponse(status_code=403, content=exc.to_evidence())
+        except CappoAuthorizationError as exc:
+            return JSONResponse(status_code=403, content=exc.to_evidence())
 
-
-    # cAPI PHASE 1: Gatekeeper Enforcement
     from cappo_backend.core.capi_pipeline import enforce_capi_pipeline
-    test_only_echo = settings.environment.lower() == "test" and settings.executor_mode == "echo"
-    capi_public_key = "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
 
-    # RFC 9421 request verification precedes all identity, payment, routing,
-    # and semantic-authority work. A valid signature is only an integrity
-    # assertion; the CAPPO pipeline below remains the consequence authority.
+    capi_public_key = "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
     if not test_only_echo:
         await _verify_exec_request_integrity(request, capi_public_key)
-    
-    # We construct the payload expected by cAPI
+
     capi_payload = _build_capi_payload(body)
-    
-    # Run the strict cAPI pipeline (Phases 1-6)
     if test_only_echo:
         capi_result = {"evidence_id": "test-only"}
     else:
         try:
             capi_result = await enforce_capi_pipeline(body.pgl_id or "unknown", capi_payload, capi_public_key)
-        except Exception as e:
-            # If security fails, we don't even reach orchestration
-            raise HTTPException(status_code=401, detail=f"cAPI Gatekeeper Reject: {str(e)}")
+        except Exception as exc:
+            raise HTTPException(status_code=401, detail=f"cAPI Gatekeeper Reject: {str(exc)}")
 
-    # P0-1: Canonical workspace is established from the authenticated scope only.
-    # body.workspace_id is an optional hint; it may never choose or override authority.
     canonical_workspace = request.scope.get("auth_workspace")
     if not canonical_workspace:
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "WORKSPACE_CONTEXT_MISSING",
-                "detail": (
-                    "No authenticated workspace context. The credential must resolve "
-                    "to a workspace before execution begins."
-                ),
+                "detail": "No authenticated workspace context. The credential must resolve to a workspace before execution begins.",
             },
         )
-
-    # If the caller supplied workspace_id in the body, it must agree with the
-    # authenticated canonical workspace. It may never override it.
-    body_workspace = getattr(body, "workspace_id", None)
+    body_workspace = body.workspace_id
     if body_workspace and body_workspace != "default" and body_workspace != canonical_workspace:
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "WORKSPACE_MISMATCH",
-                "detail": (
-                    "Request body workspace_id does not match the authenticated workspace. "
-                    "The credential determines workspace; callers may not override it."
-                ),
+                "detail": "Request body workspace_id does not match the authenticated workspace.",
             },
         )
 
-    gate = _check_payment(db, canonical_workspace, body.action_cost_cents, settings, request.app)
-    orchestrator = _build_orchestrator(db, settings, audit, workspace_id=canonical_workspace, app=request.app)
+    lease_context = _resolve_capability_lease(
+        body=body,
+        request=request,
+        db=db,
+        workspace_id=str(canonical_workspace),
+    )
+    gate = _check_payment(db, str(canonical_workspace), body.action_cost_cents, settings, request.app)
+    orchestrator = _build_orchestrator(
+        db,
+        settings,
+        audit,
+        workspace_id=str(canonical_workspace),
+        app=request.app,
+    )
+    lease_receipt_id: str | None = None
+    lease_ref = body.capability_lease
+
     try:
-        payload = body.model_dump()
+        payload = body.model_dump(exclude={"capability_lease"})
         payload["workspace_id"] = canonical_workspace
+        if lease_context is not None and lease_ref is not None:
+            registry, record, principal = lease_context
+            decision, reason, _anchor, detail = registry.evaluate(
+                lease_ref.mount_id,
+                body.action or "execute",
+                token_id=lease_ref.token_id,
+                nonce=lease_ref.nonce,
+                owner_principal=principal,
+                owner_workspace=str(canonical_workspace),
+            )
+            if decision is not Decision.ALLOW:
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "CAPABILITY_LEASE_DENIED", "reason": reason},
+                )
+            lease_receipt_id = (detail or {}).get("receipt_id")
+            if not lease_receipt_id:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"error": "CAPABILITY_RECEIPT_MISSING", "fail_closed": True},
+                )
+
+            # The browser cannot self-declare governance. The just-completed
+            # CAPPO lease decision becomes the internal directive and scope.
+            payload["directive"] = "ALLOW"
+            payload["scope"] = {
+                "tools": [body.action or "execute"],
+                "allowed_effects": [body.action or "execute"],
+            }
+            payload["capability_mount_id"] = lease_ref.mount_id
+            payload["capability_receipt_id"] = lease_receipt_id
+            payload["capability_execution_id"] = record.token.execution_id
+            _bind_orchestrator_execution_id(orchestrator, record.token.execution_id, db)
+
         result = _execute_run(orchestrator, payload, db)
         if result and "tokens" in result and isinstance(result["tokens"], int):
-            gate.record_tokens(canonical_workspace, result["tokens"])
+            gate.record_tokens(str(canonical_workspace), result["tokens"])
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         run = orchestrator.last_run
@@ -546,6 +643,7 @@ async def governed_exec(
         )
     db.commit()
 
+    execution_id = (run.execution_identity or {}).get("execution_id") if run else None
     elapsed_ms = (time.monotonic() - start) * 1000
     return ExecResponse(
         response=result.get("response", ""),
@@ -556,10 +654,21 @@ async def governed_exec(
         cached=result.get("cached"),
         cache_tier=result.get("cache_tier"),
         run_id=run.run_id if run else None,
-        execution_id=(run.execution_identity or {}).get("execution_id") if run else None,
+        execution_id=execution_id,
+        capability_lease=(
+            {
+                "mount_id": lease_ref.mount_id,
+                "execution_id": lease_ref.execution_id,
+                "receipt_id": lease_receipt_id,
+                "decision": "allow",
+                "nonce_consumed": True,
+            }
+            if lease_ref is not None and lease_receipt_id
+            else None
+        ),
         links={
             "audit": {"href": f"/api/v1/gpc/audit/{run.run_id if run else 'unknown'}", "method": "GET"},
-            "stake": {"href": "/api/v1/vnp/stake", "method": "POST"},
-            "evidence": {"href": "/api/v1/evidence/verify", "method": "POST"}
-        }
+            "evidence": {"href": f"/v1/executions/{execution_id or 'unknown'}/evidence", "method": "GET"},
+            "measurements": {"href": f"/v1/executions/{execution_id or 'unknown'}/measurements", "method": "GET"},
+        },
     )
