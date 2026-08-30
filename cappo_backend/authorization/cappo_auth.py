@@ -1,7 +1,33 @@
 import time
 from typing import Optional
-from .errors import *
-from cappo_backend.identity.models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
+
+from cappo_backend.identity.models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
+
+from .errors import (
+    ApiKeyOnlyDeniedError,
+    AuthorityEiMismatchError,
+    AuthorityExpiredError,
+    AuthorityHashMismatchError,
+    CandidateActMismatchError,
+    ClaimedRoleDeniedError,
+    DestinationHashMismatchError,
+    MissingEphemeralExecutionIdError,
+    OperatorAssertionDeniedError,
+    PolicyDecisionHashMismatchError,
+    ProfileOnlyDeniedError,
+    ReplayDeniedError,
+    RightNotGrantedError,
+    ScopeHashMismatchError,
+    SourceIpOnlyDeniedError,
+    StaticServiceDeniedError,
+    TenantIdOnlyDeniedError,
+    WorkloadIdentifierOnlyDeniedError,
+)
 
 
 class CappoPreauthorizationEnforcer:
@@ -90,8 +116,9 @@ class CappoPreauthorizationEnforcer:
         if authority.expires_at < int(time.time()):
             raise AuthorityExpiredError(**base_kwargs)
 
-        # WIDMiddlewareContext already consumes the request-level WPT JTI on the
-        # canonical HTTP path. Standalone callers retain the replay check here.
+        # CONSEQUENCE routes defer request-proof consumption to this complete
+        # preauthorization step. Standalone callers retain the same check. Only
+        # a caller that already consumed this exact JTI may opt out explicitly.
         if not replay_already_checked:
             if not self.replay_cache.check_and_store(
                 wpt.jti,
@@ -102,5 +129,7 @@ class CappoPreauthorizationEnforcer:
         if requested_right not in authority.rights:
             raise RightNotGrantedError(**base_kwargs)
         if authority.inbound_truth_state != authority.required_truth_state:
-            raise Exception("InboundTruthRequirementFailed: Context certification state is below required policy.")
+            raise RuntimeError(
+                "InboundTruthRequirementFailed: context certification state is below required policy"
+            )
         return True
