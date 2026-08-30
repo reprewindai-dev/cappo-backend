@@ -1,4 +1,5 @@
 import os
+from collections.abc import Mapping
 
 import cbor2
 from cryptography.exceptions import InvalidSignature
@@ -88,7 +89,7 @@ def verify_signed_execution_evidence(
     protected_header, unprotected_header, payload, signature = decoded_tag.value
     if not isinstance(protected_header, bytes):
         raise ValueError("COSE protected header must be a byte string")
-    if not isinstance(unprotected_header, dict):
+    if not isinstance(unprotected_header, Mapping):
         raise ValueError("COSE unprotected header must be a map")
     if not isinstance(payload, bytes):
         raise ValueError("COSE payload must be a byte string")
@@ -99,7 +100,7 @@ def verify_signed_execution_evidence(
         protected = cbor2.loads(protected_header)
     except Exception as exc:
         raise ValueError(f"Failed to parse COSE protected header: {exc}") from exc
-    if not isinstance(protected, dict) or protected.get(1) != COSE_ALG_EDDSA:
+    if not isinstance(protected, Mapping) or protected.get(1) != COSE_ALG_EDDSA:
         raise ValueError("COSE protected header must declare EdDSA")
     if expected_key_id is not None and unprotected_header.get(4) != expected_key_id:
         raise ValueError("COSE evidence key id mismatch")
@@ -115,6 +116,6 @@ def verify_signed_execution_evidence(
         receipt = cbor2.loads(payload)
     except Exception as exc:
         raise ValueError(f"Failed to parse payload as CBOR: {exc}") from exc
-    if not isinstance(receipt, dict):
+    if not isinstance(receipt, Mapping):
         raise ValueError("Signed execution evidence payload must be a map")
-    return receipt
+    return dict(receipt)
