@@ -1,7 +1,7 @@
 """Canonical append-only lifecycle recorder for authorized consequences.
 
 Authorization and consequence truth are intentionally separate. A
-CapabilityActionReceipt proves CAPPO authorized an operation. This recorder
+CapabilityActionReceipt proves CAPPO authorized an operation. This module
 persists AUTHORIZED and STARTED before provider dispatch, then appends a
 terminal or uncertain outcome after the executor settles.
 """
@@ -9,6 +9,7 @@ terminal or uncertain outcome after the executor settles.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +21,13 @@ from cappo_backend.models.consequence_execution import (
     ConsequenceState,
     _ALLOWED_TRANSITIONS,
     build_proof_subject_hash,
+)
+from cappo_backend.services.canonical import sha256_json
+from cappo_backend.services.executor import (
+    Executor,
+    ExecutorUnavailableError,
+    ProviderExecutionError,
+    TerminalExecutionError,
 )
 
 
@@ -110,8 +118,8 @@ class ConsequenceLifecycleRecorder:
             proof_subject_hash=started_proof,
         )
         self._db.add_all([authorized, started])
-        # This commit is intentional. STARTED must be durable before the provider
-        # callback can have a side effect, even if the process dies immediately.
+        # Deliberate durability boundary: STARTED must survive a process crash
+        # immediately before or during the external callback.
         self._db.commit()
 
     def complete(
@@ -187,3 +195,73 @@ class ConsequenceLifecycleRecorder:
         self._db.add(event)
         self._db.commit()
         return event
+
+
+class ConsequenceLifecycleExecutor:
+    """Executor decorator that makes P5 lifecycle evidence unavoidable.
+
+    It cannot create authority: construction requires an already-persisted
+    CAPPO ALLOW receipt. The wrapper is installed only after the CapabilityLease
+    evaluator returns ALLOW. The delegate remains the actual provider executor.
+    """
+
+    def __init__(
+        self,
+        *,
+        db: Session,
+        delegate: Executor,
+        receipt_id: str,
+        operation_id: str,
+        intent_hash: str,
+        resource: str | None = None,
+    ) -> None:
+        self._delegate = delegate
+        self._recorder = ConsequenceLifecycleRecorder(db)
+        self._receipt_id = receipt_id
+        self._operation_id = operation_id
+        self._intent_hash = intent_hash
+        self._resource = resource
+
+    def execute(self, request: dict[str, Any]) -> dict[str, Any]:
+        self._recorder.begin(
+            receipt_id=self._receipt_id,
+            operation_id=self._operation_id,
+            intent_hash=self._intent_hash,
+            resource=self._resource,
+        )
+        try:
+            result = self._delegate.execute(request)
+        except TerminalExecutionError as exc:
+            self._recorder.complete(
+                operation_id=self._operation_id,
+                succeeded=False,
+                error_summary=str(exc),
+                proof_type="callback_exception",
+            )
+            raise
+        except (ProviderExecutionError, ExecutorUnavailableError) as exc:
+            # A transport/provider failure can occur after a remote system has
+            # accepted the request. Do not overclaim FAILED without observation.
+            self._recorder.complete(
+                operation_id=self._operation_id,
+                succeeded=False,
+                outcome_uncertain=True,
+                error_summary=str(exc),
+            )
+            raise
+        except Exception as exc:
+            self._recorder.complete(
+                operation_id=self._operation_id,
+                succeeded=False,
+                outcome_uncertain=True,
+                error_summary=str(exc),
+            )
+            raise
+
+        self._recorder.complete(
+            operation_id=self._operation_id,
+            succeeded=True,
+            proof_type="callback_return",
+            proof_ref=sha256_json(result),
+        )
+        return result
