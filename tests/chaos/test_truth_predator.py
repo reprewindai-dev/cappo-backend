@@ -1,21 +1,48 @@
+from dataclasses import replace
+
 import pytest
+
 from cappo_backend.truth.inbound_truth_enforcer import (
-    InboundTruthEnforcer, TruthLedger, AuthenticationError, RollbackError,
-    AncestryError, LineageMismatchError, FreshnessError, ContradictionError,
-    TransformationMonotonicityError, MissingRequirementError, PrecedenceCycleError, InstructionFaultError
+    AncestryError,
+    AuthenticationError,
+    ContradictionError,
+    FreshnessError,
+    InboundTruthEnforcer,
+    InstructionFaultError,
+    LineageMismatchError,
+    MissingRequirementError,
+    PrecedenceCycleError,
+    RollbackError,
+    TransformationMonotonicityError,
+    TruthLedger,
 )
-from cappo_backend.truth.models import TruthClaim, FactRequirement, TypedPayload, LineageReceipt, ClaimState
-from cappo_backend.truth.inference import InferenceGateway, AdmissibleContextReceipt, UncertifiedContextError
+from cappo_backend.truth.inference import (
+    AdmissibleContextReceipt,
+    InferenceGateway,
+    UncertifiedContextError,
+)
+from cappo_backend.truth.models import (
+    ClaimState,
+    FactRequirement,
+    LineageReceipt,
+    TruthClaim,
+    TypedPayload,
+)
+
 
 @pytest.fixture
 def ledger():
-    l = TruthLedger()
-    l.approved_signers[("hr.domain", "tenant_1", "hr_policy")] = {"signer_hr_key"}
-    l.approved_signers[("fin.domain", "tenant_1", "fin_policy")] = {"signer_fin_key"}
-    l.canonical_heads["source_A"] = 2
-    l.authority_hierarchy["FIN_BASE"] = 10
-    l.authority_hierarchy["FIN_OVERRIDE"] = 20
-    return l
+    ledger_state = TruthLedger()
+    ledger_state.approved_signers[("hr.domain", "tenant_1", "hr_policy")] = {
+        "signer_hr_key"
+    }
+    ledger_state.approved_signers[("fin.domain", "tenant_1", "fin_policy")] = {
+        "signer_fin_key"
+    }
+    ledger_state.canonical_heads["source_A"] = 2
+    ledger_state.authority_hierarchy["FIN_BASE"] = 10
+    ledger_state.authority_hierarchy["FIN_OVERRIDE"] = 20
+    return ledger_state
 
 @pytest.fixture
 def enforcer(ledger):
@@ -150,12 +177,51 @@ def test_tp13_equal_authority_disagreement(enforcer):
         enforcer.certify_context([claim1, claim2], [], 1500)
     assert claim1.state == ClaimState.CONFLICTED
 
+TRUTH_CERTIFICATION_KEY = "truth-predator-certification-key"
+TRUTH_POLICY_DIGEST = "sha256:truth-policy-v1"
+
+
 class MockModel:
-    def invoke(self, prompt): return "INTENT_GENERATED"
+    def __init__(self):
+        self.invoke_count = 0
+
+    def invoke(self, prompt):
+        self.invoke_count += 1
+        return "INTENT_GENERATED"
+
+
+def mint_receipt(claim, **overrides):
+    values = {
+        "tenant_id": "tenant_1",
+        "workspace_id": "ws_123",
+        "policy_digest": TRUTH_POLICY_DIGEST,
+        "policy_version": "1.0.1",
+        "issued_at": 1500,
+        "evaluated_at": 1500,
+        "receipt_id": "truth-receipt-01",
+        "nonce": "truth-nonce-01",
+        "signing_key": TRUTH_CERTIFICATION_KEY,
+        "evidence_ref": "pgl:truth-certification-01",
+    }
+    values.update(overrides)
+    return AdmissibleContextReceipt.mint([claim], **values)
+
+
+def inference_gateway(model, **overrides):
+    values = {
+        "trusted_certification_key": TRUTH_CERTIFICATION_KEY,
+        "tenant_id": "tenant_1",
+        "workspace_id": "ws_123",
+        "policy_digest": TRUTH_POLICY_DIGEST,
+        "policy_version": "1.0.1",
+    }
+    values.update(overrides)
+    return InferenceGateway(model, **values)
 
 def test_tp14_raw_retrieval_inference_bypass():
     """Prove that reasoning cannot begin before certification completes."""
-    gateway = InferenceGateway(MockModel())
+    model = MockModel()
+    gateway = inference_gateway(model)
     
     # 1. Try to pass a raw claim to the model (bypassing enforcer)
     claim = base_claim()
@@ -163,20 +229,70 @@ def test_tp14_raw_retrieval_inference_bypass():
     
     # Cannot even mint the receipt
     with pytest.raises(UncertifiedContextError):
-        receipt = AdmissibleContextReceipt([claim], "sig_123")
-        
-    # 2. Try to pass a receipt with fake signature to the gateway
-    class FakeReceipt:
-        claims = [claim]
-        signature = None # Missing/invalid inbound signature
-        
-    with pytest.raises(UncertifiedContextError):
-        gateway.generate_intent("Do task", FakeReceipt())
-        
-    # 3. Proper path works
+        mint_receipt(claim)
+
+    # 2. A manually constructed receipt with a non-empty forgery must fail.
     claim.state = ClaimState.ADMISSIBLE
-    valid_receipt = AdmissibleContextReceipt([claim], "valid_sig")
+    valid_receipt = mint_receipt(claim)
+    forged_receipt = replace(valid_receipt, signature="forged-but-nonempty")
+
+    with pytest.raises(UncertifiedContextError):
+        gateway.generate_intent("Do task", forged_receipt)
+    assert model.invoke_count == 0
+
+    # 3. Proper path works
     assert gateway.generate_intent("Do task", valid_receipt) == "INTENT_GENERATED"
+    assert model.invoke_count == 1
+
+
+def test_tp15_claim_mutation_after_receipt_signing_is_denied():
+    model = MockModel()
+    gateway = inference_gateway(model)
+    claim = base_claim()
+    claim.state = ClaimState.ADMISSIBLE
+    receipt = mint_receipt(claim)
+
+    claim.payload.value = 999_999
+
+    with pytest.raises(UncertifiedContextError, match="signature verification"):
+        gateway.generate_intent("Do task", receipt)
+    assert model.invoke_count == 0
+
+
+def test_corroborated_is_not_implicitly_admissible_at_inference_boundary():
+    model = MockModel()
+    gateway = inference_gateway(model)
+    claim = base_claim()
+    claim.state = ClaimState.ADMISSIBLE
+    receipt = mint_receipt(claim)
+    claim.state = ClaimState.CORROBORATED
+
+    with pytest.raises(UncertifiedContextError, match="ADMISSIBLE"):
+        gateway.generate_intent("Do task", receipt)
+    assert model.invoke_count == 0
+
+
+@pytest.mark.parametrize(
+    ("gateway_override", "message"),
+    [
+        ({"tenant_id": "tenant_other"}, "tenant binding"),
+        ({"workspace_id": "workspace_other"}, "workspace binding"),
+        ({"policy_digest": "sha256:other-policy"}, "policy digest"),
+        ({"policy_version": "2.0.0"}, "policy version"),
+    ],
+)
+def test_valid_receipt_is_denied_under_mismatched_gateway_binding(gateway_override, message):
+    model = MockModel()
+    claim = base_claim()
+    claim.state = ClaimState.ADMISSIBLE
+    receipt = mint_receipt(claim)
+    gateway = inference_gateway(model, **gateway_override)
+
+    with pytest.raises(UncertifiedContextError, match=message):
+        gateway.generate_intent("Do task", receipt)
+    assert model.invoke_count == 0
+
+
 def test_explicit_authority_resolution_success(enforcer):
     claim1 = base_claim()
     claim1.fact_type = "FIN_BASE"

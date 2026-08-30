@@ -1,10 +1,13 @@
-import json
 import hashlib
-from typing import Dict, Any, List
+import json
+from typing import Any, Dict, List
 
-from cappo_backend.truth.models import TruthClaim, FactRequirement, ClaimState, TypedPayload
 from cappo_backend.truth.inbound_truth_enforcer import InboundTruthEnforcer, TruthLedger
-from cappo_backend.truth.inference import InferenceGateway, AdmissibleContextReceipt
+from cappo_backend.truth.inference import AdmissibleContextReceipt, InferenceGateway
+from cappo_backend.truth.models import ClaimState, FactRequirement, TruthClaim, TypedPayload
+
+TRUTH_CERTIFICATION_KEY = "closed-loop-demo-truth-certification-key"
+TRUTH_POLICY_DIGEST = "sha256:closed-loop-health-policy-v1"
 
 # --- Mock Components for the Organism Loop ---
 
@@ -57,7 +60,14 @@ class ClosedLoopHealer:
         self.ledger.canonical_heads["monitor_node_a"] = 1
         
         self.truth_enforcer = InboundTruthEnforcer(self.ledger)
-        self.inference = InferenceGateway(MockModelClient())
+        self.inference = InferenceGateway(
+            MockModelClient(),
+            trusted_certification_key=TRUTH_CERTIFICATION_KEY,
+            tenant_id="tenant_1",
+            workspace_id="closed-loop-demo",
+            policy_digest=TRUTH_POLICY_DIGEST,
+            policy_version="1.0.1",
+        )
         self.cappo = MockCAPPO()
         self.locker = MockLockerphycer()
         self.pgl = MockPGL()
@@ -100,7 +110,19 @@ class ClosedLoopHealer:
             print(f"2. CERTIFICATION FAILED: {e}")
             return
             
-        receipt = AdmissibleContextReceipt(certified_claims, signature="sig_enforcer_01")
+        receipt = AdmissibleContextReceipt.mint(
+            certified_claims,
+            tenant_id="tenant_1",
+            workspace_id="closed-loop-demo",
+            policy_digest=TRUTH_POLICY_DIGEST,
+            policy_version="1.0.1",
+            issued_at=100 + iteration,
+            evaluated_at=100 + iteration,
+            receipt_id=f"closed-loop-observation-{iteration}",
+            nonce=f"closed-loop-observation-nonce-{iteration}",
+            signing_key=TRUTH_CERTIFICATION_KEY,
+            evidence_ref=f"demo:closed-loop:{iteration}",
+        )
         print("2. CERTIFY OBSERVATION: Context certified and receipt minted.")
 
         # 3. DETECT DEVIATION & 4. DIAGNOSE
@@ -143,7 +165,19 @@ class ClosedLoopHealer:
         
         # 12. CERTIFY NEW STATE
         post_certified = self.truth_enforcer.certify_context([post_claim], reqs, trusted_clock=100+iteration+1)
-        post_receipt = AdmissibleContextReceipt(post_certified, signature="sig_enforcer_01")
+        post_receipt = AdmissibleContextReceipt.mint(
+            post_certified,
+            tenant_id="tenant_1",
+            workspace_id="closed-loop-demo",
+            policy_digest=TRUTH_POLICY_DIGEST,
+            policy_version="1.0.1",
+            issued_at=101 + iteration,
+            evaluated_at=101 + iteration,
+            receipt_id=f"closed-loop-observation-{iteration + 1}",
+            nonce=f"closed-loop-observation-nonce-{iteration + 1}",
+            signing_key=TRUTH_CERTIFICATION_KEY,
+            evidence_ref=f"demo:closed-loop:{iteration + 1}",
+        )
         
         post_diagnosis_json = self.inference.generate_intent("Diagnose system health", post_receipt)
         post_diagnosis = json.loads(post_diagnosis_json)
