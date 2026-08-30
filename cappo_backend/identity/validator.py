@@ -1,7 +1,18 @@
 import re
 import time
 
-from .errors import *
+from .errors import (
+    AudienceMismatchError,
+    AuthorityEiMismatchError,
+    AuthorityHashMismatchError,
+    BodyHashMismatchError,
+    CandidateActMismatchError,
+    MalformedWorkloadIdentifierError,
+    ProfileOnlyDeniedError,
+    ReplayDeniedError,
+    RequestBindingMismatchError,
+    TokenExpiredError,
+)
 from .models import AuthorityArtifact, ExecutionContextToken, WorkloadIdentityToken, WorkloadProofToken
 from .replay_cache import ReplayCache
 
@@ -40,9 +51,11 @@ class IdentityValidator:
         expected_body_hash: str,
         expected_wit_hash: str,
         expected_ect_hash: str,
-        expected_authority_hash: str,
+        expected_authority_hash: str | None,
         route: str,
         trace_id: str,
+        *,
+        consume_replay: bool = True,
     ):
         if wpt.exp and wpt.exp < int(time.time()):
             raise TokenExpiredError(route=route, method=expected_method, trace_id=trace_id)
@@ -56,10 +69,15 @@ class IdentityValidator:
             raise AuthorityHashMismatchError(route=route, method=expected_method, trace_id=trace_id)
         if expected_authority_hash and wpt.authority_hash != expected_authority_hash:
             raise AuthorityHashMismatchError(route=route, method=expected_method, trace_id=trace_id)
-        # Request-level WPT replay is consumed once by CappoPreauthorizationEnforcer.
-        # The identity validator verifies structure/bindings only; consuming the
-        # same JTI here and again in CAPPO authorization makes valid Redis-backed
-        # requests self-reject as replays.
+
+        # A state-changing request has no later CAPPO consequence enforcer, so
+        # its request proof is consumed here. A CONSEQUENCE request is consumed
+        # once by CappoPreauthorizationEnforcer after the complete authority
+        # chain has passed; consuming in both places would self-reject on Redis.
+        if consume_replay:
+            cache_exp = wpt.exp if wpt.exp else int(time.time()) + 300
+            if not self.replay_cache.check_and_store(wpt.jti, cache_exp):
+                raise ReplayDeniedError(route=route, method=expected_method, trace_id=trace_id)
 
     def validate_authority(
         self,
