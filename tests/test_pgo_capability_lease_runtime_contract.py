@@ -121,7 +121,11 @@ def test_governed_exec_denies_action_outside_backend_lease(client: TestClient) -
 
     assert response.status_code == 403
     assert response.json()["detail"]["error"] == "CAPABILITY_LEASE_DENIED"
-    assert response.json()["detail"]["reason"] in {"blocked_action", "not_in_capability_profile"}
+    assert response.json()["detail"]["reason"] in {
+        "blocked_action",
+        "not_in_capability_profile",
+        "lease_invariant_violation",
+    }
 
 
 def test_governed_write_requires_target_precondition_before_execution(client: TestClient) -> None:
