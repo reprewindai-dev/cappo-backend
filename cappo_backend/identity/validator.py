@@ -1,9 +1,10 @@
 import re
 import time
 
+from cappo_backend.authorization.errors import AuthorityEiMismatchError
+
 from .errors import (
     AudienceMismatchError,
-    AuthorityEiMismatchError,
     AuthorityHashMismatchError,
     BodyHashMismatchError,
     CandidateActMismatchError,
@@ -70,10 +71,6 @@ class IdentityValidator:
         if expected_authority_hash and wpt.authority_hash != expected_authority_hash:
             raise AuthorityHashMismatchError(route=route, method=expected_method, trace_id=trace_id)
 
-        # A state-changing request has no later CAPPO consequence enforcer, so
-        # its request proof is consumed here. A CONSEQUENCE request is consumed
-        # once by CappoPreauthorizationEnforcer after the complete authority
-        # chain has passed; consuming in both places would self-reject on Redis.
         if consume_replay:
             cache_exp = wpt.exp if wpt.exp else int(time.time()) + 300
             if not self.replay_cache.check_and_store(wpt.jti, cache_exp):
