@@ -1,13 +1,86 @@
-name: Retired Activation target proof helper
+name: One-shot production proof key contract
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [activation-e2e-authority-binding]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: production-proof-key-contract
+  cancel-in-progress: true
 
 jobs:
-  retired:
+  harden:
+    if: ${{ !contains(github.event.head_commit.message, '[auto-key-contract]') }}
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Retired. Activation target proof binding is committed to product code and verified by canonical CI."
+      - uses: actions/checkout@v4
+        with:
+          ref: activation-e2e-authority-binding
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[dev]' aiosqlite
+      - name: Require stable production evidence root
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          config = Path('cappo_backend/config.py')
+          text = config.read_text(encoding='utf-8')
+          if 'evidence_root_private_key_hex: str = ""' not in text:
+              anchor = '    ei_signing_provider: str = "ed25519"\n'
+              if anchor not in text:
+                  raise SystemExit('EI settings anchor missing')
+              text = text.replace(
+                  anchor,
+                  anchor + (
+                      '    # Stable Ed25519 seed for COSE_Sign1 authorization evidence.\n'
+                      '    # Development may generate a local key; production must inject exactly\n'
+                      '    # 32 bytes as 64 hexadecimal characters.\n'
+                      '    evidence_root_private_key_hex: str = ""\n'
+                  ),
+                  1,
+              )
+
+          if 'EVIDENCE_ROOT_PRIVATE_KEY_HEX must be configured in production' not in text:
+              anchor = '''            except ValueError:\n                problems.append("EI_SIGNING_KEY must be a valid hex string.")\n        if not self.cappo_require_persistent_pgl:\n'''
+              replacement = '''            except ValueError:\n                problems.append("EI_SIGNING_KEY must be a valid hex string.")\n        if not self.evidence_root_private_key_hex.strip():\n            problems.append(\n                "EVIDENCE_ROOT_PRIVATE_KEY_HEX must be configured in production "\n                "so signed authorization evidence remains stable across restarts and replicas."\n            )\n        elif len(self.evidence_root_private_key_hex.strip()) != 64:\n            problems.append(\n                "EVIDENCE_ROOT_PRIVATE_KEY_HEX must contain exactly 64 hexadecimal characters "\n                "(a 32-byte Ed25519 private seed)."\n            )\n        else:\n            try:\n                bytes.fromhex(self.evidence_root_private_key_hex.strip())\n            except ValueError:\n                problems.append("EVIDENCE_ROOT_PRIVATE_KEY_HEX must be valid hexadecimal.")\n        if not self.cappo_require_persistent_pgl:\n'''
+              if anchor not in text:
+                  raise SystemExit('production validation anchor missing')
+              text = text.replace(anchor, replacement, 1)
+          config.write_text(text, encoding='utf-8')
+
+          env = Path('.env.example')
+          env_text = env.read_text(encoding='utf-8')
+          if 'EVIDENCE_ROOT_PRIVATE_KEY_HEX=' not in env_text:
+              anchor = 'EI_SIGNING_KEY=dev-insecure-ei-signing-key\n'
+              replacement = '''EI_SIGNING_KEY=dev-insecure-ei-signing-key\n\n# Stable 32-byte Ed25519 private seed (64 hex characters) for signed COSE\n# CapabilityActionReceipt evidence. REQUIRED in production; never commit it.\nEVIDENCE_ROOT_PRIVATE_KEY_HEX=\n'''
+              if anchor not in env_text:
+                  raise SystemExit('env EI key anchor missing')
+              env_text = env_text.replace(anchor, replacement, 1)
+          if 'CAPI_GATEKEEPER_PUBLIC_KEY=' not in env_text:
+              env_text += '''\n# --- Governed browser execution verification ---\n# The frontend exchanges its user session for a BYOS-issued EdDSA CAPPO JWT.\n# Configure the matching BYOS public key, issuer, and audience here.\nJWT_AUTH_ENABLED=true\nJWT_PUBLIC_VERIFICATION_KEY=\nJWT_ALGORITHM=EdDSA\nJWT_ISSUER=\nJWT_AUDIENCE=\n\n# Public Ed25519 verification material corresponding to cAPI's\n# COVENANT_HTTP_SIGNING_PRIVATE_KEY.\nCAPI_GATEKEEPER_PUBLIC_KEY=\n\n# Required production human-approval and encrypted-provider secret roots.\nAPPROVAL_TOKEN_SIGNING_KEY=\nVAULT_MASTER_KEY=\n'''
+          env.write_text(env_text, encoding='utf-8')
+
+          Path('tests/test_production_evidence_config.py').write_text('''from __future__ import annotations\n\nimport pytest\n\nfrom cappo_backend.config import InsecureProductionConfigError, Settings\n\n\ndef _production_settings(**overrides: object) -> Settings:\n    values: dict[str, object] = {\n        "environment": "production",\n        "database_url": "postgresql+psycopg://user:password@db/cappo",\n        "cappo_require_persistent_pgl": True,\n        "ei_signing_key": "11" * 32,\n        "evidence_root_private_key_hex": "22" * 32,\n        "cors_allow_origins": "https://veklom.com",\n        "auth_enabled": True,\n        "api_keys": "production-test-api-key",\n        "license_admin_key": "production-test-license-key",\n        "capi_gatekeeper_public_key": "production-test-capi-public-key",\n        "approval_token_signing_key": "production-test-approval-key",\n        "runtime_kind": "amphoteric",\n        "runtime_instance": "cappo-production-test",\n        "vault_master_key": "v" * 32,\n    }\n    values.update(overrides)\n    return Settings(**values)\n\n\ndef test_production_requires_explicit_stable_evidence_root() -> None:\n    settings = _production_settings(evidence_root_private_key_hex="")\n    with pytest.raises(InsecureProductionConfigError, match="EVIDENCE_ROOT_PRIVATE_KEY_HEX"):\n        settings.validate_production()\n\n\ndef test_production_rejects_wrong_length_evidence_root() -> None:\n    settings = _production_settings(evidence_root_private_key_hex="22" * 31)\n    with pytest.raises(InsecureProductionConfigError, match="exactly 64 hexadecimal"):\n        settings.validate_production()\n\n\ndef test_production_rejects_non_hex_evidence_root() -> None:\n    settings = _production_settings(evidence_root_private_key_hex="z" * 64)\n    with pytest.raises(InsecureProductionConfigError, match="valid hexadecimal"):\n        settings.validate_production()\n\n\ndef test_production_accepts_stable_32_byte_evidence_root() -> None:\n    _production_settings().validate_production()\n\n\ndef test_development_can_retain_local_evidence_key_fallback() -> None:\n    Settings(environment="development", evidence_root_private_key_hex="").validate_production()\n''', encoding='utf-8')
+          PY
+      - name: Verify production proof key contract
+        run: |
+          ruff check cappo_backend/config.py cappo_backend/security/evidence.py tests/test_production_evidence_config.py
+          python -m compileall -q cappo_backend
+          pytest -q tests/test_production_evidence_config.py tests/test_activation_target.py
+      - name: Commit verified hardening
+        run: |
+          if git diff --quiet; then
+            echo 'No hardening changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cappo_backend/config.py .env.example tests/test_production_evidence_config.py
+          git commit -m 'security: require stable production evidence root [auto-key-contract]'
+          git push origin HEAD:activation-e2e-authority-binding
