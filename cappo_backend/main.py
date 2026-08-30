@@ -47,6 +47,7 @@ from cappo_backend.api.routers.protocol_router import router as protocol_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
+from cappo_backend.capability_mount.models import CapabilityPackage
 from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
@@ -55,6 +56,12 @@ from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
 from cappo_backend.security.spiffe_middleware import SVIDEnforcementMiddleware
+from cappo_backend.services.activation_target import (
+    ACTIVATION_BLOCKED_ACTION,
+    ACTIVATION_OBSERVE_ACTION,
+    ACTIVATION_PACKAGE_ID,
+    ACTIVATION_WRITE_ACTION,
+)
 
 
 @asynccontextmanager
@@ -100,7 +107,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     mount_registry = MountRegistry()
     for package in load_packages_from_json(settings.capability_packages_json):
+        if package.id == ACTIVATION_PACKAGE_ID:
+            raise RuntimeError(
+                f"{ACTIVATION_PACKAGE_ID} is a reserved built-in capability package id"
+            )
         mount_registry.register_package(package)
+    mount_registry.register_package(
+        CapabilityPackage(
+            id=ACTIVATION_PACKAGE_ID,
+            family="veklom.activation",
+            title="Veklom Activation Target",
+            purpose=(
+                "Create one durable first-party marker so a workspace can prove "
+                "bounded consequence authority, denial, and replay finality."
+            ),
+            reads=[ACTIVATION_OBSERVE_ACTION],
+            writes=[ACTIVATION_WRITE_ACTION],
+            blocked=[ACTIVATION_BLOCKED_ACTION],
+            outputs=["activation.marker.receipt", "activation.marker.observation"],
+            policy_defaults={"default": "deny", "single_use": True},
+        )
+    )
     app.state.mount_registry = mount_registry
 
     from cappo_backend.services.x402_payment import X402FreemiumASGI, get_x402_manager

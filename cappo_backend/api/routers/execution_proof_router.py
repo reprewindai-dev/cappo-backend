@@ -22,6 +22,14 @@ from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
+from cappo_backend.security.evidence import (
+    get_evidence_public_key,
+    verify_signed_execution_evidence,
+)
+from cappo_backend.services.activation_target import (
+    ACTIVATION_WRITE_ACTION,
+    observe_activation_consequence,
+)
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eee import EEEBuilder, EEEVerifier, VerificationVerdict
 from cappo_backend.services.ei_builder import Ed25519Signer, canonical_body
@@ -106,6 +114,21 @@ def _authorization_receipt(db: Session, execution_id: str) -> CapabilityActionRe
         _fail(
             "AUTHORIZATION_RECEIPT_SIGNATURE_MISSING",
             "Authorization receipt is not signed.",
+        )
+    try:
+        signed_payload = verify_signed_execution_evidence(
+            receipt.signed_receipt_cose,
+            get_evidence_public_key(),
+        )
+    except ValueError as exc:
+        _fail(
+            "AUTHORIZATION_RECEIPT_SIGNATURE_INVALID",
+            f"Authorization receipt signature verification failed: {exc}",
+        )
+    if signed_payload != canonical:
+        _fail(
+            "AUTHORIZATION_RECEIPT_SIGNED_PAYLOAD_MISMATCH",
+            "Signed authorization receipt payload does not match the persisted receipt.",
         )
     return receipt
 
@@ -399,6 +422,44 @@ def execution_measurements_projection(
     )
 
     result = run.result_payload or {}
+    target_observation: dict[str, Any] | None = None
+    if evidence["authorization"]["action"] == ACTIVATION_WRITE_ACTION:
+        observation = observe_activation_consequence(
+            db,
+            execution_id=execution_id,
+            workspace_id=workspace_id,
+        ).as_dict()
+        if observation["consequence_count"] != 1:
+            _fail(
+                "ACTIVATION_TARGET_CONSEQUENCE_COUNT_INVALID",
+                "A successful Activation execution must have exactly one durable target consequence.",
+            )
+        if observation["mount_id"] != evidence["authorization"]["mount_id"]:
+            _fail(
+                "ACTIVATION_TARGET_MOUNT_MISMATCH",
+                "Target consequence is bound to another capability mount.",
+            )
+        if observation["receipt_id"] != evidence["authorization"]["receipt_id"]:
+            _fail(
+                "ACTIVATION_TARGET_RECEIPT_MISMATCH",
+                "Target consequence is bound to another authorization receipt.",
+            )
+        persisted_result = result.get("activation_target")
+        if not isinstance(persisted_result, dict):
+            _fail(
+                "ACTIVATION_TARGET_RESULT_MISSING",
+                "Execution result contains no Activation target commitment.",
+            )
+        if (
+            persisted_result.get("consequence_id") != observation["consequence_id"]
+            or persisted_result.get("content_hash") != observation["content_hash"]
+        ):
+            _fail(
+                "ACTIVATION_TARGET_RESULT_MISMATCH",
+                "Persisted execution result disagrees with the independently observed target row.",
+            )
+        target_observation = observation
+
     elapsed_ms = max(0.0, (run.updated_at - run.created_at).total_seconds() * 1000)
     return {
         "execution_id": execution_id,
@@ -438,7 +499,21 @@ def execution_measurements_projection(
         "pgl_event_id": evidence["pgl"]["event_id"],
         "pgl_event_hash": evidence["pgl"]["event_hash"],
         "eee_envelope_hash": evidence["eee"]["envelope_hash"],
+        "target_observation": target_observation,
     }
+
+
+@router.get("/{execution_id}/target-observation")
+def activation_target_observation(
+    execution_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    return observe_activation_consequence(
+        db,
+        execution_id=execution_id,
+        workspace_id=str(request.scope["auth_workspace"]),
+    ).as_dict()
 
 
 @router.get("/{execution_id}/evidence")

@@ -884,7 +884,7 @@ class MountRegistry:
                 mint_signed_execution_evidence,
             )
             _evidence_pk = get_evidence_key_pair()
-            _cose_bytes = mint_signed_execution_evidence(_receipt_canonical, _evidence_pk)
+            _cose_bytes = mint_signed_execution_evidence(_receipt_canonical, private_key=_evidence_pk)
             
             receipt = CapabilityActionReceipt(
                 receipt_id=f"rcpt_{anchor.anchor_id or utc_now().strftime('%Y%m%d%H%M%S%f')}",

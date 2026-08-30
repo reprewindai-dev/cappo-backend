@@ -6,7 +6,6 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-
 EVIDENCE_KEY_ID = b"veklom-evidence-key-v1"
 COSE_ALG_EDDSA = -8
 

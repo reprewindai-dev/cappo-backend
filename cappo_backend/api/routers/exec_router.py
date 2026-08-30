@@ -36,12 +36,18 @@ from cappo_backend.security.http_signatures import (
     verify_rfc9421_request,
 )
 from cappo_backend.security.mcp_gateway import EIValidationError, MCPGateway
+from cappo_backend.services.activation_target import (
+    ACTIVATION_PACKAGE_ID,
+    ACTIVATION_WRITE_ACTION,
+    ActivationTargetExecutor,
+)
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.consequence_lifecycle import ConsequenceLifecycleExecutor
 from cappo_backend.services.eee import EEEBuilder, build_terminal_eee
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
 from cappo_backend.services.enterprise_signer import create_enterprise_signer_from_settings
 from cappo_backend.services.executor import (
+    Executor,
     ExecutorUnavailableError,
     ProviderCredentialRejectedError,
     ProviderPolicyRejectedError,
@@ -152,11 +158,14 @@ def _build_orchestrator(
     workspace_id: str,
     app: Any = None,
     lifecycle: _LifecycleContext | None = None,
+    executor_override: Executor | None = None,
 ) -> RunOrchestrator:
     pgl = create_pgl_client(db=db, settings=settings, use_veklom=True)
     signer = create_enterprise_signer_from_settings(settings)
     builder = ExecutionIdentityBuilder(signer=signer)
-    executor = build_executor(settings, db=db, workspace_id=workspace_id, app=app)
+    executor = executor_override or build_executor(
+        settings, db=db, workspace_id=workspace_id, app=app
+    )
     if lifecycle is not None:
         executor = ConsequenceLifecycleExecutor(
             db=db,
@@ -624,6 +633,15 @@ async def governed_exec(
         db=db,
         workspace_id=str(canonical_workspace),
     )
+    if body.action == ACTIVATION_WRITE_ACTION and lease_context is None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "ACTIVATION_CAPABILITY_LEASE_REQUIRED",
+                "detail": "The reserved Activation consequence cannot use a legacy execution path.",
+                "fail_closed": True,
+            },
+        )
     gate = _check_payment(
         db,
         str(canonical_workspace),
@@ -634,6 +652,7 @@ async def governed_exec(
     lease_receipt_id: str | None = None
     lease_ref = body.capability_lease
     orchestrator: RunOrchestrator | None = None
+    executor_override: Executor | None = None
 
     try:
         payload = body.model_dump(exclude={"capability_lease"})
@@ -676,7 +695,39 @@ async def governed_exec(
             payload["capability_execution_id"] = record.token.execution_id
             payload["execution_id"] = record.token.execution_id
 
+            is_activation_package = record.mount.package_ref == ACTIVATION_PACKAGE_ID
+            if action == ACTIVATION_WRITE_ACTION and not is_activation_package:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "ACTIVATION_RESERVED_ACTION_PACKAGE_MISMATCH",
+                        "fail_closed": True,
+                    },
+                )
+            if is_activation_package and action != ACTIVATION_WRITE_ACTION:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "ACTIVATION_PACKAGE_ACTION_UNSUPPORTED",
+                        "fail_closed": True,
+                    },
+                )
+
             operation_id = f"exec:{record.token.execution_id}"
+            if is_activation_package:
+                executor_override = ActivationTargetExecutor(db)
+                lifecycle_resource = "activation_consequences"
+                normalized_args = {
+                    "workspace_id": str(canonical_workspace),
+                    "execution_id": record.token.execution_id,
+                }
+            else:
+                lifecycle_resource = "provider-dispatch"
+                normalized_args = {
+                    "prompt_sha256": hashlib.sha256(
+                        body.prompt.encode("utf-8")
+                    ).hexdigest(),
+                }
             lifecycle = _LifecycleContext(
                 receipt_id=lease_receipt_id,
                 operation_id=operation_id,
@@ -684,14 +735,10 @@ async def governed_exec(
                     mount_id=lease_ref.mount_id,
                     execution_id=record.token.execution_id,
                     action=action,
-                    resource="provider-dispatch",
-                    normalized_args={
-                        "prompt_sha256": hashlib.sha256(
-                            body.prompt.encode("utf-8")
-                        ).hexdigest(),
-                    },
+                    resource=lifecycle_resource,
+                    normalized_args=normalized_args,
                 ),
-                resource="provider-dispatch",
+                resource=lifecycle_resource,
             )
 
         orchestrator = _build_orchestrator(
@@ -701,6 +748,7 @@ async def governed_exec(
             workspace_id=str(canonical_workspace),
             app=request.app,
             lifecycle=lifecycle,
+            executor_override=executor_override,
         )
         result = _execute_run(orchestrator, payload, db)
         if result and "tokens" in result and isinstance(result["tokens"], int):

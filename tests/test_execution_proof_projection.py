@@ -22,6 +22,7 @@ from cappo_backend.db.base import Base
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
+from cappo_backend.security.evidence import mint_signed_execution_evidence
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.eee import EEEBuilder, build_terminal_eee
@@ -108,7 +109,7 @@ def _receipt(db: Session, execution_id: str, action: str = "activation.read") ->
             capability_id="activation-package",
             biscuit_token_sha256="biscuit-hash",
             policy_version="1.0",
-            signed_receipt_cose=b"signed-proof",
+            signed_receipt_cose=mint_signed_execution_evidence(canonical),
             content_hash=sha256_json(canonical),
             pgl_anchor_id="anchor-proof",
         )
