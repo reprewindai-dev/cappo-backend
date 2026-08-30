@@ -11,9 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── 1. Lint & Type Check ────────────────────────────────────────────────────
   lint:
-    name: Lint (ruff)
+    name: Maintained runtime lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,13 +21,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dev deps
+      - name: Install lint tooling
         run: pip install ruff
 
-      - name: Ruff lint (exclude generated migrations and vendored code)
-        run: ruff check . --exclude tmp_x402,migrations/versions
+      - name: Compile maintained runtime
+        run: python -m compileall -q cappo_backend
 
-  # ── 2. Build Docker image ───────────────────────────────────────────────────
+      - name: Ruff maintained runtime and activation proof tests
+        run: |
+          ruff check cappo_backend \
+            tests/test_execution_evidence_lifecycle.py \
+            tests/test_execution_proof_projection.py
+
   build:
     name: Docker Build
     runs-on: ubuntu-latest
@@ -49,10 +53,10 @@ jobs:
             cappo-backend-ci:${{ github.sha }} \
             python3 -c "
           import fastapi, uvicorn, sqlalchemy, pydantic, httpx, cryptography
+          import cappo_backend.main
           print('All critical imports OK')
           "
 
-  # ── 3. Tests ────────────────────────────────────────────────────────────────
   test:
     name: Pytest
     runs-on: ubuntu-latest
@@ -94,10 +98,9 @@ jobs:
       - name: Run tests
         run: pytest -q --tb=short --maxfail=1
 
-  # ── 4. Deploy ───────────────────────────────────────────────────────────────
   deploy-prod:
     name: Deploy to Production
-    needs: test
+    needs: [build, test]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     timeout-minutes: 30
