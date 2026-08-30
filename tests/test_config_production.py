@@ -15,6 +15,7 @@ from cappo_backend.config import (
 )
 
 _SECURE_KEY = "ab" * 24
+_EVIDENCE_ROOT = "cd" * 32
 _PG_URL = "postgresql+psycopg://u:p@db:5432/cappo"
 
 
@@ -22,6 +23,7 @@ def _prod(**overrides) -> Settings:
     base = dict(
         environment="production",
         ei_signing_key=_SECURE_KEY,
+        evidence_root_private_key_hex=_EVIDENCE_ROOT,
         cappo_require_persistent_pgl=True,
         database_url=_PG_URL,
         auth_enabled=True,
@@ -62,6 +64,10 @@ class TestProductionFailClosed:
     def test_short_signing_key_rejected(self) -> None:
         with pytest.raises(InsecureProductionConfigError, match="at least"):
             _prod(ei_signing_key="short").validate_production()
+
+    def test_missing_evidence_root_rejected(self) -> None:
+        with pytest.raises(InsecureProductionConfigError, match="EVIDENCE_ROOT_PRIVATE_KEY_HEX"):
+            _prod(evidence_root_private_key_hex="").validate_production()
 
     def test_non_persistent_pgl_rejected(self) -> None:
         with pytest.raises(InsecureProductionConfigError, match="CAPPO_REQUIRE_PERSISTENT_PGL"):
@@ -113,5 +119,6 @@ class TestProductionFailClosed:
             ).validate_production()
         msg = str(exc.value)
         assert "EI_SIGNING_KEY" in msg
+        assert "EVIDENCE_ROOT_PRIVATE_KEY_HEX" in msg
         assert "CAPPO_REQUIRE_PERSISTENT_PGL" in msg
         assert "DATABASE_URL" in msg
