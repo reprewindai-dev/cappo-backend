@@ -197,6 +197,34 @@ class ActivationTargetExecutor:
         self._db.refresh(row)
         return self._result(row, idempotent_replay=False)
 
+    def completion_proof(self, result: dict[str, Any]) -> tuple[str, str]:
+        """Re-observe the durable row before P5 is allowed to assert SUCCEEDED."""
+        target = result.get("activation_target")
+        if not isinstance(target, dict):
+            raise ActivationTargetInvariantError(
+                "Activation result contains no durable target commitment."
+            )
+        consequence_id = target.get("consequence_id")
+        content_hash = target.get("content_hash")
+        execution_id = target.get("execution_id")
+        if not all(
+            isinstance(value, str) and value
+            for value in (consequence_id, content_hash, execution_id)
+        ):
+            raise ActivationTargetInvariantError(
+                "Activation result contains an incomplete target commitment."
+            )
+        row = self._db.get(ActivationConsequence, consequence_id)
+        if (
+            row is None
+            or row.execution_id != execution_id
+            or row.content_hash != content_hash
+        ):
+            raise ActivationTargetInvariantError(
+                "Activation target could not re-observe its committed consequence."
+            )
+        return "durable_target_row", row.content_hash
+
     def _result(
         self,
         row: ActivationConsequence,
