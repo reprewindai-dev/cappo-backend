@@ -14,7 +14,12 @@ from .errors import (
     RequestBindingMismatchError,
     TokenExpiredError,
 )
-from .models import AuthorityArtifact, ExecutionContextToken, WorkloadIdentityToken, WorkloadProofToken
+from .models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
 from .replay_cache import ReplayCache
 
 
