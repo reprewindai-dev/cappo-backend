@@ -36,6 +36,8 @@ from cappo_backend.services.executor import (
 )
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
     from cappo_backend.config import Settings
 
 logger = logging.getLogger("cappo.provider")
