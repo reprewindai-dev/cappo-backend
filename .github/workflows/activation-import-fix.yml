@@ -47,10 +47,10 @@ jobs:
 
           test = Path('tests/test_execution_proof_projection.py')
           text = test.read_text(encoding='utf-8')
-          import_anchor = 'from cappo_backend.services.orchestrator import RunOrchestrator\n'
+          import_anchor = 'from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent\n'
           import_block = (
-              'from cappo_backend.security.evidence import mint_signed_execution_evidence\n'
-              + import_anchor
+              import_anchor
+              + 'from cappo_backend.security.evidence import mint_signed_execution_evidence\n'
           )
           if 'mint_signed_execution_evidence' not in text:
               if import_anchor not in text:
@@ -71,6 +71,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[dev]' aiosqlite
           python -m compileall -q cappo_backend
+          ruff check --fix \
+            cappo_backend/security/evidence.py \
+            cappo_backend/api/routers/execution_proof_router.py \
+            tests/test_execution_proof_projection.py
           ruff check \
             cappo_backend/security/evidence.py \
             cappo_backend/api/routers/execution_proof_router.py \
@@ -85,6 +89,9 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add cappo_backend/api/routers/execution_proof_router.py tests/test_execution_proof_projection.py
+          git add \
+            cappo_backend/security/evidence.py \
+            cappo_backend/api/routers/execution_proof_router.py \
+            tests/test_execution_proof_projection.py
           git commit -m 'proof: verify signed authorization receipt [auto-proof-fix]'
           git push origin HEAD:activation-e2e-authority-binding
