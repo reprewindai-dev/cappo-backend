@@ -16,10 +16,10 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.consequence_execution import (
+    _ALLOWED_TRANSITIONS,
     ConsequenceExecutionEvent,
     ConsequenceInvariantViolation,
     ConsequenceState,
-    _ALLOWED_TRANSITIONS,
     build_proof_subject_hash,
 )
 from cappo_backend.services.canonical import sha256_json
@@ -222,6 +222,29 @@ class ConsequenceLifecycleExecutor:
         self._intent_hash = intent_hash
         self._resource = resource
 
+    def _completion_proof(self, result: dict[str, Any]) -> tuple[str, str]:
+        """Resolve proof from trusted executor code, never from response claims alone."""
+        resolver = getattr(self._delegate, "completion_proof", None)
+        if resolver is None:
+            return "callback_return", sha256_json(result)
+        if not callable(resolver):
+            raise ConsequenceInvariantViolation(
+                "executor completion_proof attribute is not callable"
+            )
+        proof = resolver(result)
+        if (
+            not isinstance(proof, tuple)
+            or len(proof) != 2
+            or not isinstance(proof[0], str)
+            or not proof[0]
+            or not isinstance(proof[1], str)
+            or not proof[1]
+        ):
+            raise ConsequenceInvariantViolation(
+                "executor completion proof must be a non-empty (type, ref) tuple"
+            )
+        return proof
+
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         self._recorder.begin(
             receipt_id=self._receipt_id,
@@ -258,10 +281,24 @@ class ConsequenceLifecycleExecutor:
             )
             raise
 
+        try:
+            proof_type, proof_ref = self._completion_proof(result)
+        except Exception as exc:
+            # The consequence callback returned, but CAPPO could not establish
+            # acceptable completion proof. The only truthful terminal state is
+            # OUTCOME_UNKNOWN until a reconciler independently resolves it.
+            self._recorder.complete(
+                operation_id=self._operation_id,
+                succeeded=False,
+                outcome_uncertain=True,
+                error_summary=f"completion proof verification failed: {exc}",
+            )
+            raise
+
         self._recorder.complete(
             operation_id=self._operation_id,
             succeeded=True,
-            proof_type="callback_return",
-            proof_ref=sha256_json(result),
+            proof_type=proof_type,
+            proof_ref=proof_ref,
         )
         return result
