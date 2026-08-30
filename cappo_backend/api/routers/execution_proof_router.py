@@ -1,8 +1,8 @@
 """Read-only proof projection for completed governed executions.
 
 This module never authorizes or executes. It verifies persisted authorization,
-Execution Identity, PGL evidence-chain integrity, and the signed EEE envelope
-before returning a proof state to a caller in the same authenticated workspace.
+Execution Identity, PGL evidence integrity, and the signed EEE envelope before
+returning a proof state to a caller in the same authenticated workspace.
 """
 
 from __future__ import annotations
@@ -178,49 +178,14 @@ def _verify_event_chain(db: Session, event: PGLLedgerEvent) -> list[str]:
         current = previous
 
 
-def _evidence_event(
-    db: Session,
-    run: GovernedRun,
+def _verify_eee(
+    seal: dict[str, Any],
     execution_id: str,
     settings: Settings,
-) -> tuple[PGLLedgerEvent, dict[str, Any], list[str]]:
-    event_id = (run.pgl_identity or {}).get("capi_evidence_event_id")
-    if not isinstance(event_id, str) or not event_id:
-        _fail(
-            "PGL_EVIDENCE_EVENT_MISSING",
-            "Run has no acknowledged PGL evidence event.",
-        )
-    event = db.get(PGLLedgerEvent, event_id)
-    if event is None:
-        _fail(
-            "PGL_EVIDENCE_EVENT_UNRESOLVED",
-            "The acknowledged PGL event is external to this CAPPO database and cannot yet be independently read here.",
-        )
-    if event.event_type != "capi_evidence_sealed":
-        _fail(
-            "PGL_EVENT_TYPE_INVALID",
-            "Execution evidence is bound to the wrong PGL event type.",
-        )
-
-    certificate = db.get(PGLCertificate, event.certificate_id)
-    if certificate is None or certificate.persisted is not True:
-        _fail(
-            "PGL_CERTIFICATE_NOT_PERSISTED",
-            "PGL certificate is missing or not durable.",
-        )
-    if certificate.run_id != run.run_id or certificate.workspace_id != run.workspace_id:
-        _fail(
-            "PGL_CERTIFICATE_BINDING_MISMATCH",
-            "PGL certificate is bound to another execution.",
-        )
-
-    unresolved = _verify_event_chain(db, event)
-    seal = (event.payload or {}).get("evidence_seal")
-    if not isinstance(seal, dict):
-        _fail("EEE_SEAL_MISSING", "PGL event contains no evidence seal.")
+) -> tuple[dict[str, Any], list[str]]:
     envelope = seal.get("eee")
     if not isinstance(envelope, dict):
-        _fail("EEE_MISSING", "PGL evidence seal contains no EEE envelope.")
+        _fail("EEE_MISSING", "Persisted evidence seal contains no EEE envelope.")
     if envelope.get("execution_id") != execution_id:
         _fail("EEE_EXECUTION_ID_MISMATCH", "EEE is bound to another execution id.")
     if seal.get("evidence_id") != envelope.get("envelope_hash"):
@@ -245,9 +210,111 @@ def _evidence_event(
             "EEE_VERIFICATION_FAILED",
             f"EEE verification failed: {verification.reasons}",
         )
-    if verification.verdict is VerificationVerdict.VALID_WITH_UNRESOLVED_REFS:
-        unresolved.extend(verification.reasons)
-    return event, envelope, list(dict.fromkeys(unresolved))
+    unresolved = (
+        list(verification.reasons)
+        if verification.verdict is VerificationVerdict.VALID_WITH_UNRESOLVED_REFS
+        else []
+    )
+    return envelope, unresolved
+
+
+def _pgl_evidence(
+    db: Session,
+    run: GovernedRun,
+    execution_id: str,
+    settings: Settings,
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    pgl_identity = run.pgl_identity or {}
+    event_id = pgl_identity.get("capi_evidence_event_id")
+    if not isinstance(event_id, str) or not event_id:
+        _fail(
+            "PGL_EVIDENCE_EVENT_MISSING",
+            "Run has no acknowledged PGL evidence event.",
+        )
+
+    event = db.get(PGLLedgerEvent, event_id)
+    if event is not None:
+        if event.event_type != "capi_evidence_sealed":
+            _fail(
+                "PGL_EVENT_TYPE_INVALID",
+                "Execution evidence is bound to the wrong PGL event type.",
+            )
+        certificate = db.get(PGLCertificate, event.certificate_id)
+        if certificate is None or certificate.persisted is not True:
+            _fail(
+                "PGL_CERTIFICATE_NOT_PERSISTED",
+                "PGL certificate is missing or not durable.",
+            )
+        if certificate.run_id != run.run_id or certificate.workspace_id != run.workspace_id:
+            _fail(
+                "PGL_CERTIFICATE_BINDING_MISMATCH",
+                "PGL certificate is bound to another execution.",
+            )
+        unresolved = _verify_event_chain(db, event)
+        seal = (event.payload or {}).get("evidence_seal")
+        if not isinstance(seal, dict):
+            _fail("EEE_SEAL_MISSING", "PGL event contains no evidence seal.")
+        envelope, eee_unresolved = _verify_eee(seal, execution_id, settings)
+        unresolved.extend(eee_unresolved)
+        return (
+            {
+                "event_id": event.event_id,
+                "certificate_id": event.certificate_id,
+                "event_hash": event.event_hash,
+                "previous_event_hash": event.previous_event_hash,
+                "persisted": True,
+                "external": False,
+                "created_at": _iso_utc(event.created_at),
+            },
+            envelope,
+            list(dict.fromkeys(unresolved)),
+        )
+
+    # External PGL adapters acknowledge a durable event id but do not mirror the
+    # canonical event row into CAPPO's local database. The signed evidence
+    # projection is retained only after that acknowledgement. Verify the signed
+    # projection and expose the external references as unresolved rather than
+    # inventing an event hash CAPPO cannot independently recompute.
+    seal = pgl_identity.get("capi_evidence_seal")
+    seal_hash = pgl_identity.get("capi_evidence_seal_hash")
+    if not isinstance(seal, dict) or not isinstance(seal_hash, str) or not seal_hash:
+        _fail(
+            "PGL_EXTERNAL_EVIDENCE_PROJECTION_MISSING",
+            "External PGL acknowledgement exists but CAPPO has no signed evidence projection.",
+        )
+    if seal.get("seal_hash") != seal_hash:
+        _fail(
+            "PGL_EXTERNAL_EVIDENCE_PROJECTION_MISMATCH",
+            "Stored external evidence projection does not match its committed seal hash.",
+        )
+    if pgl_identity.get("persisted") is not True:
+        _fail(
+            "PGL_CERTIFICATE_NOT_PERSISTED",
+            "External PGL certificate was not acknowledged as persistent.",
+        )
+    certificate_id = pgl_identity.get("post_execution_certificate_id")
+    if not isinstance(certificate_id, str) or not certificate_id:
+        _fail(
+            "PGL_POST_CERTIFICATE_MISSING",
+            "Completed execution has no acknowledged post-execution certificate.",
+        )
+    envelope, unresolved = _verify_eee(seal, execution_id, settings)
+    unresolved.extend(
+        ["PGL_EVENT_EXTERNAL_UNRESOLVED", "PGL_CERTIFICATE_EXTERNAL_UNRESOLVED"]
+    )
+    return (
+        {
+            "event_id": event_id,
+            "certificate_id": certificate_id,
+            "event_hash": None,
+            "previous_event_hash": None,
+            "persisted": True,
+            "external": True,
+            "created_at": _iso_utc(run.updated_at),
+        },
+        envelope,
+        list(dict.fromkeys(unresolved)),
+    )
 
 
 def execution_evidence_projection(
@@ -259,14 +326,14 @@ def execution_evidence_projection(
     run = _run_for_workspace(db, execution_id, workspace_id)
     receipt = _authorization_receipt(db, execution_id)
     identity = _execution_identity(db, run, execution_id, settings)
-    event, envelope, unresolved = _evidence_event(db, run, execution_id, settings)
+    pgl, envelope, unresolved = _pgl_evidence(db, run, execution_id, settings)
 
     if envelope.get("status") != "completed" or run.result_payload is None:
         _fail(
             "EXECUTION_NOT_PROVEN_COMPLETE",
             "Persisted evidence does not prove a completed execution.",
         )
-    if identity.pgl_post_certificate_id != event.certificate_id:
+    if identity.pgl_post_certificate_id != pgl["certificate_id"]:
         _fail(
             "PGL_POST_CERTIFICATE_MISMATCH",
             "EI post-certificate and evidence event disagree.",
@@ -295,14 +362,7 @@ def execution_evidence_projection(
             "pgl_post_certificate_id": identity.pgl_post_certificate_id,
         },
         "eee": envelope,
-        "pgl": {
-            "event_id": event.event_id,
-            "certificate_id": event.certificate_id,
-            "event_hash": event.event_hash,
-            "previous_event_hash": event.previous_event_hash,
-            "persisted": True,
-            "created_at": _iso_utc(event.created_at),
-        },
+        "pgl": pgl,
     }
 
 
@@ -334,7 +394,7 @@ def execution_measurements_projection(
     failed = sum(
         1 for stream in operations.values() if stream[-1].state in terminal_failure
     )
-    unresolved = sum(
+    outcome_unknown = sum(
         1 for stream in operations.values() if stream[-1].state == "outcome_unknown"
     )
 
@@ -358,7 +418,7 @@ def execution_measurements_projection(
             "operation_count": len(operations),
             "successful_count": successful,
             "failed_count": failed,
-            "outcome_unknown_count": unresolved,
+            "outcome_unknown_count": outcome_unknown,
             "events": [
                 {
                     "event_id": event.event_id,
