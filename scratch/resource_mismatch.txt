@@ -1,2 +1,2 @@
-EXPECTED: 'sandbox-file:C:/tmp/n8n_governed_append.log'
-PROVIDED: {'sandbox-file:C:/Users/antho/.windsurf/cappo-backend/scratch/n8n17/n8n_governed_append.jsonl'}
+EXPECTED: 'sandbox-file:C:/Windows/Temp/pytest-of-antho/pytest-9/test_http_worker_denies_wrong_0/governed.jsonl'
+PROVIDED: {'sandbox-file:/tmp/not-authorized'}

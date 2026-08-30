@@ -99,6 +99,7 @@ def clean_node_client(clean_node_env: dict) -> Iterator[TestClient]:
         async def dispatch(self, request, call_next):
             request.scope["auth_workspace"] = "clean-workspace"
             request.scope["auth_principal"] = "clean-principal"
+            request.scope["caller_spiffe_id"] = "spiffe://example.org/workload/cappo-backend"
             return await call_next(request)
             
     test_app.add_middleware(InjectWorkspaceMiddleware)

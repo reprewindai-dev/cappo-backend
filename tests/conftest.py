@@ -105,6 +105,8 @@ def client(db: Session, settings: Settings) -> TestClient:
                 request.scope["auth_workspace"] = workspace
             if "auth_principal" not in request.scope:
                 request.scope["auth_principal"] = "test:principal"
+            if "caller_spiffe_id" not in request.scope:
+                request.scope["caller_spiffe_id"] = "spiffe://example.org/workload/cappo-backend"
             return await call_next(request)
 
     def _override_session() -> Iterator[Session]:

@@ -175,6 +175,8 @@ def request_mount(
         owner_principal=principal,
         owner_workspace=workspace,
         execution_id=body.execution_id,
+        caller_spiffe_id=request.scope.get("caller_spiffe_id"),
+        executor_spiffe_id=body.executor_spiffe_id or request.scope.get("caller_spiffe_id"),
     )
     if record is None:
         return MountResponse(

@@ -237,6 +237,9 @@ async def _test_g0b2_spiffe_enforcement(uvicorn_server):
             except httpx.ReadError as e:
                 print("ReadError:", e)
                 return None
+            except httpx.RemoteProtocolError as e:
+                print("RemoteProtocolError:", e)
+                return None
 
     # 1. VALID_SVID -> ALLOW
     resp1 = await request_mount("client_valid.pem", "client_valid.key")

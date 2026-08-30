@@ -29,7 +29,7 @@ def test_g0b5_signed_evidence():
     }
     
     # Mint COSE_Sign1
-    cose_bytes = mint_signed_execution_evidence(receipt, priv)
+    cose_bytes = mint_signed_execution_evidence(receipt, private_key=priv)
     assert cose_bytes is not None
     assert isinstance(cose_bytes, bytes)
     

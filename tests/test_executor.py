@@ -136,7 +136,7 @@ def test_open_primary_circuit_does_not_authorize_a_fallback_attempt() -> None:
     fallback = MagicMock()
     executor = ResilientExecutor(
         providers=[
-            Provider("primary"),
+            Provider("primary", primary, primary_breaker),
             Provider("fallback", fallback, CircuitBreaker()),
         ]
     )
