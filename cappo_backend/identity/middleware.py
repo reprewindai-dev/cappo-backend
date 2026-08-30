@@ -9,7 +9,12 @@ from .errors import (
     MissingWorkloadIdentityError,
     MissingWorkloadProofError,
 )
-from .models import AuthorityArtifact, ExecutionContextToken, WorkloadIdentityToken, WorkloadProofToken
+from .models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
 from .validator import IdentityValidator
 
 
