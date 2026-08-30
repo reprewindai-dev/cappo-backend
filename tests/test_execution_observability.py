@@ -101,6 +101,49 @@ def test_execution_evidence_route_returns_the_persisted_signed_seal(
     assert body["pgl"]["persisted"] is True
 
 
+def test_execution_evidence_remains_verifiable_after_signing_key_rotation(
+    client: TestClient,
+    db: Session,
+    settings: Settings,
+) -> None:
+    orchestrator, result = _run(db)
+    run = orchestrator.last_run
+    assert run is not None
+    old_kid = "cappo-old"
+    old_seed = "old-evidence-key"
+    new_kid = "cappo-new"
+    new_seed = "new-evidence-key"
+    builder = EEEBuilder(
+        signing_key=old_seed,
+        issuer=settings.capability_beacon_issuer,
+        kid=old_kid,
+    )
+    asyncio.run(
+        _seal_terminal_eee(
+            orchestrator=orchestrator,
+            run=run,
+            result=result,
+            capi_evidence={"evidence_id": "sha256:request"},
+            builder=builder,
+        )
+    )
+    db.commit()
+
+    settings.capability_beacon_keys_json = json.dumps(
+        {old_kid: old_seed, new_kid: new_seed}
+    )
+    settings.capability_beacon_kid = new_kid
+
+    response = client.get(f"/v1/executions/{run.run_id}/evidence")
+
+    assert response.status_code == 200
+    assert response.json()["eee"]["signatures"][0]["kid"] == old_kid
+    assert response.json()["proof_state"] in {
+        "verified",
+        "verified_with_unresolved_refs",
+    }
+
+
 def test_execution_evidence_route_does_not_invent_missing_proof(
     client: TestClient,
     db: Session,
