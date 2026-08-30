@@ -1,4 +1,4 @@
-name: Activation one-shot proof repair
+name: Activation one-shot integration repair
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   repair:
-    if: ${{ !contains(github.event.head_commit.message, '[auto-proof-fix]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[auto-activation-fix]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,45 +17,67 @@ jobs:
           ref: activation-e2e-authority-binding
           fetch-depth: 0
 
-      - name: Apply exact proof-reader repairs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install repository dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]' aiosqlite
+
+      - name: Wire cryptographic proof and first-party activation target
         run: |
           python - <<'PY'
           from pathlib import Path
+          import subprocess
 
-          router = Path('cappo_backend/api/routers/execution_proof_router.py')
-          text = router.read_text(encoding='utf-8')
-          import_anchor = 'from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent\n'
-          import_block = (
-              import_anchor
-              + 'from cappo_backend.security.evidence import (\n'
-              + '    get_evidence_public_key,\n'
-              + '    verify_signed_execution_evidence,\n'
-              + ')\n'
-          )
+          def replace_once(path: str, old: str, new: str, marker: str | None = None) -> None:
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              if marker and marker in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f'anchor missing in {path}: {old[:120]!r}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # -----------------------------------------------------------------
+          # Cryptographically verify the persisted authorization receipt.
+          # -----------------------------------------------------------------
+          proof = Path('cappo_backend/api/routers/execution_proof_router.py')
+          text = proof.read_text(encoding='utf-8')
           if 'verify_signed_execution_evidence' not in text:
-              if import_anchor not in text:
+              anchor = 'from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent\n'
+              if anchor not in text:
                   raise SystemExit('execution proof import anchor missing')
-              text = text.replace(import_anchor, import_block, 1)
-
+              text = text.replace(
+                  anchor,
+                  anchor
+                  + 'from cappo_backend.security.evidence import (\n'
+                  + '    get_evidence_public_key,\n'
+                  + '    verify_signed_execution_evidence,\n'
+                  + ')\n',
+                  1,
+              )
           old = '''    if not receipt.signed_receipt_cose:\n        _fail(\n            "AUTHORIZATION_RECEIPT_SIGNATURE_MISSING",\n            "Authorization receipt is not signed.",\n        )\n    return receipt\n'''
           new = '''    if not receipt.signed_receipt_cose:\n        _fail(\n            "AUTHORIZATION_RECEIPT_SIGNATURE_MISSING",\n            "Authorization receipt is not signed.",\n        )\n    try:\n        signed_payload = verify_signed_execution_evidence(\n            receipt.signed_receipt_cose,\n            get_evidence_public_key(),\n        )\n    except ValueError as exc:\n        _fail(\n            "AUTHORIZATION_RECEIPT_SIGNATURE_INVALID",\n            f"Authorization receipt signature verification failed: {exc}",\n        )\n    if signed_payload != canonical:\n        _fail(\n            "AUTHORIZATION_RECEIPT_SIGNED_PAYLOAD_MISMATCH",\n            "Signed authorization receipt payload does not match the persisted receipt.",\n        )\n    return receipt\n'''
-          if new not in text:
+          if 'AUTHORIZATION_RECEIPT_SIGNED_PAYLOAD_MISMATCH' not in text:
               if old not in text:
                   raise SystemExit('authorization receipt verification anchor missing')
               text = text.replace(old, new, 1)
-          router.write_text(text, encoding='utf-8')
+          proof.write_text(text, encoding='utf-8')
 
-          test = Path('tests/test_execution_proof_projection.py')
-          text = test.read_text(encoding='utf-8')
-          import_anchor = 'from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent\n'
-          import_block = (
-              import_anchor
-              + 'from cappo_backend.security.evidence import mint_signed_execution_evidence\n'
-          )
+          proof_test = Path('tests/test_execution_proof_projection.py')
+          text = proof_test.read_text(encoding='utf-8')
           if 'mint_signed_execution_evidence' not in text:
-              if import_anchor not in text:
+              anchor = 'from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent\n'
+              if anchor not in text:
                   raise SystemExit('proof test import anchor missing')
-              text = text.replace(import_anchor, import_block, 1)
+              text = text.replace(
+                  anchor,
+                  anchor + 'from cappo_backend.security.evidence import mint_signed_execution_evidence\n',
+                  1,
+              )
           text = text.replace(
               '            signed_receipt_cose=b"signed-proof",\n',
               '            signed_receipt_cose=mint_signed_execution_evidence(canonical),\n',
@@ -63,28 +85,242 @@ jobs:
           )
           if 'signed_receipt_cose=b"signed-proof"' in text:
               raise SystemExit('synthetic signed-proof fixture remains')
-          test.write_text(text, encoding='utf-8')
+          proof_test.write_text(text, encoding='utf-8')
+
+          # Make the receipt signer call explicit about the private key.
+          mount_service = Path('cappo_backend/capability_mount/service.py')
+          text = mount_service.read_text(encoding='utf-8')
+          text = text.replace(
+              'mint_signed_execution_evidence(_receipt_canonical, _evidence_pk)',
+              'mint_signed_execution_evidence(_receipt_canonical, private_key=_evidence_pk)',
+          )
+          mount_service.write_text(text, encoding='utf-8')
+
+          # -----------------------------------------------------------------
+          # Register the real target model with SQLAlchemy metadata.
+          # -----------------------------------------------------------------
+          replace_once(
+              'cappo_backend/models/__init__.py',
+              'from cappo_backend.models.audit_event import AuditEvent\n',
+              'from cappo_backend.models.activation_consequence import ActivationConsequence\n'
+              'from cappo_backend.models.audit_event import AuditEvent\n',
+              marker='from cappo_backend.models.activation_consequence import ActivationConsequence',
+          )
+          replace_once(
+              'cappo_backend/models/__init__.py',
+              '__all__ = [\n',
+              '__all__ = [\n    "ActivationConsequence",\n',
+              marker='    "ActivationConsequence",\n',
+          )
+
+          # -----------------------------------------------------------------
+          # Built-in activation package: reserved and not environment-overridable.
+          # -----------------------------------------------------------------
+          main = Path('cappo_backend/main.py')
+          text = main.read_text(encoding='utf-8')
+          if 'from cappo_backend.capability_mount.models import CapabilityPackage' not in text:
+              anchor = 'from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json\n'
+              if anchor not in text:
+                  raise SystemExit('main capability import anchor missing')
+              text = text.replace(
+                  anchor,
+                  'from cappo_backend.capability_mount.models import CapabilityPackage\n' + anchor,
+                  1,
+              )
+          if 'ACTIVATION_PACKAGE_ID' not in text:
+              anchor = 'from cappo_backend.config import Settings, get_settings\n'
+              if anchor not in text:
+                  raise SystemExit('main settings import anchor missing')
+              text = text.replace(
+                  anchor,
+                  anchor
+                  + 'from cappo_backend.services.activation_target import (\n'
+                  + '    ACTIVATION_BLOCKED_ACTION,\n'
+                  + '    ACTIVATION_OBSERVE_ACTION,\n'
+                  + '    ACTIVATION_PACKAGE_ID,\n'
+                  + '    ACTIVATION_WRITE_ACTION,\n'
+                  + ')\n',
+                  1,
+              )
+          old_registry = '''    mount_registry = MountRegistry()\n    for package in load_packages_from_json(settings.capability_packages_json):\n        mount_registry.register_package(package)\n    app.state.mount_registry = mount_registry\n'''
+          new_registry = '''    mount_registry = MountRegistry()\n    for package in load_packages_from_json(settings.capability_packages_json):\n        if package.id == ACTIVATION_PACKAGE_ID:\n            raise RuntimeError(\n                f"{ACTIVATION_PACKAGE_ID} is a reserved built-in capability package id"\n            )\n        mount_registry.register_package(package)\n    mount_registry.register_package(\n        CapabilityPackage(\n            id=ACTIVATION_PACKAGE_ID,\n            family="veklom.activation",\n            title="Veklom Activation Target",\n            purpose=(\n                "Create one durable first-party marker so a workspace can prove "\n                "bounded consequence authority, denial, and replay finality."\n            ),\n            reads=[ACTIVATION_OBSERVE_ACTION],\n            writes=[ACTIVATION_WRITE_ACTION],\n            blocked=[ACTIVATION_BLOCKED_ACTION],\n            outputs=["activation.marker.receipt", "activation.marker.observation"],\n            policy_defaults={"default": "deny", "single_use": True},\n        )\n    )\n    app.state.mount_registry = mount_registry\n'''
+          if 'reserved built-in capability package id' not in text:
+              if old_registry not in text:
+                  raise SystemExit('main registry anchor missing')
+              text = text.replace(old_registry, new_registry, 1)
+          main.write_text(text, encoding='utf-8')
+
+          # -----------------------------------------------------------------
+          # Canonical /v1/exec can dispatch the reserved action only through
+          # the already-consumed activation lease and the real target executor.
+          # -----------------------------------------------------------------
+          exec_path = Path('cappo_backend/api/routers/exec_router.py')
+          text = exec_path.read_text(encoding='utf-8')
+          if 'ActivationTargetExecutor' not in text:
+              anchor = 'from cappo_backend.services.audit_service import AuditService\n'
+              if anchor not in text:
+                  raise SystemExit('exec activation import anchor missing')
+              text = text.replace(
+                  anchor,
+                  'from cappo_backend.services.activation_target import (\n'
+                  '    ACTIVATION_PACKAGE_ID,\n'
+                  '    ACTIVATION_WRITE_ACTION,\n'
+                  '    ActivationTargetExecutor,\n'
+                  ')\n' + anchor,
+                  1,
+              )
+          if '    Executor,\n' not in text:
+              anchor = 'from cappo_backend.services.executor import (\n'
+              if anchor not in text:
+                  raise SystemExit('exec Executor import anchor missing')
+              text = text.replace(anchor, anchor + '    Executor,\n', 1)
+
+          old_sig = '''    app: Any = None,\n    lifecycle: _LifecycleContext | None = None,\n) -> RunOrchestrator:\n'''
+          new_sig = '''    app: Any = None,\n    lifecycle: _LifecycleContext | None = None,\n    executor_override: Executor | None = None,\n) -> RunOrchestrator:\n'''
+          if 'executor_override: Executor | None = None' not in text:
+              if old_sig not in text:
+                  raise SystemExit('orchestrator signature anchor missing')
+              text = text.replace(old_sig, new_sig, 1)
+          text = text.replace(
+              '    executor = build_executor(settings, db=db, workspace_id=workspace_id, app=app)\n',
+              '    executor = executor_override or build_executor(\n'
+              '        settings, db=db, workspace_id=workspace_id, app=app\n'
+              '    )\n',
+              1,
+          )
+
+          lease_anchor = '''    lease_context = _resolve_capability_lease(\n        body=body,\n        request=request,\n        db=db,\n        workspace_id=str(canonical_workspace),\n    )\n'''
+          lease_replacement = lease_anchor + '''    if body.action == ACTIVATION_WRITE_ACTION and lease_context is None:\n        raise HTTPException(\n            status_code=403,\n            detail={\n                "error": "ACTIVATION_CAPABILITY_LEASE_REQUIRED",\n                "detail": "The reserved Activation consequence cannot use a legacy execution path.",\n                "fail_closed": True,\n            },\n        )\n'''
+          if 'ACTIVATION_CAPABILITY_LEASE_REQUIRED' not in text:
+              if lease_anchor not in text:
+                  raise SystemExit('lease context anchor missing')
+              text = text.replace(lease_anchor, lease_replacement, 1)
+
+          if 'executor_override: Executor | None = None\n\n    try:' not in text:
+              anchor = '    orchestrator: RunOrchestrator | None = None\n\n    try:\n'
+              if anchor not in text:
+                  raise SystemExit('executor override local anchor missing')
+              text = text.replace(
+                  anchor,
+                  '    orchestrator: RunOrchestrator | None = None\n'
+                  '    executor_override: Executor | None = None\n\n    try:\n',
+                  1,
+              )
+
+          old_lifecycle = '''            operation_id = f"exec:{record.token.execution_id}"\n            lifecycle = _LifecycleContext(\n                receipt_id=lease_receipt_id,\n                operation_id=operation_id,\n                intent_hash=build_intent_hash(\n                    mount_id=lease_ref.mount_id,\n                    execution_id=record.token.execution_id,\n                    action=action,\n                    resource="provider-dispatch",\n                    normalized_args={\n                        "prompt_sha256": hashlib.sha256(\n                            body.prompt.encode("utf-8")\n                        ).hexdigest(),\n                    },\n                ),\n                resource="provider-dispatch",\n            )\n'''
+          new_lifecycle = '''            is_activation_package = record.mount.package_ref == ACTIVATION_PACKAGE_ID\n            if action == ACTIVATION_WRITE_ACTION and not is_activation_package:\n                raise HTTPException(\n                    status_code=403,\n                    detail={\n                        "error": "ACTIVATION_RESERVED_ACTION_PACKAGE_MISMATCH",\n                        "fail_closed": True,\n                    },\n                )\n            if is_activation_package and action != ACTIVATION_WRITE_ACTION:\n                raise HTTPException(\n                    status_code=403,\n                    detail={\n                        "error": "ACTIVATION_PACKAGE_ACTION_UNSUPPORTED",\n                        "fail_closed": True,\n                    },\n                )\n\n            operation_id = f"exec:{record.token.execution_id}"\n            if is_activation_package:\n                executor_override = ActivationTargetExecutor(db)\n                lifecycle_resource = "activation_consequences"\n                normalized_args = {\n                    "workspace_id": str(canonical_workspace),\n                    "execution_id": record.token.execution_id,\n                }\n            else:\n                lifecycle_resource = "provider-dispatch"\n                normalized_args = {\n                    "prompt_sha256": hashlib.sha256(\n                        body.prompt.encode("utf-8")\n                    ).hexdigest(),\n                }\n            lifecycle = _LifecycleContext(\n                receipt_id=lease_receipt_id,\n                operation_id=operation_id,\n                intent_hash=build_intent_hash(\n                    mount_id=lease_ref.mount_id,\n                    execution_id=record.token.execution_id,\n                    action=action,\n                    resource=lifecycle_resource,\n                    normalized_args=normalized_args,\n                ),\n                resource=lifecycle_resource,\n            )\n'''
+          if 'ACTIVATION_RESERVED_ACTION_PACKAGE_MISMATCH' not in text:
+              if old_lifecycle not in text:
+                  raise SystemExit('leased lifecycle anchor missing')
+              text = text.replace(old_lifecycle, new_lifecycle, 1)
+
+          call_anchor = '''            app=request.app,\n            lifecycle=lifecycle,\n        )\n'''
+          call_replacement = '''            app=request.app,\n            lifecycle=lifecycle,\n            executor_override=executor_override,\n        )\n'''
+          if '            executor_override=executor_override,\n' not in text:
+              if call_anchor not in text:
+                  raise SystemExit('orchestrator call anchor missing')
+              text = text.replace(call_anchor, call_replacement, 1)
+          exec_path.write_text(text, encoding='utf-8')
+
+          # -----------------------------------------------------------------
+          # Independent observer projection. It queries the target table, not
+          # the provider response or P5 event stream.
+          # -----------------------------------------------------------------
+          proof = Path('cappo_backend/api/routers/execution_proof_router.py')
+          text = proof.read_text(encoding='utf-8')
+          if 'observe_activation_consequence' not in text:
+              anchor = 'from cappo_backend.services.audit_service import AuditService\n'
+              # This router has no AuditService import; use canonical service import.
+              anchor = 'from cappo_backend.services.canonical import sha256_json\n'
+              if anchor not in text:
+                  raise SystemExit('proof activation import anchor missing')
+              text = text.replace(
+                  anchor,
+                  'from cappo_backend.services.activation_target import (\n'
+                  '    ACTIVATION_WRITE_ACTION,\n'
+                  '    observe_activation_consequence,\n'
+                  ')\n' + anchor,
+                  1,
+              )
+
+          result_anchor = '''    result = run.result_payload or {}\n    elapsed_ms = max(0.0, (run.updated_at - run.created_at).total_seconds() * 1000)\n    return {\n'''
+          result_replacement = '''    result = run.result_payload or {}\n    target_observation: dict[str, Any] | None = None\n    if evidence["authorization"]["action"] == ACTIVATION_WRITE_ACTION:\n        observation = observe_activation_consequence(\n            db,\n            execution_id=execution_id,\n            workspace_id=workspace_id,\n        ).as_dict()\n        if observation["consequence_count"] != 1:\n            _fail(\n                "ACTIVATION_TARGET_CONSEQUENCE_COUNT_INVALID",\n                "A successful Activation execution must have exactly one durable target consequence.",\n            )\n        if observation["mount_id"] != evidence["authorization"]["mount_id"]:\n            _fail(\n                "ACTIVATION_TARGET_MOUNT_MISMATCH",\n                "Target consequence is bound to another capability mount.",\n            )\n        if observation["receipt_id"] != evidence["authorization"]["receipt_id"]:\n            _fail(\n                "ACTIVATION_TARGET_RECEIPT_MISMATCH",\n                "Target consequence is bound to another authorization receipt.",\n            )\n        persisted_result = result.get("activation_target")\n        if not isinstance(persisted_result, dict):\n            _fail(\n                "ACTIVATION_TARGET_RESULT_MISSING",\n                "Execution result contains no Activation target commitment.",\n            )\n        if (\n            persisted_result.get("consequence_id") != observation["consequence_id"]\n            or persisted_result.get("content_hash") != observation["content_hash"]\n        ):\n            _fail(\n                "ACTIVATION_TARGET_RESULT_MISMATCH",\n                "Persisted execution result disagrees with the independently observed target row.",\n            )\n        target_observation = observation\n\n    elapsed_ms = max(0.0, (run.updated_at - run.created_at).total_seconds() * 1000)\n    return {\n'''
+          if 'ACTIVATION_TARGET_CONSEQUENCE_COUNT_INVALID' not in text:
+              if result_anchor not in text:
+                  raise SystemExit('measurement result anchor missing')
+              text = text.replace(result_anchor, result_replacement, 1)
+          return_anchor = '''        "eee_envelope_hash": evidence["eee"]["envelope_hash"],\n    }\n'''
+          return_replacement = '''        "eee_envelope_hash": evidence["eee"]["envelope_hash"],\n        "target_observation": target_observation,\n    }\n'''
+          if '        "target_observation": target_observation,\n' not in text:
+              if return_anchor not in text:
+                  raise SystemExit('measurement return anchor missing')
+              text = text.replace(return_anchor, return_replacement, 1)
+
+          route_anchor = '''@router.get("/{execution_id}/evidence")\ndef execution_evidence(\n'''
+          route_block = '''@router.get("/{execution_id}/target-observation")\ndef activation_target_observation(\n    execution_id: str,\n    request: Request,\n    db: Session = Depends(get_session),\n) -> dict[str, Any]:\n    return observe_activation_consequence(\n        db,\n        execution_id=execution_id,\n        workspace_id=str(request.scope["auth_workspace"]),\n    ).as_dict()\n\n\n''' + route_anchor
+          if '/target-observation' not in text:
+              if route_anchor not in text:
+                  raise SystemExit('target observation route anchor missing')
+              text = text.replace(route_anchor, route_block, 1)
+          proof.write_text(text, encoding='utf-8')
+
+          # -----------------------------------------------------------------
+          # Alembic migration anchored to the actual current head. Fail rather
+          # than guessing if the repository has multiple heads.
+          # -----------------------------------------------------------------
+          migration = Path('migrations/versions/a83026ac71d1_add_activation_consequences.py')
+          if not migration.exists():
+              output = subprocess.run(
+                  ['alembic', 'heads'],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.strip().splitlines()
+              heads = [line.split()[0] for line in output if line.strip()]
+              if len(heads) != 1:
+                  raise SystemExit(f'expected exactly one Alembic head, got {heads!r}')
+              down_revision = heads[0]
+              migration.write_text(
+                  f'''"""add durable Veklom Activation consequence target\n\nRevision ID: a83026ac71d1\nRevises: {down_revision}\n"""\n\nfrom alembic import op\nimport sqlalchemy as sa\n\nrevision = "a83026ac71d1"\ndown_revision = "{down_revision}"\nbranch_labels = None\ndepends_on = None\n\n\ndef upgrade() -> None:\n    op.create_table(\n        "activation_consequences",\n        sa.Column("consequence_id", sa.String(), nullable=False),\n        sa.Column("workspace_id", sa.String(), nullable=False),\n        sa.Column("execution_id", sa.String(), nullable=False),\n        sa.Column("operation_id", sa.String(), nullable=False),\n        sa.Column("mount_id", sa.String(), nullable=False),\n        sa.Column("receipt_id", sa.String(), nullable=False),\n        sa.Column("action", sa.String(), nullable=False),\n        sa.Column("marker_value", sa.String(), nullable=False),\n        sa.Column("content_hash", sa.String(), nullable=False),\n        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),\n        sa.PrimaryKeyConstraint("consequence_id"),\n        sa.UniqueConstraint(\n            "execution_id",\n            name="uq_activation_consequence_execution_id",\n        ),\n        sa.UniqueConstraint(\n            "operation_id",\n            name="uq_activation_consequence_operation_id",\n        ),\n    )\n    op.create_index(\n        op.f("ix_activation_consequences_workspace_id"),\n        "activation_consequences",\n        ["workspace_id"],\n        unique=False,\n    )\n    op.create_index(\n        op.f("ix_activation_consequences_execution_id"),\n        "activation_consequences",\n        ["execution_id"],\n        unique=False,\n    )\n    op.create_index(\n        op.f("ix_activation_consequences_operation_id"),\n        "activation_consequences",\n        ["operation_id"],\n        unique=False,\n    )\n    op.create_index(\n        op.f("ix_activation_consequences_mount_id"),\n        "activation_consequences",\n        ["mount_id"],\n        unique=False,\n    )\n    op.create_index(\n        op.f("ix_activation_consequences_receipt_id"),\n        "activation_consequences",\n        ["receipt_id"],\n        unique=False,\n    )\n\n\ndef downgrade() -> None:\n    op.drop_index(\n        op.f("ix_activation_consequences_receipt_id"),\n        table_name="activation_consequences",\n    )\n    op.drop_index(\n        op.f("ix_activation_consequences_mount_id"),\n        table_name="activation_consequences",\n    )\n    op.drop_index(\n        op.f("ix_activation_consequences_operation_id"),\n        table_name="activation_consequences",\n    )\n    op.drop_index(\n        op.f("ix_activation_consequences_execution_id"),\n        table_name="activation_consequences",\n    )\n    op.drop_index(\n        op.f("ix_activation_consequences_workspace_id"),\n        table_name="activation_consequences",\n    )\n    op.drop_table("activation_consequences")\n''',
+                  encoding='utf-8',
+              )
           PY
 
-      - name: Verify proof reader
+      - name: Format and verify activation boundary
         run: |
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]' aiosqlite
-          python -m compileall -q cappo_backend
           ruff check --fix \
             cappo_backend/security/evidence.py \
             cappo_backend/api/routers/execution_proof_router.py \
-            tests/test_execution_proof_projection.py
+            cappo_backend/api/routers/exec_router.py \
+            cappo_backend/main.py \
+            cappo_backend/models/activation_consequence.py \
+            cappo_backend/models/__init__.py \
+            cappo_backend/services/activation_target.py \
+            tests/test_execution_proof_projection.py \
+            tests/test_activation_target.py \
+            migrations/versions/a83026ac71d1_add_activation_consequences.py
           ruff check \
             cappo_backend/security/evidence.py \
             cappo_backend/api/routers/execution_proof_router.py \
-            tests/test_execution_proof_projection.py
-          pytest -q tests/test_g0b5_signed_evidence.py tests/test_execution_proof_projection.py --tb=short
+            cappo_backend/api/routers/exec_router.py \
+            cappo_backend/main.py \
+            cappo_backend/models/activation_consequence.py \
+            cappo_backend/services/activation_target.py \
+            tests/test_execution_proof_projection.py \
+            tests/test_activation_target.py
+          python -m compileall -q cappo_backend
+          alembic heads
+          pytest -q \
+            tests/test_g0b5_signed_evidence.py \
+            tests/test_execution_proof_projection.py \
+            tests/test_execution_evidence_lifecycle.py \
+            tests/test_activation_target.py \
+            --tb=short
 
-      - name: Commit repair to branch
+      - name: Commit verified integration to branch
         run: |
           if git diff --quiet; then
-            echo 'No proof repair required.'
+            echo 'No activation integration repair required.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
@@ -92,6 +328,14 @@ jobs:
           git add \
             cappo_backend/security/evidence.py \
             cappo_backend/api/routers/execution_proof_router.py \
-            tests/test_execution_proof_projection.py
-          git commit -m 'proof: verify signed authorization receipt [auto-proof-fix]'
+            cappo_backend/api/routers/exec_router.py \
+            cappo_backend/capability_mount/service.py \
+            cappo_backend/main.py \
+            cappo_backend/models/__init__.py \
+            cappo_backend/models/activation_consequence.py \
+            cappo_backend/services/activation_target.py \
+            tests/test_execution_proof_projection.py \
+            tests/test_activation_target.py \
+            migrations/versions/a83026ac71d1_add_activation_consequences.py
+          git commit -m 'activation: wire observable governed consequence [auto-activation-fix]'
           git push origin HEAD:activation-e2e-authority-binding
