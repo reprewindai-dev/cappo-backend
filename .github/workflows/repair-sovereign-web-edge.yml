@@ -10,90 +10,74 @@ permissions:
   contents: read
 
 jobs:
-  repair:
+  inspect-and-repair:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Configure Hetzner SSH
+      - name: Configure Hetzner SSH key
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/veklom-deploy
           chmod 600 ~/.ssh/veklom-deploy
-          ssh-keyscan -H 5.78.135.11 87.99.154.166 >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Inspect and repair sovereign frontend hosts
-        shell: bash
-        run: |
-          set -euo pipefail
-          KEY=~/.ssh/veklom-deploy
-
-          echo '=== CORE SERVER 5.78.135.11 ==='
-          ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=10 root@5.78.135.11 'bash -s' <<'REMOTE'
-          set -e
-          echo "host=$(hostname)"
-          echo 'containers:'
-          docker ps --format '{{.Names}}|{{.Status}}|{{.Ports}}' | grep -E 'coolify|traefik|veklom|control|frontend|byos' || true
-          echo 'coolify proxy:'
-          docker ps --format '{{.Names}}' | grep -E '^coolify-proxy$' || true
-          echo 'local host route tests:'
-          curl -sk --max-time 8 -o /dev/null -w 'veklom.com local HTTPS %{http_code}\n' -H 'Host: veklom.com' https://127.0.0.1/ || true
-          curl -s --max-time 8 -o /dev/null -w 'api local HTTP %{http_code}\n' http://127.0.0.1:8088/health || true
-          echo 'cloudflared processes/containers:'
-          (pgrep -a cloudflared || true)
-          docker ps --format '{{.Names}}|{{.Image}}' | grep -i cloudflared || true
-          echo 'cloudflare credential/config presence only:'
-          find /root /etc /data -maxdepth 5 -type f \( -name 'config.yml' -o -name '*.json' \) 2>/dev/null | grep -E 'cloudflar|tunnel' | head -20 || true
-          env | cut -d= -f1 | grep -E 'CLOUDFLARE|CF_' || true
-          REMOTE
-
-          echo '=== EDGE SERVER 87.99.154.166 ==='
-          ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=10 root@87.99.154.166 'bash -s' <<'REMOTE'
-          set -e
-          echo "host=$(hostname)"
-          echo 'containers before repair:'
-          docker ps -a --format '{{.Names}}|{{.Status}}|{{.Ports}}' | grep -E 'coolify|traefik|veklom|control|frontend' || true
-
-          # Restart already-deployed control-plane container(s) if present; do not create a fake replacement.
-          mapfile -t targets < <(docker ps -a --format '{{.Names}}' | grep -E 'veklom-control-plane|control-plane|frontend' || true)
-          for c in "${targets[@]}"; do
-            [ -n "$c" ] || continue
-            echo "restarting $c"
-            docker restart "$c" >/dev/null || true
-          done
-
-          # Ensure Coolify proxy itself is up if this server owns edge routing.
-          if docker ps -a --format '{{.Names}}' | grep -qx 'coolify-proxy'; then
-            docker start coolify-proxy >/dev/null 2>&1 || true
-          fi
-
-          sleep 5
-          echo 'containers after repair:'
-          docker ps --format '{{.Names}}|{{.Status}}|{{.Ports}}' | grep -E 'coolify|traefik|veklom|control|frontend' || true
-
-          echo 'local frontend probes:'
-          curl -sS --max-time 10 -o /dev/null -w '127.0.0.1:3002 / HTTP %{http_code}\n' http://127.0.0.1:3002/ || true
-          curl -sS --max-time 10 -o /dev/null -w '127.0.0.1:3002 /api/health HTTP %{http_code}\n' http://127.0.0.1:3002/api/health || true
-          curl -sk --max-time 10 -o /dev/null -w 'control.veklom.com local HTTPS %{http_code}\n' -H 'Host: control.veklom.com' https://127.0.0.1/ || true
-
-          echo 'cloudflared processes/containers:'
-          (pgrep -a cloudflared || true)
-          docker ps --format '{{.Names}}|{{.Image}}' | grep -i cloudflared || true
-          echo 'cloudflare credential/config presence only:'
-          find /root /etc /data -maxdepth 5 -type f \( -name 'config.yml' -o -name '*.json' \) 2>/dev/null | grep -E 'cloudflar|tunnel' | head -20 || true
-          env | cut -d= -f1 | grep -E 'CLOUDFLARE|CF_' || true
-          REMOTE
-
-      - name: Probe public Veklom endpoints after repair
+      - name: Probe DNS and public edge
         shell: bash
         run: |
           set +e
-          for url in \
-            https://veklom.com/ \
-            https://veklom.com/api/health \
-            https://control.veklom.com/ \
-            https://api.veklom.com/api/v1/health; do
+          echo '=== DNS ==='
+          getent ahostsv4 veklom.com | awk '{print $1}' | sort -u || true
+          getent ahostsv4 control.veklom.com | awk '{print $1}' | sort -u || true
+          echo '=== PUBLIC HTTP ==='
+          for url in https://veklom.com/ https://veklom.com/api/health https://control.veklom.com/; do
+            code=$(curl -skL --max-time 15 -o /tmp/body -w '%{http_code}' "$url")
+            echo "$url -> HTTP $code"
+            head -c 200 /tmp/body | tr '\n' ' '; echo
+          done
+
+      - name: Inspect known Hetzner hosts directly
+        shell: bash
+        run: |
+          set +e
+          KEY=~/.ssh/veklom-deploy
+          for host in 5.78.135.11 87.99.154.166; do
+            echo "=== HOST $host ==="
+            ssh -i "$KEY" \
+              -o BatchMode=yes \
+              -o ConnectTimeout=10 \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              root@$host 'bash -s' <<'REMOTE'
+          set +e
+          echo "hostname=$(hostname)"
+          echo "uptime=$(uptime -p 2>/dev/null)"
+          echo 'docker:'
+          command -v docker || true
+          docker version --format '{{.Server.Version}}' 2>/dev/null || true
+          echo 'containers:'
+          docker ps -a --format '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' 2>/dev/null | head -80 || true
+          echo 'listeners:'
+          ss -lntp 2>/dev/null | grep -E ':(80|443|3002|8000|8088)\b' || true
+          echo 'local probes:'
+          curl -sS --max-time 5 -o /dev/null -w 'http://127.0.0.1:3002 -> %{http_code}\n' http://127.0.0.1:3002/ || true
+          curl -sS --max-time 5 -o /dev/null -w 'http://127.0.0.1:8088 -> %{http_code}\n' http://127.0.0.1:8088/ || true
+          curl -sk --max-time 5 -o /dev/null -w 'https://127.0.0.1 Host:veklom.com -> %{http_code}\n' -H 'Host: veklom.com' https://127.0.0.1/ || true
+          echo 'cloudflared:'
+          pgrep -a cloudflared || true
+          docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}' 2>/dev/null | grep -i cloudflared || true
+          echo 'candidate frontend paths:'
+          find /data /opt /srv /root -maxdepth 4 -type d \( -iname '*veklom*' -o -iname '*control*plane*' \) 2>/dev/null | head -80 || true
+          REMOTE
+            rc=$?
+            echo "ssh_rc=$rc"
+          done
+
+      - name: Probe public endpoints after inspection
+        shell: bash
+        run: |
+          set +e
+          for url in https://veklom.com/ https://veklom.com/api/health https://control.veklom.com/ https://api.veklom.com/api/v1/health; do
             code=$(curl -skL --max-time 20 -o /dev/null -w '%{http_code}' "$url")
             echo "$url -> HTTP $code"
           done
