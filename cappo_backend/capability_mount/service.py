@@ -1011,16 +1011,28 @@ class MountRegistry:
                 ),
             )
 
-        row = self._row(mount_id, lock=True)
-        if row is None:
-            return Decision.DENY, "unknown_mount", None, payload(record=None, decision=Decision.DENY, reason="unknown_mount")
-        if not self._owned_by(row, owner_principal, owner_workspace):
+        def preflight_deny(
+            reason: str,
+            record: MountRecord | None,
+        ) -> tuple[Decision, str, str | None, dict[str, Any]]:
+            # Preflight failures must NOT consume the nonce or terminate the mount.
             return (
                 Decision.DENY,
-                "owner_mismatch",
+                reason,
                 None,
-                payload(record=None, decision=Decision.DENY, reason="owner_mismatch"),
+                payload(
+                    record=record,
+                    decision=Decision.DENY,
+                    reason=reason,
+                    terminated=False,
+                ),
             )
+
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            return preflight_deny("unknown_mount", None)
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            return preflight_deny("owner_mismatch", None)
 
         record = self._record(row)
         if (
@@ -1028,16 +1040,16 @@ class MountRegistry:
             and _utc(row.expires_at) > utc_now()
             and (token_id != row.token_id or nonce != row.token_nonce)
         ):
-            return terminal_deny("token_mismatch", record)
+            return preflight_deny("token_mismatch", record)
         adapter = self.effect_targets.resolve(target_ref)
         if adapter is None:
-            return terminal_deny("unknown_effect_target", record)
+            return preflight_deny("unknown_effect_target", record)
         if action not in adapter.actions:
-            return terminal_deny("effect_not_mapped", record)
+            return preflight_deny("effect_not_mapped", record)
         try:
             validate_resource(resource)
         except ValueError:
-            return terminal_deny("invalid_effect_resource", record)
+            return preflight_deny("invalid_effect_resource", record)
 
         if operation_id is not None:
             from cappo_backend.models.consequence_execution import build_intent_hash
