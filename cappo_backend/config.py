@@ -56,6 +56,7 @@ class Settings(BaseSettings):
 
     # Capability discovery and signed beacon publication.
     capability_packages_json: str | None = None
+    capability_effect_record_root: str | None = None
     capability_beacon_issuer: str = "https://cappo.veklom.com"
     capability_beacon_ttl_seconds: int = 300
     capability_beacon_kid: str = "default"

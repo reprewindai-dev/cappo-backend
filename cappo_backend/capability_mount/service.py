@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,6 +27,7 @@ from cappo_backend.services.mount_evidence import (
     VerifiedMountEvidence,
 )
 
+from .effects import EffectTargetRegistry, validate_resource
 from .engine import AuditSink, ExecutionBinding, Mounter
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
@@ -101,11 +103,13 @@ class MountRegistry:
         db: Session | None = None,
         anchor: EventAnchor | None = None,
         evidence_verifier: BoundMountEvidenceVerifier | None = None,
+        effect_targets: EffectTargetRegistry | None = None,
     ) -> None:
         self.db = db
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
         self.evidence_verifier = evidence_verifier or BoundMountEvidenceVerifier()
+        self.effect_targets = effect_targets or EffectTargetRegistry()
         self.mounter = Mounter()
 
     def register_package(self, package: CapabilityPackage) -> None:
@@ -933,6 +937,225 @@ class MountRegistry:
                 "reason": reason,
                 "receipt_id": receipt.receipt_id if decision is Decision.ALLOW else None,
             },
+        )
+
+    def execute_consequence(
+        self,
+        mount_id: str,
+        action: str,
+        *,
+        token_id: str,
+        nonce: str,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+        approval_token: str | None = None,
+        suppression_evidence: str | None = None,
+        suppression_confirmed: bool = False,
+        target_ref: str,
+        resource: str,
+        arguments: dict[str, Any],
+        operation_id: str | None = None,
+    ) -> tuple[Decision, str, str | None, dict[str, Any]]:
+        """Authorize and execute one registered capability consequence."""
+        db = self._db()
+        op_id = operation_id or str(uuid4())
+
+        def payload(
+            *,
+            record: MountRecord | None,
+            decision: Decision,
+            reason: str,
+            consequence_state: str | None = None,
+            target_invoked: bool = False,
+            resulting_state: object | None = None,
+            receipt_id: str | None = None,
+            terminated: bool = False,
+        ) -> dict[str, Any]:
+            return {
+                "mount_id": mount_id,
+                "execution_id": record.token.execution_id if record else None,
+                "operation_id": op_id,
+                "action": action,
+                "target_ref": target_ref,
+                "resource": resource,
+                "decision": decision.value,
+                "reason": reason,
+                "consequence_state": consequence_state,
+                "target_invoked": target_invoked,
+                "resulting_state": resulting_state,
+                "receipt_id": receipt_id,
+                "nonce_consumed": bool(row.nonce_consumed) if record else None,
+                "terminated": terminated,
+            }
+
+        def terminal_deny(
+            reason: str,
+            record: MountRecord,
+        ) -> tuple[Decision, str, str | None, dict[str, Any]]:
+            termination, _termination_reason, _termination_anchor = self.terminate(
+                mount_id,
+                UnmountReason.TASK_COMPLETE,
+                owner_principal=owner_principal,
+                owner_workspace=owner_workspace,
+            )
+            terminated = termination is Decision.ALLOW
+            return (
+                Decision.DENY,
+                reason,
+                None,
+                payload(
+                    record=record,
+                    decision=Decision.DENY,
+                    reason=reason,
+                    terminated=terminated,
+                ),
+            )
+
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            return Decision.DENY, "unknown_mount", None, payload(record=None, decision=Decision.DENY, reason="unknown_mount")
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            return (
+                Decision.DENY,
+                "owner_mismatch",
+                None,
+                payload(record=None, decision=Decision.DENY, reason="owner_mismatch"),
+            )
+
+        record = self._record(row)
+        if (
+            not row.terminated
+            and _utc(row.expires_at) > utc_now()
+            and (token_id != row.token_id or nonce != row.token_nonce)
+        ):
+            return terminal_deny("token_mismatch", record)
+        adapter = self.effect_targets.resolve(target_ref)
+        if adapter is None:
+            return terminal_deny("unknown_effect_target", record)
+        if action not in adapter.actions:
+            return terminal_deny("effect_not_mapped", record)
+        try:
+            validate_resource(resource)
+        except ValueError:
+            return terminal_deny("invalid_effect_resource", record)
+
+        if operation_id is not None:
+            from cappo_backend.models.consequence_execution import build_intent_hash
+
+            normalized_args = {
+                key: str(value)
+                for key, value in {
+                    "resource": resource,
+                    "arguments": arguments,
+                    "target_ref": target_ref,
+                    "approval_token": approval_token,
+                    "suppression_evidence": suppression_evidence,
+                    "suppression_confirmed": suppression_confirmed,
+                }.items()
+                if key not in ("approval_token", "suppression_evidence", "suppression_confirmed")
+            }
+            expected_intent = build_intent_hash(
+                mount_id=record.mount.id,
+                execution_id=record.token.execution_id,
+                action=action,
+                resource=resource,
+                normalized_args=normalized_args,
+            )
+            latest = db.execute(
+                select(ConsequenceExecutionEvent)
+                .where(ConsequenceExecutionEvent.operation_id == operation_id)
+                .order_by(ConsequenceExecutionEvent.version.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if latest is not None:
+                replay_reason = (
+                    "idempotency_intent_mismatch"
+                    if latest.intent_hash != expected_intent
+                    else f"idempotency_replay:{latest.state}"
+                )
+                return (
+                    Decision.DENY,
+                    replay_reason,
+                    latest.state,
+                    payload(
+                        record=record,
+                        decision=Decision.DENY,
+                        reason=replay_reason,
+                        consequence_state=latest.state,
+                        receipt_id=latest.receipt_id,
+                    ),
+                )
+
+        before_count = adapter.invocations_by_action.get(action, 0)
+        result: object | None = None
+        decision = Decision.ALLOW
+        reason = "allowed"
+        passthrough = {
+            "resource": resource,
+            "arguments": arguments,
+            "target_ref": target_ref,
+            "approval_token": approval_token,
+            "suppression_evidence": suppression_evidence,
+            "suppression_confirmed": suppression_confirmed,
+        }
+
+        def invoke_effect(**_: object) -> object:
+            return adapter.invoke(action, resource, arguments)
+
+        try:
+            # CAPPO's binding is the sole owner of authorization and execution.
+            result = record.binding.consequence(
+                action,
+                invoke_effect,
+                operation_id=op_id,
+                **passthrough,
+            )
+        except PolicyError as exc:
+            decision = Decision.DENY
+            reason = str(exc)
+        except Exception:
+            # The durable consequence event is the source of truth for outcome.
+            decision = Decision.ALLOW
+
+        latest = db.execute(
+            select(ConsequenceExecutionEvent)
+            .where(ConsequenceExecutionEvent.operation_id == op_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        consequence_state = latest.state if latest is not None else None
+        receipt_id = latest.receipt_id if latest is not None else None
+        after_count = adapter.invocations_by_action.get(action, 0)
+        target_invoked = after_count > before_count
+
+        should_terminate = not (
+            reason.startswith("idempotency_replay:")
+            or reason == "consequence_already_started"
+        )
+        terminated = False
+        if should_terminate:
+            termination, _termination_reason, _termination_anchor = self.terminate(
+                mount_id,
+                UnmountReason.TASK_COMPLETE,
+                owner_principal=owner_principal,
+                owner_workspace=owner_workspace,
+            )
+            terminated = termination is Decision.ALLOW
+
+        return (
+            decision,
+            reason,
+            consequence_state,
+            payload(
+                record=record,
+                decision=decision,
+                reason=reason,
+                consequence_state=consequence_state,
+                target_invoked=target_invoked,
+                resulting_state=result,
+                receipt_id=receipt_id,
+                terminated=terminated,
+            ),
         )
 
 
