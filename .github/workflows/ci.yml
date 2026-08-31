@@ -60,12 +60,13 @@ jobs:
       - name: Validate imports inside container
         run: |
           docker run --rm \
+            --entrypoint python3 \
             -e DATABASE_URL="postgresql+psycopg2://test:test@localhost/test" \
             -e SECRET_KEY="ci-test-secret-key" \
             -e ENVIRONMENT="test" \
             -e CAPPO_SKIP_MIGRATIONS="1" \
             cappo-backend-ci:${{ github.sha }} \
-            python3 -c "
+            -c "
           import fastapi, uvicorn, sqlalchemy, pydantic, httpx, cryptography
           import cappo_backend.main
           print('All critical imports OK')
