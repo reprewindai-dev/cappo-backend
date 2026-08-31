@@ -54,10 +54,13 @@ def _new_mount(factory) -> tuple[str, str, str]:
             role="ephemeral_executor",
             policy=MountPolicy(),
             ttl_seconds=300,
+            caller_spiffe_id="spiffe://veklom.test/concurrency/caller",
+            executor_spiffe_id="spiffe://veklom.test/concurrency/executor",
         )
         assert anchor.status == "confirmed"
         assert reason == "mounted"
         assert record is not None
+        assert record.token.biscuit_token is not None
         return record.mount.id, record.token.token_id, record.token.nonce
 
 

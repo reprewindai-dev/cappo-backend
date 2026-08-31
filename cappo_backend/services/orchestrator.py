@@ -65,8 +65,6 @@ class RunOrchestrator:
         Execution-layer adapter (real provider or echo stub).
     audit : AuditService
         Hash-chained audit service.
-    audit : AuditService
-        Hash-chained audit service.
     eat_builder : EATBuilder | None
         EAT builder for minting Execution Authorization Tokens. When present, the
         orchestrator mints an EAT after the EI and stores it on the run.
@@ -106,10 +104,6 @@ class RunOrchestrator:
         """The most recent run created by this orchestrator instance."""
         return self._last_run
 
-    # ------------------------------------------------------------------
-    # Full governed pipeline (Option A from the EI Plan)
-    # ------------------------------------------------------------------
-
     def run_governed(self, request: dict[str, Any]) -> dict[str, Any]:
         """Execute the full governed pipeline and return the result."""
         run = self.create_run(request)
@@ -119,9 +113,6 @@ class RunOrchestrator:
             try:
                 self.govern_run(run)
             except GovernanceDeniedError:
-                # A semantic denial is a terminal outcome, but it is still a
-                # governed attempt and therefore needs durable PGL provenance.
-                # No EI, route, provider, or executor is reached on this path.
                 self.commit_run(run)
                 raise
             self.commit_run(run)
@@ -135,7 +126,6 @@ class RunOrchestrator:
         except Exception as exc:
             self._transition(run, RunState.FAILED)
             request_payload = run.request_payload or {}
-            # Record the failure in the audit log (audit all rejections/failures).
             self._audit.record(
                 "run_failed",
                 {
@@ -151,22 +141,17 @@ class RunOrchestrator:
             raise
 
     def validate_with_capi(self, run: GovernedRun) -> None:
-        """Preserve the legacy hook without creating a second execution path.
-
-        cAPI provides discovery and request-integrity support.  CAPPO's
-        pre-orchestration gate at ``/v1/exec`` remains the only authority
-        boundary, so it must not call BYOS's legacy public cAPI executor after
-        provider routing has begun.
-        """
+        """Preserve the legacy hook without creating a second execution path."""
         del run
 
-    # ------------------------------------------------------------------
-    # Phase methods
-    # ------------------------------------------------------------------
-
     def create_run(self, request: dict[str, Any]) -> GovernedRun:
-        # If genome layers are present and a GenomeService is available,
-        # register a real genome and derive genome_hash from the Merkle root.
+        """Create the durable run before governance or any side effect.
+
+        A trusted caller may supply ``execution_id`` to bind a pre-issued
+        CapabilityLease to the run. The identifier is only correlation; it does
+        not grant authority. Public /v1/exec injects it only after validating the
+        lease proof and workspace ownership.
+        """
         genome_hash = request.get("genome_hash")
         if self._genome_service is not None and not genome_hash:
             layer_keys = {
@@ -187,8 +172,20 @@ class RunOrchestrator:
                 )
                 genome_hash = result["genome_hash"]
 
+        requested_execution_id = request.get("execution_id")
+        if requested_execution_id is not None and (
+            not isinstance(requested_execution_id, str)
+            or not requested_execution_id.strip()
+        ):
+            raise ValueError("execution_id must be a non-empty string when supplied")
+        run_id = (
+            requested_execution_id.strip()
+            if isinstance(requested_execution_id, str)
+            else str(uuid.uuid4())
+        )
+
         run = GovernedRun(
-            run_id=str(uuid.uuid4()),
+            run_id=run_id,
             workspace_id=request.get("workspace_id", "default"),
             tenant_id=request.get("tenant_id", "default"),
             delegation_depth=int(request.get("delegation_depth", 0)),
@@ -198,7 +195,8 @@ class RunOrchestrator:
                 "genome_hash": genome_hash or sha256_json(request),
                 "constitution_hash": request.get("constitution_hash")
                 or sha256_json({"version": "1"}),
-                "plan_hash": request.get("plan_hash") or sha256_json(request.get("prompt", "")),
+                "plan_hash": request.get("plan_hash")
+                or sha256_json(request.get("prompt", "")),
             },
             scope=request.get("scope") or {"tools": ["llm.exec"]},
             approved_budget_cents=int(request.get("budget_approved_cents", 0)),
@@ -218,7 +216,6 @@ class RunOrchestrator:
     def govern_run(self, run: GovernedRun) -> None:
         """Governance decision. No post-hoc/status-derived defaults."""
         payload = run.request_payload or {}
-
         raw_directive = payload.get("directive")
         if not raw_directive or not str(raw_directive).strip():
             raise MissingGovernanceDecisionError("CAPPO governance decision required")
@@ -228,19 +225,18 @@ class RunOrchestrator:
         normalized = normalize_directive(payload, strict=True)
         directive = normalized.directive
         risk_tier = normalized.risk_tier
-
         run.governance_decision = directive
         run.risk_tier = risk_tier
         run.v4_decision = {"directive": directive, "risk_tier": risk_tier}
         run.seked_state = {"directive": directive}
         self._transition(run, RunState.GOVERNED)
         if directive in _DENY_DIRECTIVES:
-            raise GovernanceDeniedError(f"governance directive {directive!r} vetoed execution")
+            raise GovernanceDeniedError(
+                f"governance directive {directive!r} vetoed execution"
+            )
 
     def commit_run(self, run: GovernedRun) -> None:
         """Mint the PGL pre-certificate (commit point)."""
-        # A terminal DENY is not executable, but it is still a governed
-        # decision that must receive durable PGL provenance.
         governance_decision = _require_recorded_governance_decision(run)
         request_payload = run.request_payload or {}
         nested_agent = request_payload.get("agent") or {}
@@ -272,15 +268,14 @@ class RunOrchestrator:
         self._transition(run, RunState.COMMITTED)
 
     def mint_execution_identity(self, run: GovernedRun) -> None:
-        """Mint ``ExecutionIdentityV1`` - strictly after commit, before route."""
+        """Mint ``ExecutionIdentityV1`` strictly after commit and before route."""
         governance_decision = _require_governance_decision(run)
         runtime_ownership = self._claim_runtime_ownership(run)
         ei_inputs: dict[str, Any] = {
-            # The run id is allocated before governance, allowing both a
-            # terminal denial and every provider attempt to share one semantic
-            # execution identifier.
             "execution_id": run.run_id,
-            "pgl_pre_certificate_id": run.pgl_identity.get("pre_execution_certificate_id", ""),
+            "pgl_pre_certificate_id": run.pgl_identity.get(
+                "pre_execution_certificate_id", ""
+            ),
             "genome_hash": run.hashes.get("genome_hash", ""),
             "constitution_hash": run.hashes.get("constitution_hash", ""),
             "plan_hash": run.hashes.get("plan_hash", ""),
@@ -299,8 +294,6 @@ class RunOrchestrator:
         }
         identity = self._builder.build(ei_inputs)
         run.execution_identity = identity
-
-        # Persist to the dedicated table.
         ei_record = ExecutionIdentity(
             ei_id=identity["ei_id"],
             run_id=run.run_id,
@@ -318,25 +311,23 @@ class RunOrchestrator:
         )
         self._db.add(ei_record)
         self._db.flush()
-
         self._transition(run, RunState.EI_MINTED)
 
     def route_run(self, run: GovernedRun) -> None:
         self._transition(run, RunState.ROUTED)
 
     def mint_eat(self, run: GovernedRun) -> None:
-        """Mint Execution Authorization Token - strictly after EI, before route."""
+        """Mint Execution Authorization Token strictly after EI, before route."""
         if self._gateway is None and self._eat_builder is None:
             return
-
         request = run.request_payload or {}
         ei = run.execution_identity
         if not ei:
             raise ValueError("Cannot mint EAT without an Execution Identity.")
-
         agent_id = request.get("agent", {}).get("id", "unknown")
-        certificate_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "unknown")
-
+        certificate_id = (run.pgl_identity or {}).get(
+            "pre_execution_certificate_id", "unknown"
+        )
         if self._eat_builder is not None:
             eat = self._eat_builder.build(
                 execution_identity=ei,
@@ -355,7 +346,6 @@ class RunOrchestrator:
             )
         run.eat = eat
         self._db.flush()
-
         self._audit.record(
             "eat_minted",
             {
@@ -367,18 +357,10 @@ class RunOrchestrator:
             workspace_id=run.workspace_id,
             run_id=run.run_id,
         )
-
         self._transition(run, RunState.EAT_MINTED)
 
     def execute_run(self, run: GovernedRun) -> dict[str, Any]:
-        """Enforce LAW 0, then run the executor.
-
-        The gateway check fires *before* the side effect (the executor call):
-        an invalid/missing EI raises ``EIValidationError`` while the run is still
-        ROUTED, so ``run_governed`` transitions it to FAILED and no side effect
-        occurs. This is the enforcement contract from the EI Plan -Enforcement
-        scope ("before any side-effecting tool call").
-        """
+        """Enforce LAW 0 and runtime ownership, then run the executor."""
         self._enforce_law0(run)
         self._enforce_runtime_ownership(run)
         self._transition(run, RunState.EXECUTING)
@@ -405,7 +387,6 @@ class RunOrchestrator:
     def _claim_runtime_ownership(self, run: GovernedRun) -> dict[str, Any]:
         if not self._runtime_kind or not self._runtime_instance:
             raise RuntimeOwnershipError("RUNTIME_IDENTITY_UNAVAILABLE")
-
         existing = self._db.scalar(
             select(RuntimePathAssignment)
             .where(RuntimePathAssignment.path_id == run.run_id)
@@ -414,7 +395,6 @@ class RunOrchestrator:
         )
         if existing is not None:
             raise RuntimeOwnershipError("PATH_ALREADY_ASSIGNED")
-
         ownership = {
             "path_id": run.run_id,
             "assignment_id": str(uuid.uuid4()),
@@ -435,7 +415,6 @@ class RunOrchestrator:
         ownership = identity.get("runtime_ownership")
         if not isinstance(ownership, dict):
             raise RuntimeOwnershipError("RUNTIME_OWNERSHIP_REQUIRED")
-
         required = {
             "path_id",
             "assignment_id",
@@ -454,7 +433,6 @@ class RunOrchestrator:
             if previous and ownership["authority_epoch"] <= 1:
                 raise RuntimeOwnershipError("AUTHORITY_EPOCH_NOT_ADVANCED")
             raise RuntimeOwnershipError("RUNTIME_OWNER_MISMATCH")
-
         assignment = self._db.get(RuntimePathAssignment, ownership["assignment_id"])
         if assignment is None:
             raise RuntimeOwnershipError("PATH_ASSIGNMENT_NOT_PERSISTED")
@@ -468,27 +446,27 @@ class RunOrchestrator:
             raise RuntimeOwnershipError("PERSISTED_OWNER_MISMATCH")
 
     def attest_run(self, run: GovernedRun) -> None:
-        """Mint the post-execution PGL certificate and attest the outcome.
-
-        The minted ``ExecutionIdentityV1`` is signed *before* execution, so it
-        cannot itself carry the post-certificate id. The forward link is recorded
-        on the ``execution_identities`` row and on ``run.pgl_identity`` instead -
-        the signed identity object is never mutated post-issuance.
-        """
+        """Mint the post-execution PGL certificate and attest the outcome."""
         result = run.result_payload or {}
         output_hash = sha256_json(result)
-        outcome_hash = sha256_json({"state": RunState.EXECUTED.value, "result": result})
+        outcome_hash = sha256_json(
+            {"state": RunState.EXECUTED.value, "result": result}
+        )
         pre_cert_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
         governance_decision = _require_governance_decision(run)
-
+        request_payload = run.request_payload or {}
+        nested_agent = request_payload.get("agent") or {}
+        agent_id = (
+            request_payload.get("agent_id")
+            or request_payload.get("pgl_id")
+            or (nested_agent.get("id") if isinstance(nested_agent, dict) else None)
+        )
         params = PostCertificateParams(
             pre_certificate_id=pre_cert_id,
             run_id=run.run_id,
             workspace_id=run.workspace_id,
-            actor_id=run.request_payload.get("pgl_id") if run.request_payload else None,
-            agent_id=run.request_payload.get("agent", {}).get("id")
-            if run.request_payload
-            else None,
+            actor_id=request_payload.get("pgl_id"),
+            agent_id=agent_id,
             genome_hash=run.hashes.get("genome_hash", ""),
             constitution_hash=run.hashes.get("constitution_hash", ""),
             plan_hash=run.hashes.get("plan_hash", ""),
@@ -499,20 +477,16 @@ class RunOrchestrator:
             input_hash=run.hashes.get("input_hash"),
         )
         post_cert = self._pgl.mint_post_certificate(params)
-
         run.pgl_identity = {
             **(run.pgl_identity or {}),
             "post_execution_certificate_id": post_cert.certificate_id,
         }
-
-        # Record the post-cert link on the EI row (not the signed identity body).
         execution_id = (run.execution_identity or {}).get("execution_id")
         if execution_id:
             ei_record = self._db.get(ExecutionIdentity, execution_id)
             if ei_record is not None:
                 ei_record.pgl_post_certificate_id = post_cert.certificate_id
                 self._db.flush()
-
         self._audit.record(
             "run_attested",
             {
@@ -529,14 +503,7 @@ class RunOrchestrator:
         self._transition(run, RunState.ATTESTED)
 
     def record_evidence_seal(self, run: GovernedRun, seal: dict[str, Any]) -> Any:
-        """Durably bind a cAPI request/result seal into the PGL event chain.
-
-        Successful runs anchor to their attested post-certificate. Terminal
-        denials have no execution result or post-certificate, so they anchor
-        to the already-persisted pre-execution certificate. It does not
-        authorize or execute anything; failure is surfaced to the caller so an
-        unsealed terminal outcome is never presented as complete evidence.
-        """
+        """Durably bind an evidence seal to PGL and keep a signed read projection."""
         pgl_identity = run.pgl_identity or {}
         certificate_id = pgl_identity.get("post_execution_certificate_id") or pgl_identity.get(
             "pre_execution_certificate_id"
@@ -562,6 +529,8 @@ class RunOrchestrator:
         run.pgl_identity = {
             **(run.pgl_identity or {}),
             "capi_evidence_event_id": event_id,
+            "capi_evidence_seal_hash": seal.get("seal_hash"),
+            "capi_evidence_seal": seal,
         }
         self._audit.record(
             "capi_evidence_sealed",
@@ -579,10 +548,6 @@ class RunOrchestrator:
         self._db.flush()
         return event
 
-    # ------------------------------------------------------------------
-    # State management
-    # ------------------------------------------------------------------
-
     def _transition(self, run: GovernedRun, target: RunState) -> None:
         current = RunState(run.state)
         assert_transition(current, target)
@@ -599,9 +564,13 @@ def _default_action(scope: dict[str, Any] | None) -> str:
 def _execution_request(request: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
     """Bind execution routing to CAPPO's signed identity, never client hints."""
     scope = identity.get("scope")
-    allowed_provider_set = scope.get("allowed_provider_set") if isinstance(scope, dict) else None
+    allowed_provider_set = (
+        scope.get("allowed_provider_set") if isinstance(scope, dict) else None
+    )
     ownership = identity.get("runtime_ownership")
-    authority_epoch = ownership.get("authority_epoch") if isinstance(ownership, dict) else None
+    authority_epoch = (
+        ownership.get("authority_epoch") if isinstance(ownership, dict) else None
+    )
     return {
         **request,
         "authority_envelope": {
@@ -628,7 +597,9 @@ def _normalize_directive(raw: Any) -> str:
 def _require_governance_decision(run: GovernedRun) -> str:
     directive = _normalize_directive(run.governance_decision)
     if directive not in _ALLOW_DIRECTIVES:
-        raise GovernanceDeniedError(f"governance directive {directive!r} does not permit execution")
+        raise GovernanceDeniedError(
+            f"governance directive {directive!r} does not permit execution"
+        )
     return directive
 
 

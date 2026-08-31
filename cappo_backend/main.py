@@ -32,7 +32,10 @@ from cappo_backend.api.routers.capability_beacon_router import router as capabil
 from cappo_backend.api.routers.capability_mount_router import router as capability_mount_router
 from cappo_backend.api.routers.exec_router import router as exec_router
 from cappo_backend.api.routers.execution_keys_router import router as execution_keys_router
-from cappo_backend.api.routers.execution_projection_router import router as execution_projection_router
+from cappo_backend.api.routers.execution_projection_router import (
+    router as execution_projection_router,
+)
+from cappo_backend.api.routers.execution_proof_router import router as execution_proof_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.health_router import router as health_router
@@ -44,6 +47,7 @@ from cappo_backend.api.routers.protocol_router import router as protocol_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
+from cappo_backend.capability_mount.models import CapabilityPackage
 from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
@@ -52,6 +56,12 @@ from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
 from cappo_backend.security.spiffe_middleware import SVIDEnforcementMiddleware
+from cappo_backend.services.activation_target import (
+    ACTIVATION_BLOCKED_ACTION,
+    ACTIVATION_OBSERVE_ACTION,
+    ACTIVATION_PACKAGE_ID,
+    ACTIVATION_WRITE_ACTION,
+)
 
 
 @asynccontextmanager
@@ -82,21 +92,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="CAPPO Runtime", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
-    
+
     if settings.redis_url:
         import redis
+
         app.state.redis_client = redis.Redis.from_url(
             settings.redis_url,
             socket_timeout=2.0,
             socket_connect_timeout=2.0,
-            decode_responses=True
+            decode_responses=True,
         )
     else:
         app.state.redis_client = None
 
     mount_registry = MountRegistry()
     for package in load_packages_from_json(settings.capability_packages_json):
+        if package.id == ACTIVATION_PACKAGE_ID:
+            raise RuntimeError(
+                f"{ACTIVATION_PACKAGE_ID} is a reserved built-in capability package id"
+            )
         mount_registry.register_package(package)
+    mount_registry.register_package(
+        CapabilityPackage(
+            id=ACTIVATION_PACKAGE_ID,
+            family="veklom.activation",
+            title="Veklom Activation Target",
+            purpose=(
+                "Create one durable first-party marker so a workspace can prove "
+                "bounded consequence authority, denial, and replay finality."
+            ),
+            reads=[ACTIVATION_OBSERVE_ACTION],
+            writes=[ACTIVATION_WRITE_ACTION],
+            blocked=[ACTIVATION_BLOCKED_ACTION],
+            outputs=["activation.marker.receipt", "activation.marker.observation"],
+            policy_defaults={"default": "deny", "single_use": True},
+        )
+    )
     app.state.mount_registry = mount_registry
 
     from cappo_backend.services.x402_payment import X402FreemiumASGI, get_x402_manager
@@ -141,6 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
 
     from cappo_backend.adapters.legacy.router import router as legacy_adapter_router
+    from cappo_backend.api.routers.reconciler_router import router as reconciler_router
 
     app.include_router(vnp_router)
     app.include_router(vnp_admin_router)
@@ -149,7 +181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(exec_router)
     app.include_router(execution_keys_router)
     app.include_router(execution_projection_router)
-    from cappo_backend.api.routers.reconciler_router import router as reconciler_router
+    app.include_router(execution_proof_router)
     app.include_router(reconciler_router)
     app.include_router(health_router)
     app.include_router(admin_router)

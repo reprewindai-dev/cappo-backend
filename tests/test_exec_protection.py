@@ -1,4 +1,4 @@
-"""Tests for /v1/exec governed execution path (Task 5).
+"""Tests for /v1/exec governed execution path.
 
 Regression test: /v1/exec must not permit ungoverned execution. Every request
 goes through the orchestrator pipeline (PGL cert mint, EI mint, governance,
@@ -38,7 +38,8 @@ from cappo_backend.services.run_state import RunState
 class TestGovernedExecPath:
     def test_happy_path(self, client: TestClient, db: Session) -> None:
         resp = client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -49,48 +50,54 @@ class TestGovernedExecPath:
     def test_missing_governance_directive_fails_closed(
         self, client: TestClient, db: Session
     ) -> None:
-        resp = client.post("/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id"})
+        resp = client.post(
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id"},
+        )
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "CAPPO_GOVERNANCE_DECISION_REQUIRED"
         assert resp.json()["detail"]["fail_closed"] is True
 
     def test_governance_deny_fails_closed(self, client: TestClient, db: Session) -> None:
         resp = client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "DENY"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "DENY"},
         )
         assert resp.status_code == 403
         assert resp.json()["detail"]["error"] == "CAPPO_GOVERNANCE_DENIED"
 
     def test_run_reaches_attested_state(self, client: TestClient, db: Session) -> None:
         client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"},
         )
         run = db.query(GovernedRun).first()
         assert run is not None
         assert run.state == RunState.ATTESTED.value
 
-    def test_pgl_certificates_created_pre_and_post(self, client: TestClient, db: Session) -> None:
+    def test_pgl_certificates_created_pre_and_post(
+        self, client: TestClient, db: Session
+    ) -> None:
         client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"},
         )
         certs = db.query(PGLCertificate).all()
-        # A pre-execution cert (commit) and a post-execution cert (attest).
         assert len(certs) == 2
         assert all(c.persisted is True for c in certs)
 
         pre = [c for c in certs if c.pre_execution_certificate_id is None]
         post = [c for c in certs if c.pre_execution_certificate_id is not None]
         assert len(pre) == 1 and len(post) == 1
-        # Pre links forward to post; post links back to pre.
         assert pre[0].post_execution_certificate_id == post[0].certificate_id
         assert post[0].pre_execution_certificate_id == pre[0].certificate_id
-        # Post cert records execution outcome hashes.
         assert post[0].output_hash is not None
         assert post[0].outcome_hash is not None
 
     def test_ei_row_links_post_certificate(self, client: TestClient, db: Session) -> None:
         client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"},
         )
         ei = db.query(ExecutionIdentity).first()
         post = (
@@ -103,7 +110,8 @@ class TestGovernedExecPath:
 
     def test_execution_identity_persisted(self, client: TestClient, db: Session) -> None:
         client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"},
         )
         eis = db.query(ExecutionIdentity).all()
         assert len(eis) == 1
@@ -111,14 +119,20 @@ class TestGovernedExecPath:
 
     def test_audit_attestation_logged(self, client: TestClient, db: Session) -> None:
         client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"},
         )
-        events = db.query(AuditEvent).filter(AuditEvent.operation_type == "run_attested").all()
+        events = (
+            db.query(AuditEvent)
+            .filter(AuditEvent.operation_type == "run_attested")
+            .all()
+        )
         assert len(events) == 1
 
     def test_ei_contains_run_id(self, client: TestClient, db: Session) -> None:
         resp = client.post(
-            "/v1/exec", json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"}
+            "/v1/exec",
+            json={"prompt": "hello", "pgl_id": "test-user-id", "directive": "ALLOW"},
         )
         body = resp.json()
         ei_record = db.query(ExecutionIdentity).first()
@@ -130,10 +144,8 @@ class TestNoBypass:
     """Verify that no ungoverned path exists."""
 
     def test_no_ungoverned_exec_route(self, client: TestClient) -> None:
-        # The governed /v1/exec path must exist (non-404).
         resp = client.post("/v1/exec", json={"prompt": "probe"})
         assert resp.status_code != 404, "/v1/exec must be reachable"
-        # No ungoverned bypass path should exist.
         for bypass in [
             "/exec",
             "/v1/run",
@@ -141,9 +153,9 @@ class TestNoBypass:
             "/v1/execute",
             "/api/fpi/execute",
         ]:
-            r = client.post(bypass, json={"prompt": "probe"})
-            assert r.status_code == 404, (
-                f"unexpected route {bypass} exists (status {r.status_code})"
+            response = client.post(bypass, json={"prompt": "probe"})
+            assert response.status_code == 404, (
+                f"unexpected route {bypass} exists (status {response.status_code})"
             )
 
 
@@ -155,16 +167,13 @@ class TestCAPIGatekeeperKey:
             directive="DENY",
             security={"nonce": "nonce-1", "signature": "signature-1"},
         )
-
         payload = _build_capi_payload(body)
-
         assert payload["security"] == body.security
         assert "security" not in payload["data"]
 
     def test_dev_unsigned_request_keeps_existing_internal_compatibility(self) -> None:
         body = ExecRequest(prompt="hello", pgl_id="test-user-id")
         settings = Settings(environment="test")
-
         assert _resolve_capi_gatekeeper_public_key(settings, body) == ""
 
     def test_signed_request_without_configured_key_fails_closed(self) -> None:
@@ -174,20 +183,16 @@ class TestCAPIGatekeeperKey:
             security={"nonce": "n-1", "signature": "sig"},
         )
         settings = Settings(environment="test")
-
         with pytest.raises(HTTPException) as exc_info:
             _resolve_capi_gatekeeper_public_key(settings, body)
-
         assert exc_info.value.status_code == 503
         assert exc_info.value.detail["error"] == "CAPI_GATEKEEPER_KEY_UNAVAILABLE"
 
     def test_production_unsigned_request_fails_closed(self) -> None:
         body = ExecRequest(prompt="hello", pgl_id="test-user-id")
         settings = Settings(environment="production")
-
         with pytest.raises(HTTPException) as exc_info:
             _resolve_capi_gatekeeper_public_key(settings, body)
-
         assert exc_info.value.status_code == 401
         assert exc_info.value.detail["error"] == "CAPI_SIGNED_SECURITY_REQUIRED"
 
@@ -195,7 +200,6 @@ class TestCAPIGatekeeperKey:
         private_key = Ed25519PrivateKey.generate()
         body = b'{"prompt":"governed"}'
         request = _signed_exec_request(private_key, body)
-
         asyncio.run(
             _verify_exec_request_integrity(
                 request,
@@ -210,7 +214,6 @@ class TestCAPIGatekeeperKey:
             b'{"prompt":"governed"}',
             tamper_body=True,
         )
-
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(
                 _verify_exec_request_integrity(
@@ -218,7 +221,6 @@ class TestCAPIGatekeeperKey:
                     private_key.public_key().public_bytes_raw().hex(),
                 )
             )
-
         assert exc_info.value.status_code == 401
         assert exc_info.value.detail["error"] == "HTTP_MESSAGE_INTEGRITY_INVALID"
 
@@ -247,23 +249,61 @@ def _signed_exec_request(
     tamper_body: bool = False,
 ) -> Request:
     actual_body = b'{"prompt":"tampered"}' if tamper_body else signed_body
-    digest = f"sha-256=:{base64.b64encode(hashlib.sha256(signed_body).digest()).decode('ascii')}:"
+    digest = (
+        "sha-256=:"
+        + base64.b64encode(hashlib.sha256(signed_body).digest()).decode("ascii")
+        + ":"
+    )
     created = int(datetime.now(UTC).timestamp())
     params = f';created={created};keyid="requester-1"'
     target = "https://cappo.veklom.com/v1/exec"
-    signature_base = "\n".join(
-        [
-            '"@method": POST',
-            f'"@target-uri": {target}',
-            f'"content-digest": {digest}',
-            f'"@signature-params": ("@method" "@target-uri" "content-digest"){params}',
-        ]
+    identity_headers = {
+        "workload-identity": "d2l0LXByb29m",
+        "execution-context": "ZWN0LXByb29m",
+        "workload-proof": "d3B0LXByb29m",
+        "veklom-authority": "YXV0aG9yaXR5LXByb29m",
+        "x-veklom-actor": "actor-1",
+        "x-veklom-nonce": "nonce-1",
+    }
+    fields = (
+        "@method",
+        "@target-uri",
+        "content-digest",
+        "workload-identity",
+        "execution-context",
+        "workload-proof",
+        "veklom-authority",
+        "x-veklom-actor",
+        "x-veklom-nonce",
     )
-    signature = base64.b64encode(private_key.sign(signature_base.encode())).decode()
+    quoted_fields = " ".join(f'"{field}"' for field in fields)
+    signature_base = [
+        '"@method": POST',
+        f'"@target-uri": {target}',
+        f'"content-digest": {digest}',
+    ]
+    signature_base.extend(
+        f'"{name}": {value}' for name, value in identity_headers.items()
+    )
+    signature_base.append(
+        f'"@signature-params": ({quoted_fields}){params}'
+    )
+    signature = base64.b64encode(
+        private_key.sign("\n".join(signature_base).encode())
+    ).decode()
 
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": actual_body, "more_body": False}
 
+    request_headers = [
+        (b"host", b"cappo.veklom.com"),
+        (b"content-digest", digest.encode()),
+        (b"signature-input", f"sig1=({quoted_fields}){params}".encode()),
+        (b"signature", f"sig1=:{signature}:".encode()),
+    ]
+    request_headers.extend(
+        (name.encode(), value.encode()) for name, value in identity_headers.items()
+    )
     return Request(
         {
             "type": "http",
@@ -271,12 +311,7 @@ def _signed_exec_request(
             "scheme": "https",
             "server": ("cappo.veklom.com", 443),
             "path": "/v1/exec",
-            "headers": [
-                (b"host", b"cappo.veklom.com"),
-                (b"content-digest", digest.encode()),
-                (b"signature-input", f'sig1=("@method" "@target-uri" "content-digest"){params}'.encode()),
-                (b"signature", f"sig1=:{signature}:".encode()),
-            ],
+            "headers": request_headers,
         },
         receive=receive,
     )

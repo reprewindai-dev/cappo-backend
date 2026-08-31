@@ -75,7 +75,6 @@ class ActionRequest(BaseModel):
     resource: str | None = None
     approval_token: str | None = None
     suppression_evidence: str | None = None
-    # Compatibility only. Caller booleans never authorize suppression-gated actions.
     suppression_confirmed: bool = False
 
 
@@ -121,7 +120,6 @@ def get_registry(request: Request, db: Session = Depends(get_session)) -> MountR
 
 
 def anchor_payload(status: Any) -> dict[str, Any]:
-    # Never expose exception/debug detail from the evidence boundary.
     return {"status": status.status, "anchor_id": status.anchor_id}
 
 
@@ -166,6 +164,17 @@ def request_mount(
             "blocked": body.requested_action_scope.blocked,
         }
     )
+
+    # SPIFFE remains the stronger workload profile when enforced. In profiles
+    # where direct mTLS/SVID enforcement is intentionally disabled, the already
+    # verified JWT principal is still a cryptographic, workspace-bound identity
+    # and must back the Biscuit rather than creating metadata-only authority.
+    direct_spiffe = request.scope.get("caller_spiffe_id")
+    authority_subject = direct_spiffe if isinstance(direct_spiffe, str) and direct_spiffe else principal
+    executor_identity = body.executor_spiffe_id or (
+        direct_spiffe if isinstance(direct_spiffe, str) and direct_spiffe else principal
+    )
+
     record, anchor, reason = registry.request_mount(
         body.package_ref,
         scope,
@@ -175,8 +184,8 @@ def request_mount(
         owner_principal=principal,
         owner_workspace=workspace,
         execution_id=body.execution_id,
-        caller_spiffe_id=request.scope.get("caller_spiffe_id"),
-        executor_spiffe_id=body.executor_spiffe_id or request.scope.get("caller_spiffe_id"),
+        caller_spiffe_id=authority_subject,
+        executor_spiffe_id=executor_identity,
     )
     if record is None:
         return MountResponse(
@@ -226,7 +235,6 @@ def mount_status(
         reason=state,
         anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
         mount=mount,
-        # Status never re-discloses token_id or nonce.
         ttl_seconds=record.token.ttl_seconds,
         expires_at=record.token.expires_at,
         nonce_consumed=record.token.nonce_consumed,
