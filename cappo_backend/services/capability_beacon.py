@@ -40,6 +40,17 @@ def _key_seeds(settings: Settings) -> dict[str, str]:
     return {str(k): str(v) for k, v in value.items()}
 
 
+def active_signing_seed(settings: Settings) -> str:
+    """Return the private seed matching the advertised active key id."""
+    seeds = _key_seeds(settings)
+    try:
+        return seeds[settings.capability_beacon_kid]
+    except KeyError as exc:
+        raise ValueError(
+            "CAPABILITY_BEACON_KID is absent from CAPABILITY_BEACON_KEYS_JSON"
+        ) from exc
+
+
 def published_keys(settings: Settings | None = None) -> list[dict[str, str]]:
     settings = settings or get_settings()
     return [
@@ -54,6 +65,15 @@ def published_keys(settings: Settings | None = None) -> list[dict[str, str]]:
     ]
 
 
+def verification_keys(settings: Settings | None = None) -> dict[str, bytes]:
+    """Return every configured beacon public key, including rotated keys."""
+    settings = settings or get_settings()
+    return {
+        kid: base64.urlsafe_b64decode(_public_key(seed) + "===")
+        for kid, seed in _key_seeds(settings).items()
+    }
+
+
 def _parse_expiry(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
@@ -61,7 +81,9 @@ def _parse_expiry(value: str) -> datetime:
     return parsed
 
 
-def build_beacon(package: CapabilityPackage, settings: Settings | None = None) -> dict[str, Any]:
+def build_beacon(
+    package: CapabilityPackage, settings: Settings | None = None
+) -> dict[str, Any]:
     settings = settings or get_settings()
     seeds = _key_seeds(settings)
     kid = settings.capability_beacon_kid

@@ -1,4 +1,4 @@
-name: Cappo Backend CI/CD
+name: Cappo Backend CI
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dev deps
         run: pip install ruff
@@ -52,7 +52,7 @@ jobs:
           print('All critical imports OK')
           "
 
-  # ── 3. Tests ────────────────────────────────────────────────────────────────
+  # ── 3. PostgreSQL-backed tests ──────────────────────────────────────────────
   test:
     name: Pytest
     runs-on: ubuntu-latest
@@ -83,7 +83,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: pip install -e ".[dev]" psycopg2-binary aiosqlite
@@ -94,53 +94,8 @@ jobs:
       - name: Run tests
         run: pytest -q --tb=short --maxfail=1
 
-  # ── 4. Deploy ───────────────────────────────────────────────────────────────
-  deploy-prod:
-    name: Deploy to Production
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/veklom-deploy
-          chmod 600 ~/.ssh/veklom-deploy
-          ssh-keyscan -H 5.78.135.11 >> ~/.ssh/known_hosts
-
-      - name: Pull, Build, and Swap on Server
-        run: |
-          ssh -i ~/.ssh/veklom-deploy root@5.78.135.11 "
-            set -e
-            SRC=/data/coolify/applications/cappo-backend
-            APP=/data/coolify/applications/yen2fecq8burtsgqrm2b988e
-            TAG=yen2fecq8burtsgqrm2b988e:${{ github.sha }}
-
-            cd \$SRC
-            git fetch origin main
-            git checkout main
-            git pull --ff-only origin main
-            docker build -t \$TAG .
-
-            cd \$APP
-            cp docker-compose.yaml docker-compose.yaml.pre-${{ github.sha }}
-            sed -i \"s#^\\([[:space:]]*\\)image: .*#\\1image: '\$TAG'#\" docker-compose.yaml
-            docker compose -f docker-compose.yaml config >/tmp/cappo-compose-config.out
-            docker compose -f docker-compose.yaml up -d --force-recreate
-            echo 'Deployment complete for cappo-backend'
-          "
-
-      - name: Verify Production Health
-        run: |
-          sleep 10
-          HTTP=$(curl -sk https://cappo.veklom.com/health -o /dev/null -w '%{http_code}')
-          if [ "$HTTP" != "200" ]; then
-            echo "HEALTH CHECK FAILED: cappo.veklom.com returned $HTTP"
-            exit 1
-          fi
-          echo "cappo.veklom.com healthy — deployment successful"
+# Production deployment is intentionally not performed from GitHub-hosted CI.
+# The retired deployment job targeted a Hetzner/Coolify host and was not the
+# canonical owned-hardware runtime. Re-enable deployment only through a verified
+# owned-hardware runner/transport that resolves the deployed source SHA and
+# preserves the runtime evidence boundary.

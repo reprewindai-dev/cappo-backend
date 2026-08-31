@@ -5,7 +5,9 @@ Middleware stack order, outermost → innermost:
     2. CORS
     3. Amphoteric sensing
     4. Auth
-    5. Ollama lifecycle policy signal
+    5. Consequence replay prerequisite
+    6. SPIFFE/SVID enforcement
+    7. Ollama lifecycle policy signal
 
 Budget / kill-switch and EI / LAW 0 remain enforced inside the governed
 execution pipeline. There is no public bypass for ``/v1/exec``.
@@ -32,6 +34,9 @@ from cappo_backend.api.routers.capability_beacon_router import router as capabil
 from cappo_backend.api.routers.capability_mount_router import router as capability_mount_router
 from cappo_backend.api.routers.exec_router import router as exec_router
 from cappo_backend.api.routers.execution_keys_router import router as execution_keys_router
+from cappo_backend.api.routers.execution_observability_router import (
+    router as execution_observability_router,
+)
 from cappo_backend.api.routers.execution_projection_router import router as execution_projection_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
@@ -51,6 +56,9 @@ from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
+from cappo_backend.security.consequence_replay_prerequisite import (
+    ConsequenceReplayPrerequisiteMiddleware,
+)
 from cappo_backend.security.spiffe_middleware import SVIDEnforcementMiddleware
 
 
@@ -82,14 +90,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="CAPPO Runtime", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
-    
+
     if settings.redis_url:
         import redis
+
         app.state.redis_client = redis.Redis.from_url(
             settings.redis_url,
             socket_timeout=2.0,
             socket_connect_timeout=2.0,
-            decode_responses=True
+            decode_responses=True,
         )
     else:
         app.state.redis_client = None
@@ -119,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(OllamaBleedSanitizerMiddleware)
     app.add_middleware(SVIDEnforcementMiddleware, settings=settings)
+    app.add_middleware(ConsequenceReplayPrerequisiteMiddleware, settings=settings)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(AmphotericSensingMiddleware)
     app.add_middleware(
@@ -147,9 +157,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(agents_router)
     app.include_router(authorization_router)
     app.include_router(exec_router)
+    app.include_router(execution_observability_router)
     app.include_router(execution_keys_router)
     app.include_router(execution_projection_router)
     from cappo_backend.api.routers.reconciler_router import router as reconciler_router
+
     app.include_router(reconciler_router)
     app.include_router(health_router)
     app.include_router(admin_router)
