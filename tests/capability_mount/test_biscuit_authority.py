@@ -371,3 +371,82 @@ def test_biscuit_authority_legacy_unbound_impossible(client: TestClient, db: Ses
     assert response.status_code == 200
     assert response.json()['decision'] == 'deny'
     assert response.json()['reason'] == 'missing_cryptographic_authority'
+
+def test_biscuit_authority_explicit_revocation(client: TestClient, db: Session) -> None:
+    from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
+    from cappo_backend.security.biscuit import mint_biscuit_capability
+    
+    biscuit_token = mint_biscuit_capability(
+        caller_spiffe_id='test:caller',
+        executor_spiffe_id='test:executor',
+        capability_id='test@v1',
+        reads=['read'],
+        writes=[],
+        execution_id='exec-123',
+        ttl_seconds=60,
+    )
+    
+    trusted_state = TrustedRevocationState()
+    trusted_state.revoke_execution('exec-123')
+    
+    result = verify_biscuit_capability(
+        biscuit_token,
+        executor_spiffe_id='test:executor',
+        action='read',
+        subject_spiffe_id='test:caller',
+        trusted_state=trusted_state
+    )
+    assert result is False
+
+def test_biscuit_authority_stale_epoch(client: TestClient, db: Session) -> None:
+    from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
+    from cappo_backend.security.biscuit import mint_biscuit_capability
+    
+    biscuit_token = mint_biscuit_capability(
+        caller_spiffe_id='test:caller',
+        executor_spiffe_id='test:executor',
+        capability_id='test@v1',
+        reads=['read'],
+        writes=[],
+        execution_id='exec-123',
+        ttl_seconds=60,
+        revocation_scope='workspace:w1',
+        revocation_epoch=5
+    )
+    
+    trusted_state = TrustedRevocationState()
+    trusted_state.sync_epochs({'workspace:w1': 10}) # require epoch 10
+    
+    result = verify_biscuit_capability(
+        biscuit_token,
+        executor_spiffe_id='test:executor',
+        action='read',
+        subject_spiffe_id='test:caller',
+        trusted_state=trusted_state
+    )
+    assert result is False
+
+def test_biscuit_authority_delegation_depth(client: TestClient, db: Session) -> None:
+    from cappo_backend.security.biscuit import verify_biscuit_capability
+    from cappo_backend.security.biscuit import mint_biscuit_capability, attenuate_biscuit_capability
+    
+    biscuit_token = mint_biscuit_capability(
+        caller_spiffe_id='test:caller',
+        executor_spiffe_id='test:executor',
+        capability_id='test@v1',
+        reads=['read'],
+        writes=[],
+        execution_id='exec-123',
+        ttl_seconds=60,
+    )
+    
+    token_1 = attenuate_biscuit_capability(biscuit_token, reads=['read'])
+    token_2 = attenuate_biscuit_capability(token_1, reads=['read'])
+    
+    result = verify_biscuit_capability(
+        token_2,
+        executor_spiffe_id='test:executor',
+        action='read',
+        subject_spiffe_id='test:caller'
+    )
+    assert result is False
