@@ -15,7 +15,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from cappo_backend.api.routers.capability_mount_router import get_registry
-from cappo_backend.authorization.cappo_auth import CappoPreauthorizationEnforcer
 from cappo_backend.authorization.legacy_adapter import LegacyCredentialAdapter
 from cappo_backend.authorization.errors import CappoAuthorizationError
 from cappo_backend.capability_mount.models import Decision
@@ -527,7 +526,6 @@ async def governed_exec(
                 authority_payload=authority_payload,
             )
             if authority_payload:
-                enforcer = CappoPreauthorizationEnforcer(replay_cache)
                 wit = WorkloadIdentityToken(**wit_payload) if wit_payload else None
                 ect = ExecutionContextToken(**ect_payload) if ect_payload else None
                 wpt = WorkloadProofToken(**wpt_payload) if wpt_payload else None
