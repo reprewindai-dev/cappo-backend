@@ -10,17 +10,26 @@ services:
     restart: unless-stopped
     ports:
       - "8002:8002"
-      - "162:162/udp" # SNMP Traps
-      - "502:502/tcp" # Modbus TCP
+    env_file:
+      - .env
     environment:
-      # Deployment must inject the database DSN. Never commit credentials or
-      # concrete private database topology into the repository.
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set by deployment}
       HOST: 0.0.0.0
       PORT: "8002"
+      BISCUIT_ROOT_PRIVATE_KEY_HEX: ${BISCUIT_ROOT_PRIVATE_KEY_HEX:-}
+      BISCUIT_ROOT_KEY_PATH: /var/lib/cappo/.biscuit_root_key
+    volumes:
+      - cappo-biscuit-key:/var/lib/cappo
     networks:
       - coolify
+      - byos
 
 networks:
   coolify:
     external: true
+  byos:
+    external: true
+    name: veklom-byos-backend-2_default
+
+volumes:
+  cappo-biscuit-key:

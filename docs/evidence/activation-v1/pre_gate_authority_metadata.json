@@ -1,0 +1,15 @@
+{
+  "biscuit_verified_by_execution": true,
+  "decision": "allow",
+  "mount": {
+    "biscuit_length": 1344,
+    "biscuit_present": true,
+    "biscuit_sha256": "a11422e3b4513ed584dbf6b577646aae7135ab05609b9c421ad4dbb139308b05",
+    "nonce_consumed": true,
+    "owner_workspace": "workspace-activation-v1",
+    "row_present": true,
+    "terminated": true
+  },
+  "reason": "allowed",
+  "status": 200
+}

@@ -56,6 +56,9 @@ class Settings(BaseSettings):
 
     # Capability discovery and signed beacon publication.
     capability_packages_json: str | None = None
+    capability_effect_record_root: str | None = None
+    biscuit_root_private_key_hex: str | None = None
+    biscuit_root_key_path: str = "./.biscuit_root_key"
     capability_beacon_issuer: str = "https://cappo.veklom.com"
     capability_beacon_ttl_seconds: int = 300
     capability_beacon_kid: str = "default"
@@ -90,6 +93,23 @@ class Settings(BaseSettings):
     # Comma-separated set of accepted API keys. Deployment must inject values;
     # repository defaults intentionally contain no credential material.
     api_keys: str = ""
+
+    @field_validator("biscuit_root_private_key_hex")
+    @classmethod
+    def validate_biscuit_root_private_key_hex(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if len(value) != 64:
+            raise ValueError(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must contain exactly 64 hex characters."
+            )
+        try:
+            bytes.fromhex(value)
+        except ValueError as exc:
+            raise ValueError(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must be valid hexadecimal."
+            ) from exc
+        return value
 
     # --- JWT Authentication ---
     jwt_auth_enabled: bool = False
@@ -253,6 +273,11 @@ class Settings(BaseSettings):
             return
 
         problems: list[str] = []
+        if not self.biscuit_root_private_key_hex:
+            problems.append(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production; "
+                "ephemeral Biscuit root keys are not permitted."
+            )
         if self.ei_signing_key == INSECURE_EI_SIGNING_KEY:
             problems.append(
                 "EI_SIGNING_KEY is still the insecure development default; "

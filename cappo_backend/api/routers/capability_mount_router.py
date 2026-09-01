@@ -22,6 +22,7 @@ from cappo_backend.capability_mount.models import (
 )
 from cappo_backend.capability_mount.service import (
     AnchorResult,
+    LocalConfirmedAnchor,
     MountRegistry,
     UnconfirmedAnchor,
 )
@@ -90,6 +91,35 @@ class ActionResponse(BaseModel):
     resource: str | None = None
 
 
+class ExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    token_id: str = Field(min_length=1)
+    nonce: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    target_ref: str = Field(min_length=1)
+    resource: str = Field(min_length=1)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    operation_id: str | None = None
+    approval_token: str | None = None
+    suppression_evidence: str | None = None
+    suppression_confirmed: bool = False
+
+
+class ExecuteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Decision
+    reason: str
+    anchoring: dict[str, Any]
+    mount_id: str
+    action: str
+    resource: str
+    operation_id: str
+    consequence: dict[str, Any]
+    authority: dict[str, Any]
+
+
 class TerminateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -110,13 +140,17 @@ def get_registry(request: Request, db: Session = Depends(get_session)) -> MountR
     settings = request.app.state.settings
     anchor = shared.anchor
     if isinstance(anchor, UnconfirmedAnchor):
-        anchor = AuditPGLAnchor(db, settings)
+        if settings.cappo_require_persistent_pgl:
+            anchor = AuditPGLAnchor(db, settings)
+        else:
+            anchor = LocalConfirmedAnchor()
     verifier = BoundMountEvidenceVerifier(
         approval_key=settings.approval_token_signing_key,
         suppression_key=os.getenv("SUPPRESSION_EVIDENCE_SIGNING_KEY", ""),
     )
     registry = MountRegistry(db=db, anchor=anchor, evidence_verifier=verifier)
     registry.packages.update(shared.packages)
+    registry.effect_targets = shared.effect_targets
     return registry
 
 
@@ -176,7 +210,7 @@ def request_mount(
         owner_workspace=workspace,
         execution_id=body.execution_id,
         caller_spiffe_id=request.scope.get("caller_spiffe_id"),
-        executor_spiffe_id=body.executor_spiffe_id or request.scope.get("caller_spiffe_id"),
+        executor_spiffe_id=request.scope.get("executor_spiffe_id") or request.scope.get("caller_spiffe_id"),
     )
     if record is None:
         return MountResponse(
@@ -241,6 +275,7 @@ def evaluate_action(
     registry: MountRegistry = Depends(get_registry),
 ) -> ActionResponse:
     principal, workspace = _caller(request)
+    print("DEBUG evaluate_action principal:", principal, "workspace:", workspace)
     spiffe_fields = {
         "caller_spiffe_id": request.scope.get("caller_spiffe_id"),
         "trust_domain": request.scope.get("trust_domain"),
@@ -273,6 +308,53 @@ def evaluate_action(
         mount_id=mount_id,
         action=body.action,
         resource=body.resource,
+    )
+
+
+@router.post("/mounts/{mount_id}/execute", response_model=ExecuteResponse)
+def execute_consequence(
+    mount_id: str,
+    body: ExecuteRequest,
+    request: Request,
+    registry: MountRegistry = Depends(get_registry),
+) -> ExecuteResponse:
+    principal, workspace = _caller(request)
+    decision, reason, consequence_state, payload = registry.execute_consequence(
+        mount_id,
+        body.action,
+        token_id=body.token_id,
+        nonce=body.nonce,
+        owner_principal=principal,
+        owner_workspace=workspace,
+        approval_token=body.approval_token,
+        suppression_evidence=body.suppression_evidence,
+        suppression_confirmed=body.suppression_confirmed,
+        target_ref=body.target_ref,
+        resource=body.resource,
+        arguments=body.arguments,
+        operation_id=body.operation_id,
+    )
+    return ExecuteResponse(
+        decision=decision,
+        reason=reason,
+        anchoring={"status": "not_applicable", "anchor_id": None},
+        mount_id=mount_id,
+        action=body.action,
+        resource=body.resource,
+        operation_id=payload["operation_id"],
+        consequence={
+            "state": consequence_state,
+            "target_invoked": payload["target_invoked"],
+            "target_ref": body.target_ref,
+            "resource": body.resource,
+            "resulting_state": payload["resulting_state"],
+            "receipt_id": payload["receipt_id"],
+            "terminated": payload["terminated"],
+        },
+        authority={
+            "execution_id": payload["execution_id"],
+            "nonce_consumed": payload["nonce_consumed"],
+        },
     )
 
 

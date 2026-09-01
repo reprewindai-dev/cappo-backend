@@ -1,0 +1,69 @@
+{
+  "after": {
+    "adapter": {
+      "invocation_count": 2,
+      "invocations_by_action": {
+        "record.create": 1,
+        "record.read": 1
+      }
+    },
+    "content": "{\"content\": \"activation-v1-allowed\", \"mount\": \"mnt_c4e88e3c664d4ef4a70378a54b7a5a81\"}",
+    "db_mount": {
+      "biscuit_length": 1344,
+      "biscuit_present": true,
+      "biscuit_sha256": "62cbd3343e35f27d4903b006736bc5a935051ff61e3832f2628ba44b6111e931",
+      "nonce_consumed": true,
+      "owner_workspace": "workspace-activation-v1",
+      "row_present": true,
+      "terminated": true
+    },
+    "events": [
+      {
+        "action": "record.create",
+        "completion_proof_type": null,
+        "error_summary": null,
+        "event_id": "evt_6598a1b30edd4ec3a834bf77d8cea421",
+        "mount_id": "mnt_c4e88e3c664d4ef4a70378a54b7a5a81",
+        "operation_id": "op-mount-a-create",
+        "receipt_id": "rcpt_e4eeb1e60ef5e6c522c988e964fcc981dc35c052ab0f1071f9b5489ef81d96b4",
+        "resource": "allowed-record",
+        "state": "authorized",
+        "version": 0
+      },
+      {
+        "action": "record.create",
+        "completion_proof_type": "optimistic_claim",
+        "error_summary": null,
+        "event_id": "evt_94955f19411145928307afa2f6278a50",
+        "mount_id": "mnt_c4e88e3c664d4ef4a70378a54b7a5a81",
+        "operation_id": "op-mount-a-create",
+        "receipt_id": "rcpt_e4eeb1e60ef5e6c522c988e964fcc981dc35c052ab0f1071f9b5489ef81d96b4",
+        "resource": "allowed-record",
+        "state": "started",
+        "version": 1
+      },
+      {
+        "action": "record.create",
+        "completion_proof_type": "callback_return",
+        "error_summary": null,
+        "event_id": "evt_fcfb22d808804b25b584049ef9b435f2",
+        "mount_id": "mnt_c4e88e3c664d4ef4a70378a54b7a5a81",
+        "operation_id": "op-mount-a-create",
+        "receipt_id": "rcpt_e4eeb1e60ef5e6c522c988e964fcc981dc35c052ab0f1071f9b5489ef81d96b4",
+        "resource": "allowed-record",
+        "state": "succeeded",
+        "version": 2
+      }
+    ],
+    "exists": true
+  },
+  "before": {
+    "adapter": {
+      "invocation_count": 1,
+      "invocations_by_action": {
+        "record.read": 1
+      }
+    },
+    "exists": false
+  }
+}

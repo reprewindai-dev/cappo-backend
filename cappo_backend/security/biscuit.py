@@ -1,10 +1,11 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 import biscuit_auth
 from biscuit_auth import AuthorizerBuilder, Biscuit, KeyPair, PrivateKey
 
-from cappo_backend.config import get_settings
+from cappo_backend.config import InsecureProductionConfigError, get_settings
 
 _ROOT_KEY_PAIR = None
 
@@ -12,21 +13,43 @@ def get_root_key_pair() -> KeyPair:
     global _ROOT_KEY_PAIR
     if _ROOT_KEY_PAIR is None:
         settings = get_settings()
-        biscuit_key = getattr(settings, "BISCUIT_ROOT_PRIVATE_KEY_HEX", None)
+        biscuit_key = settings.biscuit_root_private_key_hex
         if biscuit_key:
             from biscuit_auth import Algorithm
             _ROOT_KEY_PAIR = KeyPair.from_private_key(PrivateKey.from_bytes(bytes.fromhex(biscuit_key), Algorithm.Ed25519))
         else:
-            # Fallback for dev: persist to a file so it survives restart
-            key_path = ".biscuit_root_key"
-            if os.path.exists(key_path):
+            if settings.environment.lower() in {"production", "prod"}:
+                raise InsecureProductionConfigError(
+                    "BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production."
+                )
+            key_path = Path(settings.biscuit_root_key_path).expanduser().resolve()
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+
+            def load_file_key() -> KeyPair:
                 from biscuit_auth import Algorithm
-                with open(key_path, "rb") as f:
-                    _ROOT_KEY_PAIR = KeyPair.from_private_key(PrivateKey.from_bytes(f.read(), Algorithm.Ed25519))
+
+                with key_path.open("rb") as f:
+                    key_pair = KeyPair.from_private_key(
+                        PrivateKey.from_bytes(f.read(), Algorithm.Ed25519)
+                    )
+                key_path.chmod(0o600)
+                return key_pair
+
+            if os.path.exists(key_path):
+                _ROOT_KEY_PAIR = load_file_key()
             else:
                 _ROOT_KEY_PAIR = KeyPair()
-                with open(key_path, "wb") as f:
-                    f.write(_ROOT_KEY_PAIR.private_key.to_bytes())
+                try:
+                    fd = os.open(
+                        key_path,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                        0o600,
+                    )
+                except FileExistsError:
+                    _ROOT_KEY_PAIR = load_file_key()
+                else:
+                    with os.fdopen(fd, "wb") as f:
+                        f.write(_ROOT_KEY_PAIR.private_key.to_bytes())
     return _ROOT_KEY_PAIR
 
 def mint_biscuit_capability(
@@ -199,7 +222,7 @@ def verify_biscuit_capability(
 
         return True
     except Exception as e:
-        print(f"Biscuit verification failed: {e}")
+        import traceback; traceback.print_exc()
         return False
 
 def extract_authority_context(token_b64: str):
@@ -228,6 +251,11 @@ def extract_authority_context(token_b64: str):
         if exec_facts:
             executor_spiffe_id = str(exec_facts[0].terms[0]).strip('"')
             
+        subject_spiffe_id = "any"
+        subj_facts = auth.query(biscuit_auth.Rule('rule($subj) <- subject($subj)'))
+        if subj_facts:
+            subject_spiffe_id = str(subj_facts[0].terms[0]).strip('"')
+            
         expires_at = None
         exp_facts = auth.query(biscuit_auth.Rule('rule($exp) <- expires_at($exp)'))
         if exp_facts:
@@ -250,6 +278,7 @@ def extract_authority_context(token_b64: str):
             allowed_actions=actions,
             allowed_resources=resources,
             executor_spiffe_id=executor_spiffe_id,
+            subject_spiffe_id=subject_spiffe_id,
             expires_at=expires_at,
             delegation_depth=token.block_count() - 1,
             max_delegation_depth=max_depth,

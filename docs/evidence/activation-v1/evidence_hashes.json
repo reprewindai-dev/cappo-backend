@@ -1,0 +1,205 @@
+{
+  "files": [
+    {
+      "bytes": 1670,
+      "path": "README.md",
+      "sha256": "bdf72900025ac4aca9e43a0c7b3020a3e813100e54bfb8ccbe5ec69b56c7671f"
+    },
+    {
+      "bytes": 52,
+      "path": "adapter_state.json",
+      "sha256": "13cd32f4beda1a836f15779d75fa2cded93b09e195ba6192326615c5e0cb9ba8"
+    },
+    {
+      "bytes": 85,
+      "path": "allowed-record.json",
+      "sha256": "d629760ff169b5bf11afbe7f50b6b48d8a6d928bd3a38c40e1a6566bb749c386"
+    },
+    {
+      "bytes": 194,
+      "path": "authority_denial_db_metadata_before.json",
+      "sha256": "03a86b4c11a95e969c0efc15c0fa5720af11702b80996d4af1f073827b65d8cf"
+    },
+    {
+      "bytes": 257,
+      "path": "authority_denial_mount_metadata.json",
+      "sha256": "0481cb863f1f2e2b14f7a6894abfadccd7f06054a8bc1ad0596bb94f7d09a6a5"
+    },
+    {
+      "bytes": 1152,
+      "path": "authority_denial_state.json",
+      "sha256": "f959bd7f823eaa194e551a6c2e8c99919aab44079e3bfb8e8f03b0f3557b929d"
+    },
+    {
+      "bytes": 589,
+      "path": "captures/request-01-pre-gate-mount.json",
+      "sha256": "855595255c5ab45a02f84465c80e5c84321675a766b308cb0513f8575175b99c"
+    },
+    {
+      "bytes": 211,
+      "path": "captures/request-03-pre-gate-evaluate.json",
+      "sha256": "add4ff8b0a9448a8999f0a36ae8d418ce74366529496238f851be01c2c221ea5"
+    },
+    {
+      "bytes": 589,
+      "path": "captures/request-04-mount-a-create.json",
+      "sha256": "855595255c5ab45a02f84465c80e5c84321675a766b308cb0513f8575175b99c"
+    },
+    {
+      "bytes": 313,
+      "path": "captures/request-04-mount-a-execute.json",
+      "sha256": "04b868c0a4c1694dcc2b24c519601a3eda22a93709fc33756962f328f341174d"
+    },
+    {
+      "bytes": 313,
+      "path": "captures/request-05-mount-a-replay.json",
+      "sha256": "04b868c0a4c1694dcc2b24c519601a3eda22a93709fc33756962f328f341174d"
+    },
+    {
+      "bytes": 220,
+      "path": "captures/request-06-mount-b-delete.json",
+      "sha256": "dbb021e691857819e7ab1cf700a56560dc0ba2a078be0753fe70e4e1de03bf51"
+    },
+    {
+      "bytes": 220,
+      "path": "captures/request-07-mount-b-replay.json",
+      "sha256": "dbb021e691857819e7ab1cf700a56560dc0ba2a078be0753fe70e4e1de03bf51"
+    },
+    {
+      "bytes": 264,
+      "path": "captures/request-08-authority-execute.json",
+      "sha256": "96ab04c20425e1de96b7b23c08df1303ac7e47044d20db052e9b05404ae42dc3"
+    },
+    {
+      "bytes": 543,
+      "path": "captures/request-08-authority-mount.json",
+      "sha256": "6e09d751041c3533423cf9b1bf6bf253c889114eca23cdee2da37c199f46e43f"
+    },
+    {
+      "bytes": 2473,
+      "path": "captures/response-01-pre-gate-mount.json",
+      "sha256": "2ba2160a796c97c602b8a746094fc70aeea89538af52b07ddc069c97261cf10f"
+    },
+    {
+      "bytes": 680,
+      "path": "captures/response-03-pre-gate-evaluate.json",
+      "sha256": "25ea47f02876592c454081acc97490d19c262d57e3f5169c936b07647b7203dc"
+    },
+    {
+      "bytes": 2473,
+      "path": "captures/response-04-mount-a-create.json",
+      "sha256": "97dcef1bc6b72887299454c95bb47cab0d518f2adea503abf18c17b570c2e9e1"
+    },
+    {
+      "bytes": 788,
+      "path": "captures/response-04-mount-a-execute.json",
+      "sha256": "075ed338aa27de7557691bb0573a59d5c631ef68bde5b7079b9d95bfb9475f29"
+    },
+    {
+      "bytes": 711,
+      "path": "captures/response-05-mount-a-replay.json",
+      "sha256": "e787bbac455537ea390174c7de688e45fb63c5723edde8fa5d7cac02ce1c46d8"
+    },
+    {
+      "bytes": 627,
+      "path": "captures/response-06-mount-b-delete.json",
+      "sha256": "1f3748f0918097b2a9ed1ddbb5ca74c26dc5848fa3c670402fa1a011c8516836"
+    },
+    {
+      "bytes": 636,
+      "path": "captures/response-07-mount-b-replay.json",
+      "sha256": "f2525a29a20e3a44499a348dcfbb84c283354ee662589d3865b610d523d97b39"
+    },
+    {
+      "bytes": 654,
+      "path": "captures/response-08-authority-execute.json",
+      "sha256": "462e67fc369297bdc0a0638cfb10e9556004248dacdceb124c590d753fea1ed9"
+    },
+    {
+      "bytes": 2398,
+      "path": "captures/response-08-authority-mount.json",
+      "sha256": "f48a71bc15cb6c835140caa094bef9fe4f04d58f4067cabcda062cf8fb06c164"
+    },
+    {
+      "bytes": 1312,
+      "path": "harness/authority_denial_server.py",
+      "sha256": "057f0dfc4233ae397e59623c6d6bf892d514e40d9475384401a4f458f7429cfe"
+    },
+    {
+      "bytes": 8426,
+      "path": "harness/run_authority_denial.py",
+      "sha256": "6020c657bfcd238fb9b2ae8a975af8eee113098766de494cbae1ed3a294c61f1"
+    },
+    {
+      "bytes": 12328,
+      "path": "harness/run_matrix.py",
+      "sha256": "d248e9028601a90d7ad787c5389ead97931ada4058867c1141425b44151501f1"
+    },
+    {
+      "bytes": 8908,
+      "path": "harness/runtime_app.py",
+      "sha256": "a66ac30797b50b4e3f6df447a49f7f3b35d2b9c6b037c50095b47c3bfb0e64a8"
+    },
+    {
+      "bytes": 2321,
+      "path": "mount_a_replay_state.json",
+      "sha256": "43bcda036a3acd058de61e9e6be1b3d051a3fed08b13051d741779363278a3ad"
+    },
+    {
+      "bytes": 2230,
+      "path": "mount_a_state.json",
+      "sha256": "1a5be51a87d7450d8f94e8b0590f2e5f81ec9c31ffbe8b1050cfeb980a15de21"
+    },
+    {
+      "bytes": 877,
+      "path": "mount_b_replay_state.json",
+      "sha256": "47dca4d37bfcb463ca803ef2cbc1dc66c8aaa63bdec67da8d7d0299398638b65"
+    },
+    {
+      "bytes": 819,
+      "path": "mount_b_state.json",
+      "sha256": "c10f2cb775e98f61c0a7140c5ea62ed66c3d4d933180c93a356c0ce84dbdad39"
+    },
+    {
+      "bytes": 398,
+      "path": "pre_gate_authority_metadata.json",
+      "sha256": "b10b3a9cb42cd975b4a924df49ebaaafb5ca1f399988435498713d83a0ae3f61"
+    },
+    {
+      "bytes": 265,
+      "path": "pre_gate_db_metadata_before_restart.json",
+      "sha256": "c8a070ab7b96ef3da1a557c14abbe4d1d3da79c6711f92b9afc82664896d7e05"
+    },
+    {
+      "bytes": 310,
+      "path": "pre_gate_mount_metadata.json",
+      "sha256": "8bc3fbcb5486ec82739b2ffe9768070afa5c5612ece397f95393e6f9b960a374"
+    },
+    {
+      "bytes": 262,
+      "path": "process_boundary.json",
+      "sha256": "29cc0ce43e43a32f14284a217dbb535ff31dd3694c99177fe49e700f3df340e5"
+    },
+    {
+      "bytes": 34,
+      "path": "protected-record.json",
+      "sha256": "82980acb976c05aed31b62520b18b06e4c13fa91e2fd77e85cdbc1865de95902"
+    },
+    {
+      "bytes": 866,
+      "path": "runtime_manifest.json",
+      "sha256": "693c35da3917dfc0f55ffb65682ff67caa61b9eaeb42615d83c72ef9f2ad5bc5"
+    },
+    {
+      "bytes": 3145,
+      "path": "runtime_result.json",
+      "sha256": "fa5e6750617f50b39e899bbc23d3fd4c75372c10679c6dfb9c6657930d3874bb"
+    },
+    {
+      "bytes": 2576,
+      "path": "truth_table.md",
+      "sha256": "c8fb34cb9bb90e85b71f8510fb870ada91e5c03175e1ca611b51562d66f66d2a"
+    }
+  ],
+  "manifest_scope": "all committed evidence files except this self-referential hash manifest"
+}

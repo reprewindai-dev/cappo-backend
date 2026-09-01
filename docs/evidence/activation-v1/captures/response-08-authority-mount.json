@@ -1,0 +1,101 @@
+{
+  "anchoring": {
+    "anchor_id": "2d0981ac55dae0fd0ec035559b38a35d2000463730eb528b78498c57180faab7",
+    "status": "confirmed"
+  },
+  "decision": "allow",
+  "expires_at": "2026-09-01T13:52:44.366902Z",
+  "mount": {
+    "grants": {
+      "blocked": [
+        "record.delete"
+      ],
+      "external_send": [],
+      "reads": [
+        "record.read"
+      ],
+      "resources": [],
+      "suppression_required": [],
+      "writes": [
+        "record.create"
+      ]
+    },
+    "id": "mnt_7e172ac278784e04b2295aaa14a85b42",
+    "lifecycle": {
+      "state": "mounted",
+      "unmount_on": [
+        "task_complete",
+        "token_expiry",
+        "explicit_terminate"
+      ]
+    },
+    "package_ref": "activation@v1",
+    "policy": {
+      "default": "deny",
+      "mode": "draft_only",
+      "persistent_memory_allowed": false,
+      "require_human_approval_for_external_send": true,
+      "require_suppression_check": true
+    },
+    "role": "ephemeral_executor",
+    "scope": {
+      "blocked": [],
+      "project": "activation-v1",
+      "reads": [
+        "record.read"
+      ],
+      "resources": [
+        "*"
+      ],
+      "workspace": "workspace-activation-v1",
+      "writes": [
+        "record.create"
+      ]
+    },
+    "token": {
+      "ttl_seconds": 300,
+      "type": "ephemeral_scoped"
+    }
+  },
+  "nonce_consumed": false,
+  "reason": "mounted",
+  "token": {
+    "biscuit_token": "<REDACTED>",
+    "execution_id": "exec_06e39c08a9484990b036bf51ab63fa84",
+    "expires_at": "2026-09-01T13:52:44.366902Z",
+    "grants": {
+      "blocked": [
+        "record.delete"
+      ],
+      "external_send": [],
+      "reads": [
+        "record.read"
+      ],
+      "resources": [],
+      "suppression_required": [],
+      "writes": [
+        "record.create"
+      ]
+    },
+    "issued_at": "2026-09-01T13:47:44.366902Z",
+    "mount_id": "mnt_7e172ac278784e04b2295aaa14a85b42",
+    "nonce": "<REDACTED>",
+    "nonce_consumed": false,
+    "package_ref": "activation@v1",
+    "policy": {
+      "default": "deny",
+      "mode": "draft_only",
+      "persistent_memory_allowed": false,
+      "require_human_approval_for_external_send": true,
+      "require_suppression_check": true
+    },
+    "scope": {
+      "project": "activation-v1",
+      "workspace": "workspace-activation-v1"
+    },
+    "single_use": true,
+    "token_id": "<REDACTED>",
+    "ttl_seconds": 300
+  },
+  "ttl_seconds": 300
+}

@@ -1,0 +1,40 @@
+{
+  "adapter_state": {
+    "invocation_count": 0,
+    "invocations_by_action": {}
+  },
+  "db_mount": {
+    "biscuit_length": 1272,
+    "biscuit_present": true,
+    "biscuit_sha256": "2ac0378be627866cfb18b264a7e7517ff6724fe8f263baf0aa07adf36db29656",
+    "nonce_consumed": false,
+    "terminated": true
+  },
+  "record_exists": false,
+  "record_path": "/home/ubuntu/activation_v1/records-authority-denial/authority-denied-record.json",
+  "response": {
+    "action": "record.create",
+    "anchoring": {
+      "anchor_id": null,
+      "status": "not_applicable"
+    },
+    "authority": {
+      "execution_id": "exec_06e39c08a9484990b036bf51ab63fa84",
+      "nonce_consumed": false
+    },
+    "consequence": {
+      "receipt_id": null,
+      "resource": "authority-denied-record",
+      "resulting_state": null,
+      "state": null,
+      "target_invoked": false,
+      "target_ref": "activation.local-record",
+      "terminated": true
+    },
+    "decision": "deny",
+    "mount_id": "mnt_7e172ac278784e04b2295aaa14a85b42",
+    "operation_id": "op-authority-denial",
+    "reason": "lease_invariant_violation",
+    "resource": "authority-denied-record"
+  }
+}
