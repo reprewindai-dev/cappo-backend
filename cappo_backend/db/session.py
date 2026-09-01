@@ -62,10 +62,11 @@ def get_session(request: Request) -> Iterator[Session]:
         )
 
     session = SessionLocal()
-    session.execute(
-        text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
-        {"workspace_id": str(workspace_id)},
-    )
+    if session.bind.dialect.name == "postgresql":
+        session.execute(
+            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+            {"workspace_id": str(workspace_id)},
+        )
     try:
         yield session
     finally:
@@ -82,10 +83,11 @@ def get_unscoped_session(request: Request | None = None) -> Iterator[Session]:
     if request is not None:
         workspace_id = request.scope.get("auth_workspace")
     if workspace_id:
-        session.execute(
-            text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
-            {"workspace_id": str(workspace_id)},
-        )
+        if session.bind.dialect.name == "postgresql":
+            session.execute(
+                text("SELECT set_config('app.workspace_id', :workspace_id, true)"),
+                {"workspace_id": str(workspace_id)},
+            )
     try:
         yield session
     finally:
