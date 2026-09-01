@@ -1,0 +1,36 @@
+{
+  "adapter": {
+    "invocation_count": 2,
+    "invocations_by_action": {
+      "record.create": 1,
+      "record.read": 1
+    }
+  },
+  "events": [],
+  "response": {
+    "action": "record.delete",
+    "anchoring": {
+      "anchor_id": null,
+      "status": "not_applicable"
+    },
+    "authority": {
+      "execution_id": "exec_4df1497de2f84d0bb283848513b6d7be",
+      "nonce_consumed": false
+    },
+    "consequence": {
+      "receipt_id": null,
+      "resource": "protected-record",
+      "resulting_state": null,
+      "state": null,
+      "target_invoked": false,
+      "target_ref": "activation.local-record",
+      "terminated": true
+    },
+    "decision": "deny",
+    "mount_id": "mnt_a6995f3e1e544a9394c87f91294a7257",
+    "operation_id": "op-mount-b-delete",
+    "reason": "execution is terminated",
+    "resource": "protected-record"
+  },
+  "response_status": 200
+}

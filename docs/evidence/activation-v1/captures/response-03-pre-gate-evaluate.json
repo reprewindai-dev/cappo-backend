@@ -1,0 +1,25 @@
+{
+  "action": "record.read",
+  "anchoring": {
+    "anchor_id": null,
+    "status": "not_applicable"
+  },
+  "authority": {
+    "execution_id": "exec_3a87652e93f04633bbe7d29be18c124b",
+    "nonce_consumed": true
+  },
+  "consequence": {
+    "receipt_id": "rcpt_9bc15fd98b2f1a0f832e65d40a5164bdaa331b89f83b4889cc878adfdf13c9ae",
+    "resource": "pre-gate-record",
+    "resulting_state": null,
+    "state": "failed",
+    "target_invoked": true,
+    "target_ref": "activation.local-record",
+    "terminated": true
+  },
+  "decision": "allow",
+  "mount_id": "mnt_922551abe82a4313a4876725fbb6fce0",
+  "operation_id": "op-pre-gate",
+  "reason": "allowed",
+  "resource": "pre-gate-record"
+}

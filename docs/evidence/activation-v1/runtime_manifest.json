@@ -1,0 +1,20 @@
+{
+  "configuration_fingerprint": {
+    "AUTH_ENABLED": true,
+    "ENFORCE_SPIFFE": true,
+    "ENVIRONMENT": "development",
+    "biscuit_root_source": "configured hex",
+    "effect_record_root": "/home/ubuntu/activation_v1/records",
+    "mTLS_spiffe_ids": [
+      "spiffe://example.org/workload/cappo-backend"
+    ],
+    "runtime_kind": "uvicorn+SQLite",
+    "workspace": "workspace-activation-v1"
+  },
+  "docker_host_limitation": "DATABASE_URL absent; external networks coolify and veklom-byos-backend-2_default absent",
+  "docker_host_status": "LOCAL-HOST RUNTIME VERIFICATION REQUIRED",
+  "harness_version": "activation-v1-harness-2026-09-01.r2",
+  "runtime": "direct uvicorn + SQLite",
+  "secret_handling": "No Biscuit values, private keys, JWTs, certificates, nonces, or token IDs are committed.",
+  "source_commit": "fcff23d762d89e521dca0114508570b3deee47f2"
+}

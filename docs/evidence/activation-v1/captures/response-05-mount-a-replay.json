@@ -1,0 +1,25 @@
+{
+  "action": "record.create",
+  "anchoring": {
+    "anchor_id": null,
+    "status": "not_applicable"
+  },
+  "authority": {
+    "execution_id": "exec_e2eb1dab88d8442f96a70513452b9c07",
+    "nonce_consumed": true
+  },
+  "consequence": {
+    "receipt_id": "rcpt_e4eeb1e60ef5e6c522c988e964fcc981dc35c052ab0f1071f9b5489ef81d96b4",
+    "resource": "allowed-record",
+    "resulting_state": null,
+    "state": "succeeded",
+    "target_invoked": false,
+    "target_ref": "activation.local-record",
+    "terminated": false
+  },
+  "decision": "deny",
+  "mount_id": "mnt_c4e88e3c664d4ef4a70378a54b7a5a81",
+  "operation_id": "op-mount-a-create",
+  "reason": "idempotency_replay:succeeded",
+  "resource": "allowed-record"
+}

@@ -1,0 +1,99 @@
+{
+  "overall": "PASS_WITH_RUNTIME_LIMITATION",
+  "reason": "The required blocked_action policy denial passed, and the post-verification Biscuit scope-denial proof also passed. Docker-host verification remains required.",
+  "steps": {
+    "1": {
+      "status": "PASS",
+      "evidence": [
+        "01_pre_gate_mount_metadata.json",
+        "01_pre_gate_db_metadata_before_restart.json",
+        "requests/01_pre_gate_mount.json",
+        "responses/01_pre_gate_mount.json"
+      ]
+    },
+    "2": {
+      "status": "PASS",
+      "evidence": [
+        "logs/server_initial.log",
+        "logs/server_restart.log",
+        "runtime_manifest.json"
+      ]
+    },
+    "3": {
+      "status": "PASS",
+      "decision": "allow",
+      "reason": "allowed",
+      "note": "The read target was absent, so the consequence settled FAILED after invocation; the ALLOW plus durable AUTHORIZED/STARTED events proves Biscuit authority verification across restart.",
+      "evidence": [
+        "responses/03_pre_gate_evaluate.json",
+        "03_pre_gate_authority_metadata.json"
+      ]
+    },
+    "4": {
+      "status": "PASS",
+      "decision": "allow",
+      "reason": "allowed",
+      "consequence_state": "succeeded",
+      "target_invocation_delta": 1,
+      "mount_terminated": true,
+      "evidence": [
+        "responses/04_mount_a_create.json",
+        "responses/04_mount_a_execute.json",
+        "04_mount_a_state.json",
+        "records/allowed-record.json"
+      ]
+    },
+    "5": {
+      "status": "PASS",
+      "decision": "deny",
+      "reason": "idempotency_replay:succeeded",
+      "target_invocation_delta": 0,
+      "evidence": [
+        "requests/05_mount_a_replay.json",
+        "responses/05_mount_a_replay.json",
+        "05_mount_a_replay_state.json"
+      ]
+    },
+    "6": {
+      "status": "PASS",
+      "decision": "deny",
+      "reason": "blocked_action",
+      "target_invocation_delta": 0,
+      "file_survived": true,
+      "mount_terminated": true,
+      "durable_consequence_events": 0,
+      "note": "blocked_action is CAPPO's canonical block-precedence policy denial. The target was suppressed and the mount terminated.",
+      "evidence": [
+        "requests/06_mount_b_delete.json",
+        "responses/06_mount_b_delete.json",
+        "06_mount_b_state.json"
+      ]
+    },
+    "7": {
+      "status": "PASS",
+      "decision": "deny",
+      "reason": "execution is terminated",
+      "note": "The identical replay was executed and denied, but this does not repair the failed Mount B acceptance condition.",
+      "evidence": [
+        "requests/07_mount_b_replay.json",
+        "responses/07_mount_b_replay.json",
+        "07_mount_b_replay_state.json"
+      ]
+    },
+    "8": {
+      "status": "PASS",
+      "decision": "deny",
+      "reason": "lease_invariant_violation",
+      "target_invocation_delta": 0,
+      "file_survived": true,
+      "mount_terminated": true,
+      "evidence": [
+        "requests/authority_mount.json",
+        "responses/authority_mount.json",
+        "requests/authority_execute.json",
+        "responses/authority_execute.json",
+        "08_authority_denial_state.json"
+      ]
+    }
+  }
+}

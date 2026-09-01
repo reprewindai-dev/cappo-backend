@@ -1,0 +1,9 @@
+{
+  "action": "record.read",
+  "arguments": {},
+  "nonce": "<REDACTED>",
+  "operation_id": "op-pre-gate",
+  "resource": "pre-gate-record",
+  "target_ref": "activation.local-record",
+  "token_id": "<REDACTED>"
+}
