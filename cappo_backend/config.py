@@ -152,7 +152,7 @@ class Settings(BaseSettings):
     # P0-6 Local Ollama topology settings
     local_ollama_enabled: bool = False
     ollama_upstream_url: str = ""
-    ollama_keep_alive: int = 300
+    ollama_keep_alive: str | int = 300
 
     # Master key for encrypting/decrypting BYOK tenant credentials.
     # Must be set in production to a strong, unique value.

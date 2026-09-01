@@ -285,5 +285,6 @@ def extract_authority_context(token_b64: str):
             authority_epoch=0
         )
     except Exception as e:
-        print(f"Failed to extract authority from biscuit: {e}")
+        import logging
+        logging.getLogger("cappo.security").error(f"AUTHORITY_EXTRACTION_FAILED: {type(e).__name__}: {str(e)}")
         return None
