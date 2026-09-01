@@ -16,6 +16,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set by deployment}
       HOST: 0.0.0.0
       PORT: "8002"
+      BISCUIT_ROOT_KEY_PATH: /var/lib/cappo/.biscuit_root_key
+    volumes:
+      - cappo-biscuit-key:/var/lib/cappo
     networks:
       - coolify
       - byos
@@ -26,3 +29,6 @@ networks:
   byos:
     external: true
     name: veklom-byos-backend-2_default
+
+volumes:
+  cappo-biscuit-key:

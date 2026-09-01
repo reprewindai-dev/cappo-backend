@@ -1,10 +1,11 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 import biscuit_auth
 from biscuit_auth import AuthorizerBuilder, Biscuit, KeyPair, PrivateKey
 
-from cappo_backend.config import get_settings
+from cappo_backend.config import InsecureProductionConfigError, get_settings
 
 _ROOT_KEY_PAIR = None
 
@@ -12,20 +13,26 @@ def get_root_key_pair() -> KeyPair:
     global _ROOT_KEY_PAIR
     if _ROOT_KEY_PAIR is None:
         settings = get_settings()
-        biscuit_key = getattr(settings, "BISCUIT_ROOT_PRIVATE_KEY_HEX", None)
+        biscuit_key = settings.biscuit_root_private_key_hex
         if biscuit_key:
             from biscuit_auth import Algorithm
             _ROOT_KEY_PAIR = KeyPair.from_private_key(PrivateKey.from_bytes(bytes.fromhex(biscuit_key), Algorithm.Ed25519))
         else:
-            # Fallback for dev: persist to a file so it survives restart
-            key_path = ".biscuit_root_key"
+            if settings.environment.lower() in {"production", "prod"}:
+                raise InsecureProductionConfigError(
+                    "BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production."
+                )
+            key_path = Path(settings.biscuit_root_key_path).expanduser().resolve()
+            key_path.parent.mkdir(parents=True, exist_ok=True)
             if os.path.exists(key_path):
                 from biscuit_auth import Algorithm
-                with open(key_path, "rb") as f:
+                with key_path.open("rb") as f:
                     _ROOT_KEY_PAIR = KeyPair.from_private_key(PrivateKey.from_bytes(f.read(), Algorithm.Ed25519))
+                key_path.chmod(0o600)
             else:
                 _ROOT_KEY_PAIR = KeyPair()
-                with open(key_path, "wb") as f:
+                fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "wb") as f:
                     f.write(_ROOT_KEY_PAIR.private_key.to_bytes())
     return _ROOT_KEY_PAIR
 
