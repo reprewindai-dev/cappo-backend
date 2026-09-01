@@ -37,6 +37,10 @@ def test_pre_invocation_fault_freezes_non_evidence_derived_allow(
     calls = 0
 
     def build_intent_hash_with_fault(**kwargs: object) -> str:
+        # Two call sites run per execute: the idempotency precheck in
+        # MountRegistry.execute_consequence, then ExecutionBinding.consequence.
+        # The fault targets the second so it lands after admission and before
+        # the evaluator writes any durable event.
         nonlocal calls
         calls += 1
         if calls == 2:
