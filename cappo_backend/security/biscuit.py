@@ -24,16 +24,32 @@ def get_root_key_pair() -> KeyPair:
                 )
             key_path = Path(settings.biscuit_root_key_path).expanduser().resolve()
             key_path.parent.mkdir(parents=True, exist_ok=True)
-            if os.path.exists(key_path):
+
+            def load_file_key() -> KeyPair:
                 from biscuit_auth import Algorithm
+
                 with key_path.open("rb") as f:
-                    _ROOT_KEY_PAIR = KeyPair.from_private_key(PrivateKey.from_bytes(f.read(), Algorithm.Ed25519))
+                    key_pair = KeyPair.from_private_key(
+                        PrivateKey.from_bytes(f.read(), Algorithm.Ed25519)
+                    )
                 key_path.chmod(0o600)
+                return key_pair
+
+            if os.path.exists(key_path):
+                _ROOT_KEY_PAIR = load_file_key()
             else:
                 _ROOT_KEY_PAIR = KeyPair()
-                fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                with os.fdopen(fd, "wb") as f:
-                    f.write(_ROOT_KEY_PAIR.private_key.to_bytes())
+                try:
+                    fd = os.open(
+                        key_path,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                        0o600,
+                    )
+                except FileExistsError:
+                    _ROOT_KEY_PAIR = load_file_key()
+                else:
+                    with os.fdopen(fd, "wb") as f:
+                        f.write(_ROOT_KEY_PAIR.private_key.to_bytes())
     return _ROOT_KEY_PAIR
 
 def mint_biscuit_capability(

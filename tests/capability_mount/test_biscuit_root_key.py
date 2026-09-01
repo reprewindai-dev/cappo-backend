@@ -106,6 +106,31 @@ def test_rotated_root_key_fails_closed_during_authority_extraction(
     assert authority is None
 
 
+def test_file_creation_race_loads_existing_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    key_path = tmp_path / "biscuit-root-key"
+    existing = KeyPair()
+    key_path.write_bytes(existing.private_key.to_bytes())
+    _settings(monkeypatch, key_path=key_path)
+
+    original_exists = biscuit.os.path.exists
+    reported_missing = False
+
+    def report_missing_once(path: object) -> bool:
+        nonlocal reported_missing
+        if not reported_missing:
+            reported_missing = True
+            return False
+        return original_exists(path)
+
+    monkeypatch.setattr(biscuit.os.path, "exists", report_missing_once)
+    loaded = biscuit.get_root_key_pair()
+
+    assert loaded.public_key.to_bytes() == existing.public_key.to_bytes()
+
+
 def test_production_without_configured_root_key_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
