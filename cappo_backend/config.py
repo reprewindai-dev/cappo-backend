@@ -94,6 +94,23 @@ class Settings(BaseSettings):
     # repository defaults intentionally contain no credential material.
     api_keys: str = ""
 
+    @field_validator("biscuit_root_private_key_hex")
+    @classmethod
+    def validate_biscuit_root_private_key_hex(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if len(value) != 64:
+            raise ValueError(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must contain exactly 64 hex characters."
+            )
+        try:
+            bytes.fromhex(value)
+        except ValueError as exc:
+            raise ValueError(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must be valid hexadecimal."
+            ) from exc
+        return value
+
     # --- JWT Authentication ---
     jwt_auth_enabled: bool = False
     jwt_public_verification_key: str = ""

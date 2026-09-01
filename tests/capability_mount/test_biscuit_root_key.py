@@ -69,6 +69,73 @@ def test_configured_hex_key_is_stable_across_loads_and_extracts(
     assert authority.allowed_actions == {"record.read", "record.create"}
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "a" * 62,
+        "g" * 64,
+    ],
+)
+def test_malformed_configured_root_key_is_rejected_at_settings_construction(
+    value: str,
+) -> None:
+    with pytest.raises(ValueError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX"):
+        Settings(environment="test", biscuit_root_private_key_hex=value)
+
+
+def test_root_key_precedence_chain(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("BISCUIT_ROOT_PRIVATE_KEY_HEX", raising=False)
+    configured = KeyPair()
+    persisted = KeyPair()
+    key_path = tmp_path / "persisted-root-key"
+    key_path.write_bytes(persisted.private_key.to_bytes())
+
+    _settings(
+        monkeypatch,
+        private_key_hex=configured.private_key.to_bytes().hex(),
+        key_path=key_path,
+    )
+    configured_loaded = biscuit.get_root_key_pair()
+    assert configured_loaded.public_key.to_bytes() == configured.public_key.to_bytes()
+
+    _settings(monkeypatch, key_path=key_path)
+    persisted_loaded = biscuit.get_root_key_pair()
+    assert persisted_loaded.public_key.to_bytes() == persisted.public_key.to_bytes()
+
+    generated_path = tmp_path / "generated-root-key"
+    _settings(monkeypatch, key_path=generated_path)
+    generated = biscuit.get_root_key_pair()
+    biscuit._ROOT_KEY_PAIR = None
+    generated_reloaded = biscuit.get_root_key_pair()
+    assert generated_reloaded.public_key.to_bytes() == generated.public_key.to_bytes()
+
+    _settings(monkeypatch, environment="production", key_path=tmp_path / "production")
+    with pytest.raises(InsecureProductionConfigError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX"):
+        biscuit.get_root_key_pair()
+
+
+def test_settings_declare_root_key_knobs_and_load_hex_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    configured = KeyPair()
+    configured_hex = configured.private_key.to_bytes().hex()
+    monkeypatch.setenv("BISCUIT_ROOT_PRIVATE_KEY_HEX", configured_hex)
+
+    settings = Settings(
+        environment="test",
+        biscuit_root_key_path=str(tmp_path / "root-key"),
+    )
+
+    assert "biscuit_root_private_key_hex" in Settings.model_fields
+    assert "biscuit_root_key_path" in Settings.model_fields
+    assert settings.biscuit_root_private_key_hex == configured_hex
+    assert settings.biscuit_root_key_path == str(tmp_path / "root-key")
+
+
 def test_absolute_file_fallback_survives_simulated_restart(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
