@@ -58,7 +58,13 @@ class Settings(BaseSettings):
     capability_packages_json: str | None = None
     capability_effect_record_root: str | None = None
     biscuit_root_private_key_hex: str | None = None
-    biscuit_root_key_path: str = "./.biscuit_root_key"
+    # Default to a home-anchored absolute path so the file location is
+    # deterministic regardless of the process working directory.  A relative
+    # path here is the root cause of cross-restart verification failures: two
+    # invocations with different CWDs resolve to different files and therefore
+    # operate with different key material.  The ~ prefix is expanded at read
+    # time in get_root_key_pair(); it is NOT resolved relative to CWD.
+    biscuit_root_key_path: str = "~/.cappo/biscuit_root_key"
     capability_beacon_issuer: str = "https://cappo.veklom.com"
     capability_beacon_ttl_seconds: int = 300
     capability_beacon_kid: str = "default"
@@ -111,7 +117,49 @@ class Settings(BaseSettings):
             ) from exc
         return value
 
-    # --- JWT Authentication ---
+    @field_validator("biscuit_root_key_path")
+    @classmethod
+    def validate_biscuit_root_key_path(cls, value: str) -> str:
+        """Validate and normalise the biscuit root key file path.
+
+        The critical invariant: the resolved key path must be the same regardless
+        of the process working directory.  A plain relative path (starting with
+        ``./`` or an unanchored filename) fails this invariant because
+        ``Path.resolve()`` is CWD-dependent.
+
+        Accepted forms:
+        - Unix absolute:    ``/var/secrets/biscuit_root_key``   (container paths)
+        - Windows absolute: ``C:/Users/antho/.cappo/key``
+        - Home-relative:    ``~/.cappo/biscuit_root_key``       (expanded at load time)
+
+        Rejected:
+        - CWD-relative: ``./biscuit_root_key``, ``biscuit_root_key``
+        - Empty string
+
+        Note: We use explicit string prefix checks rather than Path.is_absolute()
+        because this validator runs on the host OS (Windows) but the configured
+        path may be a Linux container path (/var/lib/...) which Path.is_absolute()
+        incorrectly classifies as relative on Windows.
+        """
+        import re
+        if not value or not value.strip():
+            raise ValueError("BISCUIT_ROOT_KEY_PATH must not be empty.")
+        stripped = value.strip()
+        is_home_relative = stripped.startswith("~")
+        # Unix absolute: starts with /
+        is_unix_absolute = stripped.startswith("/")
+        # Windows absolute: starts with drive letter + colon (e.g. C:, D:)
+        is_windows_absolute = bool(re.match(r"^[A-Za-z]:[/\\]", stripped))
+        if not (is_home_relative or is_unix_absolute or is_windows_absolute):
+            raise ValueError(
+                f"BISCUIT_ROOT_KEY_PATH must be an absolute path or start with '~' "
+                f"(home-relative). Received: {stripped!r}.  "
+                f"A CWD-relative path (e.g. './key', 'key') causes the key file location "
+                f"to change when the process working directory changes, leading to "
+                f"cross-restart Biscuit verification failures."
+            )
+        return stripped
+
     jwt_auth_enabled: bool = False
     jwt_public_verification_key: str = ""
     jwt_algorithm: str = "EdDSA"
@@ -267,7 +315,6 @@ class Settings(BaseSettings):
         Called at application startup. In non-production environments this is a
         no-op so local development stays frictionless. In production it raises
         :class:`InsecureProductionConfigError` if any governance-critical setting
-        is still at an insecure default — there is no silent degradation.
         """
         if not self.is_production:
             return
@@ -276,7 +323,9 @@ class Settings(BaseSettings):
         if not self.biscuit_root_private_key_hex:
             problems.append(
                 "BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production; "
-                "ephemeral Biscuit root keys are not permitted."
+                "ephemeral or file-based Biscuit root keys are not permitted. "
+                "Set BISCUIT_ROOT_PRIVATE_KEY_HEX as a 64-character hex string "
+                "in the Coolify environment panel."
             )
         if self.ei_signing_key == INSECURE_EI_SIGNING_KEY:
             problems.append(

@@ -22,7 +22,18 @@ def get_root_key_pair() -> KeyPair:
                 raise InsecureProductionConfigError(
                     "BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production."
                 )
-            key_path = Path(settings.biscuit_root_key_path).expanduser().resolve()
+            key_path = Path(settings.biscuit_root_key_path).expanduser()
+            # Do NOT call .resolve() here — resolve() is CWD-dependent for paths
+            # that are not yet absolute.  The field_validator on biscuit_root_key_path
+            # guarantees the configured value is either absolute or home-relative (~),
+            # so expanduser() alone produces a stable absolute path.
+            if not key_path.is_absolute():
+                # Belt-and-suspenders: should never occur given the field_validator,
+                # but make it explicit rather than silently producing a CWD-relative path.
+                raise InsecureProductionConfigError(
+                    f"BISCUIT_ROOT_KEY_PATH resolved to a non-absolute path after expanduser(): "
+                    f"{key_path!r}.  Configure an absolute path or a home-relative path (~/)."
+                )
             key_path.parent.mkdir(parents=True, exist_ok=True)
 
             def load_file_key() -> KeyPair:
