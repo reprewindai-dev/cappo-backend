@@ -198,15 +198,16 @@ def verify_biscuit_capability(
         auth_builder.add_code('allow if true;')
 
         # Build the authorizer
-        # This will evaluate all checks in all blocks
-        # If any check fails, it raises AuthorizationError
         auth = auth_builder.build(token)
         auth.authorize()
 
         import biscuit_auth
         # Enforce explicitly revoked execution IDs
         exec_facts = auth.query(biscuit_auth.Rule('rule($exec_id) <- execution_id($exec_id)'))
-        if exec_facts and trusted_state and trusted_state.revoked_execution_ids:
+        if exec_facts:
+            if not trusted_state:
+                print("Biscuit verification failed: Token contains execution_id but no trusted_state was provided.")
+                return False
             exec_id = str(exec_facts[0].terms[0]).strip('"')
             if exec_id in trusted_state.revoked_execution_ids:
                 print(f"Biscuit verification failed: Execution ID {exec_id} is explicitly revoked.")
@@ -214,10 +215,16 @@ def verify_biscuit_capability(
 
         # Enforce known epochs for the given scope
         scope_facts = auth.query(biscuit_auth.Rule('rule($scope, $ep) <- revocation_scope($scope), revocation_epoch($ep)'))
-        if scope_facts and trusted_state and trusted_state.known_epochs:
+        if scope_facts:
+            if not trusted_state:
+                print("Biscuit verification failed: Token contains revocation_epoch but no trusted_state was provided.")
+                return False
             scope = str(scope_facts[0].terms[0]).strip('"')
             ep = int(str(scope_facts[0].terms[1]))
-            if scope in trusted_state.known_epochs and ep < trusted_state.known_epochs[scope]:
+            if scope not in trusted_state.known_epochs:
+                print(f"Biscuit verification failed: Token scope {scope} is not known in trusted_state.")
+                return False
+            if ep < trusted_state.known_epochs[scope]:
                 print(f"Biscuit verification failed: Token epoch {ep} is older than required epoch {trusted_state.known_epochs[scope]} for scope {scope}.")
                 return False
 
