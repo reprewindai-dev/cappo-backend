@@ -1159,8 +1159,9 @@ class MountRegistry:
             decision = Decision.DENY
             reason = str(exc)
         except Exception:
-            # The durable consequence event is the source of truth for outcome.
-            decision = Decision.ALLOW
+            # Re-raise internal errors. The durable consequence event (e.g. STARTED)
+            # is already committed and will be picked up by the reconciliation loop.
+            raise
 
         latest = db.execute(
             select(ConsequenceExecutionEvent)
