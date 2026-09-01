@@ -486,9 +486,19 @@ class MountRegistry:
             revocation_scope = f"execution:{token.execution_id}"
             revocation_epoch = 0
 
+            verified_caller = caller_spiffe_id or owner_principal
+            verified_executor = executor_spiffe_id or owner_principal
+            
+            if not verified_caller or verified_caller in ("auth-disabled", "legacy-unbound", ""):
+                db.rollback()
+                return None, AnchorResult("not_applicable", detail="missing_verified_principal"), "missing_verified_principal"
+            if not verified_executor or verified_executor in ("auth-disabled", "legacy-unbound", ""):
+                db.rollback()
+                return None, AnchorResult("not_applicable", detail="missing_verified_principal"), "missing_verified_principal"
+
             biscuit_token = mint_biscuit_capability(
-                caller_spiffe_id=caller_spiffe_id or "legacy-unbound",
-                executor_spiffe_id=executor_spiffe_id or "legacy-unbound",
+                caller_spiffe_id=verified_caller,
+                executor_spiffe_id=verified_executor,
                 capability_id=package.id,
                 reads=token.grants.reads,
                 writes=token.grants.writes,
@@ -544,8 +554,8 @@ class MountRegistry:
             capability_id=package.id,
             policy_version="1.0",
             execution_identity=token.execution_id or "unknown",
-            subject_spiffe_id=caller_spiffe_id or "legacy-unbound",
-            executor_spiffe_id=executor_spiffe_id or "legacy-unbound",
+            subject_spiffe_id=verified_caller,
+            executor_spiffe_id=verified_executor,
             biscuit_hash=_biscuit_sha256,
             issued_at=token.issued_at,
             not_before=token.issued_at,
@@ -720,6 +730,7 @@ class MountRegistry:
                         allowed_actions=package_actions,
                         allowed_resources={"*"},
                         executor_spiffe_id=b_auth.executor_spiffe_id,
+                        subject_spiffe_id=b_auth.subject_spiffe_id,
                         expires_at=b_auth.expires_at,
                         delegation_depth=b_auth.delegation_depth,
                         max_delegation_depth=b_auth.max_delegation_depth,

@@ -228,6 +228,11 @@ def extract_authority_context(token_b64: str):
         if exec_facts:
             executor_spiffe_id = str(exec_facts[0].terms[0]).strip('"')
             
+        subject_spiffe_id = "any"
+        subj_facts = auth.query(biscuit_auth.Rule('rule($subj) <- subject($subj)'))
+        if subj_facts:
+            subject_spiffe_id = str(subj_facts[0].terms[0]).strip('"')
+            
         expires_at = None
         exp_facts = auth.query(biscuit_auth.Rule('rule($exp) <- expires_at($exp)'))
         if exp_facts:
@@ -250,6 +255,7 @@ def extract_authority_context(token_b64: str):
             allowed_actions=actions,
             allowed_resources=resources,
             executor_spiffe_id=executor_spiffe_id,
+            subject_spiffe_id=subject_spiffe_id,
             expires_at=expires_at,
             delegation_depth=token.block_count() - 1,
             max_delegation_depth=max_depth,

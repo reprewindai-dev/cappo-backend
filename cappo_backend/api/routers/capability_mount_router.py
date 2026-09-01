@@ -210,7 +210,7 @@ def request_mount(
         owner_workspace=workspace,
         execution_id=body.execution_id,
         caller_spiffe_id=request.scope.get("caller_spiffe_id"),
-        executor_spiffe_id=body.executor_spiffe_id or request.scope.get("caller_spiffe_id"),
+        executor_spiffe_id=request.scope.get("executor_spiffe_id") or request.scope.get("caller_spiffe_id"),
     )
     if record is None:
         return MountResponse(
@@ -275,6 +275,7 @@ def evaluate_action(
     registry: MountRegistry = Depends(get_registry),
 ) -> ActionResponse:
     principal, workspace = _caller(request)
+    print("DEBUG evaluate_action principal:", principal, "workspace:", workspace)
     spiffe_fields = {
         "caller_spiffe_id": request.scope.get("caller_spiffe_id"),
         "trust_domain": request.scope.get("trust_domain"),

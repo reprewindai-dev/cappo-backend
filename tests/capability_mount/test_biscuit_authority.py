@@ -48,6 +48,47 @@ def test_biscuit_authority_missing(client: TestClient, db: Session) -> None:
     assert response.json()['decision'] == 'deny'
     assert response.json()['reason'] == 'missing_cryptographic_authority'
 
+def test_biscuit_issuance_rejects_caller_supplied_legacy_executor(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import cappo_backend.api.routers.capability_mount_router
+    import cappo_backend.security.biscuit
+
+    minted: dict[str, str | None] = {}
+    original_mint = cappo_backend.security.biscuit.mint_biscuit_capability
+
+    def capture_mint(**kwargs):
+        minted.update(kwargs)
+        return original_mint(**kwargs)
+
+    monkeypatch.setattr(
+        cappo_backend.security.biscuit,
+        "mint_biscuit_capability",
+        capture_mint,
+    )
+
+    def mock_verified_caller(req, requested_workspace=None):
+        return ("verified-caller", "w1")
+
+    monkeypatch.setattr(
+        cappo_backend.api.routers.capability_mount_router,
+        "_caller",
+        mock_verified_caller,
+    )
+    prepare(client)
+
+    response = client.post(
+        "/v1/capability/mounts",
+        json={**mount_payload(60), "executor_spiffe_id": "legacy-unbound"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["decision"] == "allow"
+    assert minted["caller_spiffe_id"]
+    assert minted["executor_spiffe_id"] == minted["caller_spiffe_id"]
+    assert "legacy-unbound" not in minted.values()
+
 def test_biscuit_authority_malformed(client: TestClient, db: Session) -> None:
     body = get_mount_with_token(client)
     mount_id = body['mount']['id']
@@ -192,3 +233,141 @@ def test_biscuit_authority_replay(client: TestClient, db: Session) -> None:
     assert response2.status_code == 200
     assert response2.json()['decision'] == 'deny'
     assert response2.json()['reason'] == 'token_replay'
+
+def test_biscuit_authority_caller_a_used_by_caller_b(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import cappo_backend.api.routers.capability_mount_router
+    
+    # Caller A creates a mount
+    def mock_caller_a(req, requested_workspace=None):
+        return ("caller-a", "w1")
+    monkeypatch.setattr(cappo_backend.api.routers.capability_mount_router, "_caller", mock_caller_a)
+    body = get_mount_with_token(client)
+    mount_id = body['mount']['id']
+    token_id = body['token']['token_id']
+    nonce = body['token']['nonce']
+    
+    # Caller B attempts to use it
+    def mock_caller_b(req, requested_workspace=None):
+        return ("caller-b", "w1")
+    monkeypatch.setattr(cappo_backend.api.routers.capability_mount_router, "_caller", mock_caller_b)
+    response = client.post(
+        f'/v1/capability/mounts/{mount_id}/actions',
+        json={
+            'token_id': token_id,
+            'nonce': nonce,
+            'action': 'contact.read'
+        }
+    )
+    assert response.status_code == 200
+    assert response.json()['decision'] == 'deny'
+    assert response.json()['reason'] == 'owner_mismatch'
+
+def test_biscuit_authority_wrong_subject(client: TestClient, db: Session) -> None:
+    body = get_mount_with_token(client)
+    mount_id = body['mount']['id']
+    token_id = body['token']['token_id']
+    nonce = body['token']['nonce']
+    
+    from cappo_backend.security.biscuit import mint_biscuit_capability
+    import json
+    biscuit_token = mint_biscuit_capability(
+        caller_spiffe_id='vlink://different-machine',
+        executor_spiffe_id='test:principal',
+        capability_id='outreach@v1',
+        reads=['contact.read'],
+        writes=[],
+        execution_id=body['token']['execution_id'],
+        ttl_seconds=60,
+        revocation_scope=f"execution:{body['token']['execution_id']}",
+        revocation_epoch=0,
+    )
+    
+    db.execute(text("""
+        UPDATE capability_mounts 
+        SET token_json = json_set(token_json, '$.biscuit_token', :b_tok) 
+        WHERE token_id = :id
+    """), {'id': token_id, 'b_tok': f'"{biscuit_token}"'})
+    db.commit()
+        
+    response = client.post(f'/v1/capability/mounts/{mount_id}/actions', json={
+        'token_id': token_id,
+        'nonce': nonce,
+        'action': 'contact.read'
+    })
+    assert response.status_code == 200
+    assert response.json()['decision'] == 'deny'
+    assert response.json()['reason'] == 'missing_cryptographic_authority'
+
+def test_biscuit_authority_wrong_executor(client: TestClient, db: Session) -> None:
+    body = get_mount_with_token(client)
+    mount_id = body['mount']['id']
+    token_id = body['token']['token_id']
+    nonce = body['token']['nonce']
+    
+    from cappo_backend.security.biscuit import mint_biscuit_capability
+    import json
+    biscuit_token = mint_biscuit_capability(
+        caller_spiffe_id='test:principal',
+        executor_spiffe_id='wrong-executor',
+        capability_id='outreach@v1',
+        reads=['contact.read'],
+        writes=[],
+        execution_id=body['token']['execution_id'],
+        ttl_seconds=60,
+        revocation_scope=f"execution:{body['token']['execution_id']}",
+        revocation_epoch=0,
+    )
+    
+    db.execute(text("""
+        UPDATE capability_mounts 
+        SET token_json = json_set(token_json, '$.biscuit_token', :b_tok) 
+        WHERE token_id = :id
+    """), {'id': token_id, 'b_tok': f'"{biscuit_token}"'})
+    db.commit()
+        
+    response = client.post(f'/v1/capability/mounts/{mount_id}/actions', json={
+        'token_id': token_id,
+        'nonce': nonce,
+        'action': 'contact.read'
+    })
+    assert response.status_code == 200
+    assert response.json()['decision'] == 'deny'
+    assert response.json()['reason'] == 'missing_cryptographic_authority'
+
+def test_biscuit_authority_legacy_unbound_impossible(client: TestClient, db: Session) -> None:
+    body = get_mount_with_token(client)
+    mount_id = body['mount']['id']
+    token_id = body['token']['token_id']
+    nonce = body['token']['nonce']
+    
+    from cappo_backend.security.biscuit import mint_biscuit_capability
+    import json
+    # Explicitly minting one manually to show that if it WAS somehow minted,
+    # the runtime enforcement rejects it because it doesn't match the caller identity.
+    biscuit_token = mint_biscuit_capability(
+        caller_spiffe_id='legacy-unbound',
+        executor_spiffe_id='legacy-unbound',
+        capability_id='outreach@v1',
+        reads=['contact.read'],
+        writes=[],
+        execution_id=body['token']['execution_id'],
+        ttl_seconds=60,
+        revocation_scope=f"execution:{body['token']['execution_id']}",
+        revocation_epoch=0,
+    )
+    
+    db.execute(text("""
+        UPDATE capability_mounts 
+        SET token_json = json_set(token_json, '$.biscuit_token', :b_tok) 
+        WHERE token_id = :id
+    """), {'id': token_id, 'b_tok': f'"{biscuit_token}"'})
+    db.commit()
+        
+    response = client.post(f'/v1/capability/mounts/{mount_id}/actions', json={
+        'token_id': token_id,
+        'nonce': nonce,
+        'action': 'contact.read'
+    })
+    assert response.status_code == 200
+    assert response.json()['decision'] == 'deny'
+    assert response.json()['reason'] == 'missing_cryptographic_authority'
