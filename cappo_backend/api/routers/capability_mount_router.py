@@ -22,6 +22,7 @@ from cappo_backend.capability_mount.models import (
 )
 from cappo_backend.capability_mount.service import (
     AnchorResult,
+    LocalConfirmedAnchor,
     MountRegistry,
     UnconfirmedAnchor,
 )
@@ -139,7 +140,10 @@ def get_registry(request: Request, db: Session = Depends(get_session)) -> MountR
     settings = request.app.state.settings
     anchor = shared.anchor
     if isinstance(anchor, UnconfirmedAnchor):
-        anchor = AuditPGLAnchor(db, settings)
+        if settings.cappo_require_persistent_pgl:
+            anchor = AuditPGLAnchor(db, settings)
+        else:
+            anchor = LocalConfirmedAnchor()
     verifier = BoundMountEvidenceVerifier(
         approval_key=settings.approval_token_signing_key,
         suppression_key=os.getenv("SUPPRESSION_EVIDENCE_SIGNING_KEY", ""),

@@ -199,7 +199,7 @@ def verify_biscuit_capability(
 
         return True
     except Exception as e:
-        print(f"Biscuit verification failed: {e}")
+        import traceback; traceback.print_exc()
         return False
 
 def extract_authority_context(token_b64: str):

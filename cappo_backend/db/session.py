@@ -15,7 +15,7 @@ _settings = get_settings()
 _DATABASE_TIMEOUT_SECONDS = 2
 
 _connect_args: dict[str, object] = {}
-_engine_args: dict[str, object] = {"future": True}
+_engine_args: dict[str, object] = {"future": True, "pool_pre_ping": True}
 if _settings.database_url.startswith("sqlite"):
     _connect_args = {
         "check_same_thread": False,
@@ -24,8 +24,8 @@ if _settings.database_url.startswith("sqlite"):
 else:
     # Bound both initial driver connection attempts and pool acquisition so a
     # stalled database cannot accumulate unbounded health-check workers.
-    _connect_args = {"connect_timeout": _DATABASE_TIMEOUT_SECONDS}
-    _engine_args["pool_timeout"] = _DATABASE_TIMEOUT_SECONDS
+    _connect_args = {"connect_timeout": 10}  # 10s for local Docker
+    _engine_args["pool_timeout"] = 10
 
 engine = create_engine(
     _settings.database_url,
@@ -46,6 +46,8 @@ def get_session(request: Request) -> Iterator[Session]:
     For routes that are genuinely workspace-agnostic, use ``get_unscoped_session``.
     """
     workspace_id: str | None = request.scope.get("auth_workspace")
+    import logging
+    logging.warning(f"GET_SESSION: {workspace_id} PRINCIPAL: {request.scope.get('auth_principal')}")
 
     if not workspace_id:
         raise HTTPException(

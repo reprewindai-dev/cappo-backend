@@ -100,6 +100,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
                 if workspace and str(workspace).strip():
                     request.scope["auth_workspace"] = str(workspace).strip()
+                    import logging
+                    logging.warning(f"SET WORKSPACE: {workspace}")
                 # If JWT carries no workspace claim, auth_workspace is absent.
                 # Tenant-sensitive routes will fail with WORKSPACE_CONTEXT_MISSING.
             except jwt.ExpiredSignatureError:

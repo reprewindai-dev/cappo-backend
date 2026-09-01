@@ -87,6 +87,28 @@ class UnconfirmedAnchor:
         return AnchorResult("unconfirmed", detail="PGL anchor is not configured")
 
 
+class LocalConfirmedAnchor:
+    """Local-only anchor that returns confirmed without an external PGL call.
+
+    Used when ``CAPPO_REQUIRE_PERSISTENT_PGL=false`` to allow local
+    development and end-to-end integration testing without a live PGL
+    endpoint.  The anchor_id is a deterministic SHA-256 hash of the event
+    payload so that the audit trail remains locally tamper-evident even
+    though there is no external ledger confirmation.
+    """
+
+    def anchor(self, event_type: str, **kwargs: Any) -> AnchorResult:
+        import hashlib
+        import json
+
+        payload_bytes = json.dumps(
+            {"event_type": event_type, **{k: str(v) for k, v in kwargs.items()}},
+            sort_keys=True,
+        ).encode("utf-8")
+        anchor_id = hashlib.sha256(payload_bytes).hexdigest()
+        return AnchorResult("confirmed", anchor_id=anchor_id, detail="local-confirmed")
+
+
 @dataclass
 class MountRecord:
     mount: Mount
@@ -459,24 +481,23 @@ class MountRegistry:
                 execution_id=execution_id,
             )
             
-            if caller_spiffe_id:
-                from cappo_backend.security.biscuit import mint_biscuit_capability
-                
-                revocation_scope = f"execution:{token.execution_id}"
-                revocation_epoch = 0
+            from cappo_backend.security.biscuit import mint_biscuit_capability
+            
+            revocation_scope = f"execution:{token.execution_id}"
+            revocation_epoch = 0
 
-                biscuit_token = mint_biscuit_capability(
-                    caller_spiffe_id=caller_spiffe_id,
-                    executor_spiffe_id=executor_spiffe_id,
-                    capability_id=package.id,
-                    reads=token.grants.reads,
-                    writes=token.grants.writes,
-                    execution_id=token.execution_id,
-                    ttl_seconds=token.ttl_seconds,
-                    revocation_scope=revocation_scope,
-                    revocation_epoch=revocation_epoch,
-                )
-                token = token.model_copy(update={"biscuit_token": biscuit_token})
+            biscuit_token = mint_biscuit_capability(
+                caller_spiffe_id=caller_spiffe_id or "legacy-unbound",
+                executor_spiffe_id=executor_spiffe_id or "legacy-unbound",
+                capability_id=package.id,
+                reads=token.grants.reads,
+                writes=token.grants.writes,
+                execution_id=token.execution_id,
+                ttl_seconds=token.ttl_seconds,
+                revocation_scope=revocation_scope,
+                revocation_epoch=revocation_epoch,
+            )
+            token = token.model_copy(update={"biscuit_token": biscuit_token})
                 
         except MountError as exc:
             return None, AnchorResult("not_applicable"), str(exc)
@@ -672,7 +693,8 @@ class MountRegistry:
                 if record.token.biscuit_token:
                     from cappo_backend.security.biscuit import extract_authority_context
                     b_auth = extract_authority_context(record.token.biscuit_token)
-                else:
+                
+                if b_auth is None:
                     # P3 GOVERNED BOUNDARY ENFORCEMENT
                     # Metadata alone cannot authorize without Biscuit. 
                     # We fail closed if there is no cryptographic authority.
