@@ -17,9 +17,23 @@ from cappo_backend.db.session import engine
 
 router = APIRouter(tags=["health"])
 
+@router.get("/healthz")
 @router.get("/health")
 def healthcheck() -> dict[str, str]:
+    # Liveness: process exists
     return {"status": "ok"}
+
+@router.get("/readyz")
+async def readiness_check(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    # Readiness: safely receive traffic (checks dependencies)
+    from fastapi.responses import JSONResponse
+    
+    deps = await health_dependencies(settings)
+    
+    if deps["status"] == "unavailable":
+        return JSONResponse(status_code=503, content={"status": "unavailable", "detail": deps})
+    
+    return {"status": "ok", "detail": deps}
 
 @router.get("/runtime/identity")
 def runtime_identity(settings: Settings = Depends(get_settings)) -> dict[str, Any]:

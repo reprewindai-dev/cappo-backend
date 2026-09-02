@@ -663,7 +663,21 @@ class MountRegistry:
                 else "token_mismatch"
             )
         else:
-            reason = ""
+            # ROLLBACK-RESISTANCE: Check CapabilityActionReceipt for a prior ALLOW
+            # independently of the nonce_consumed flag.  A partial DB rollback that
+            # resets nonce_consumed=False cannot erase the receipt row that was written
+            # during the original ALLOW decision, so this guard remains effective even
+            # when nonce_consumed has been tampered with.
+            prior_receipt = db.execute(
+                select(CapabilityActionReceipt).where(
+                    CapabilityActionReceipt.token_id == token_id,
+                    CapabilityActionReceipt.decision == "allow",
+                ).limit(1)
+            ).scalar_one_or_none()
+            if prior_receipt is not None:
+                reason = "token_replay_receipt"
+            else:
+                reason = ""
 
         # Check budget before continuing
         if not reason:

@@ -38,6 +38,8 @@ from cappo_backend.api.routers.execution_projection_router import (
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.health_router import router as health_router
+from cappo_backend.api.routers.status_observation_router import router as status_observation_router
+
 from cappo_backend.api.routers.interlink import router as interlink_router
 from cappo_backend.api.routers.interlink_vnp import router as interlink_vnp_router
 from cappo_backend.api.routers.license_router import router as license_router
@@ -162,6 +164,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from cappo_backend.api.routers.reconciler_router import router as reconciler_router
     app.include_router(reconciler_router)
     app.include_router(health_router)
+    app.include_router(status_observation_router)
+
     app.include_router(admin_router)
     app.include_router(audit_router)
     app.include_router(governance_v2_router)

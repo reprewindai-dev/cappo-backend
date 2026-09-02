@@ -27,6 +27,7 @@ PUBLIC_PATHS = frozenset(
         "/runtime/identity",
         "/runtime/probe/cappo",
         "/runtime/probe/pgl",
+        "/runtime/observations",
         "/docs",
         "/redoc",
         "/openapi.json",
