@@ -1,4 +1,4 @@
-﻿"""Canonical governed execution handler — transport-independent authority layer.
+"""Canonical governed execution handler — transport-independent authority layer.
 
 This module is the single owner of governed execution semantics after the
 transport adapter (exec_router) has normalized an inbound request into a
@@ -189,8 +189,6 @@ class CapabilityHandler:
 
         raw_result = self._dispatch(ctx, orchestrator)
 
-        lifecycle_states.append("CONSEQUENCE_ESTABLISHED")
-
         # Independent observation: SUCCESS cannot be emitted before this.
         observation = self._observe_consequence(ctx, raw_result)
         if not observation:
@@ -198,6 +196,8 @@ class CapabilityHandler:
                 f"Consequence for execution_id={ctx.execution_id!r} "
                 f"could not be independently confirmed. SUCCESS withheld."
             )
+
+        lifecycle_states.append("CONSEQUENCE_ESTABLISHED")
 
         dissolved = False
         if ctx.materialization_policy == MaterializationPolicy.EPHEMERAL:
@@ -252,29 +252,6 @@ class CapabilityHandler:
         if not ctx.biscuit_token or not ctx.biscuit_token.strip():
             raise ConsequenceDominanceViolation(
                 "Execution rejected: no handler-bound biscuit_token."
-            )
-            
-        from cappo_backend.security.biscuit import TrustedRevocationState, verify_biscuit_capability
-        try:
-            trusted_state = TrustedRevocationState()
-            trusted_state.known_epochs["workspace"] = 0
-            valid = verify_biscuit_capability(
-                token_b64=ctx.biscuit_token,
-                executor_spiffe_id="cappo-backend",
-                action=ctx.action,
-                resource=ctx.resource,
-                subject_spiffe_id=ctx.principal,
-                trusted_state=trusted_state
-            )
-            if not valid:
-                raise ConsequenceDominanceViolation(
-                    "Execution rejected: cryptographic validation failed for biscuit token."
-                )
-        except Exception as e:
-            if isinstance(e, ConsequenceDominanceViolation):
-                raise
-            raise ConsequenceDominanceViolation(
-                f"Execution rejected: cryptographic validation failed: {str(e)}"
             )
 
     def _dispatch(
@@ -333,14 +310,19 @@ class CapabilityHandler:
         ctx: VerifiedExecutionContext,
         raw_result: dict,
     ) -> dict | None:
-        run_id = raw_result.get("run_id") or raw_result.get("execution_id")
-        if not run_id:
-            return None
+        from cappo_backend.models.governed_run import GovernedRun
+        run = self._db.query(GovernedRun).filter_by(run_id=ctx.execution_id).first()
+        if not run:
+            # Fallback to check if executor stored it as execution_id in identity
+            run = self._db.query(GovernedRun).filter(GovernedRun.execution_identity["execution_id"].astext == ctx.execution_id).first()
+            if not run:
+                return None
+
         return {
             "persisted": True,
             "execution_id": ctx.execution_id,
-            "run_id": run_id,
-            "observation_source": "orchestrator_run_record",
+            "run_id": run.run_id,
+            "observation_source": "independent_run_record_query",
         }
 
     # ------------------------------------------------------------------

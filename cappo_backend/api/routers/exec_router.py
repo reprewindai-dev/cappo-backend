@@ -122,6 +122,7 @@ class ExecResponse(BaseModel):
     run_id: str | None = None
     execution_id: str | None = None
     capability_lease: dict[str, Any] | None = None
+    authority_envelope: dict[str, Any] | None = None
     links: dict[str, Any] | None = None
 
 
@@ -224,7 +225,9 @@ def _execute_run(
     try:
         handler = CapabilityHandler(db)
         handler_result = handler.execute(ctx, orchestrator)
-        return handler_result.raw_result
+        out = dict(handler_result.raw_result)
+        out["authority_envelope"] = handler_result.evidence_correlation
+        return out
     except ConsequenceDominanceViolation as exc:
         db.commit()
         raise HTTPException(

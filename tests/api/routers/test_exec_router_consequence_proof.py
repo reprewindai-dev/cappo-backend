@@ -217,6 +217,48 @@ def test_consequence_dominance_proof_expired_mount_fails(client: TestClient, db:
     assert response.status_code == 403
     assert "CAPABILITY_LEASE_NOT_ACTIVE" in response.text
 
+def test_consequence_dominance_proof_persistent_cross_workspace_attack_fails(client: TestClient, db: Session):
+    exec_id = str(uuid.uuid4())
+    biscuit = mint_biscuit_capability(
+        caller_spiffe_id="auth-disabled",
+        executor_spiffe_id="cappo-backend",
+        capability_id="test@v1",
+        reads=[],
+        writes=["execute"],
+        resources=["provider-dispatch"],
+        execution_id=exec_id,
+        ttl_seconds=600
+    )
+    # Persistent mount belongs to test-workspace-2
+    mount = _build_canonical_environment(db, exec_id, biscuit_token=biscuit, ws_id="test-workspace-2")
+    import copy
+    m_json = copy.deepcopy(mount.mount_json)
+    m_json["policy"]["persistent_memory_allowed"] = True
+    m_json["token"]["type"] = "persistent_service"
+    mount.mount_json = m_json
+    t_json = copy.deepcopy(mount.token_json)
+    t_json["single_use"] = False
+    t_json["type"] = "persistent_service"
+    mount.token_json = t_json
+    db.commit()
+
+    # Request auth workspace = test-workspace (mismatch)
+    headers = {"X-Workspace-ID": "test-workspace", "Veklom-Authority": biscuit}
+    payload = {
+        "action": "execute",
+        "action_cost_cents": 0,
+        "capability_lease": {
+            "mount_id": mount.mount_id,
+            "token_id": mount.token_id,
+            "nonce": mount.token_nonce,
+            "execution_id": exec_id
+        },
+        "prompt": "Test proof"
+    }
+    resp = client.post("/v1/exec", json=payload, headers=headers)
+    assert resp.status_code == 403
+    assert "WORKSPACE_SCOPE_MISMATCH" in resp.text
+
 def test_consequence_dominance_proof_persistent_and_ephemeral_invariants(client: TestClient, db: Session):
     # 1. Ephemeral
     exec_id_1 = str(uuid.uuid4())
@@ -286,3 +328,22 @@ def test_consequence_dominance_proof_persistent_and_ephemeral_invariants(client:
     }
     resp_2 = client.post("/v1/exec", json=payload_2, headers=headers_2)
     assert resp_2.status_code == 200, resp_2.text
+
+    # Mechanically compare that both modes traverse the same authority/invariant structure
+    auth_env_1 = resp_1.json()["authority_envelope"]
+    auth_env_2 = resp_2.json()["authority_envelope"]
+
+    assert auth_env_1["authority"]["biscuit_bound"] is True
+    assert auth_env_2["authority"]["biscuit_bound"] is True
+    assert auth_env_1["request_commitment"]["action"] == "execute"
+    assert auth_env_2["request_commitment"]["action"] == "execute"
+    assert auth_env_1["consequence"]["consequence_established"] is True
+    assert auth_env_2["consequence"]["consequence_established"] is True
+
+    # Assert differing lifecycle logic
+    assert auth_env_1["execution"]["materialization_policy"] == "ephemeral"
+    assert auth_env_2["execution"]["materialization_policy"] == "persistent"
+    assert auth_env_1["lifecycle"]["is_ephemeral"] is True
+    assert auth_env_2["lifecycle"]["is_ephemeral"] is False
+    assert "DISSOLVED" in auth_env_1["lifecycle"]["states"]
+    assert "DISSOLVED" not in auth_env_2["lifecycle"]["states"]
