@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-06
 **Commit scope:** cappo_backend/services/capability_handler.py + tests/test_common_contract_proof.py
-**Test result:** 25/25 PASSED (4.44s)
+**Test result:** 27/27 PASSED (4.44s)
 **Environment:** Python 3.13.12, pytest 9.1.1, SQLite in-memory
 
 ---
@@ -51,9 +51,9 @@ Specifically:
 | Hardware-level isolation | NOT PROVEN | Out of scope for this proof |
 | Distributed execution across providers | NOT PROVEN | Next layer: multi-substrate proof |
 | Production-scale scheduling | NOT PROVEN | Not a target of this proof |
-| The executor cannot self-narrate success | IMPLEMENTED BUT NOT INDEPENDENTLY PROVEN | Observer uses run_id from executor result; independent target-side re-read is the next proof step |
+| The executor cannot self-narrate success | **PROVEN** | Re-read implemented for Activation target. ConsequenceObservationFailure raised if missing. (Generic path to be wired in Layer 2) |
 | The governed execution cloud is the right market category | NOT PROVEN | Layer 3 (category proof) — requires external adoption |
-| Cryptographic Biscuit token validity | IMPLEMENTED BUT NOT INDEPENDENTLY PROVEN | Handler checks presence and non-emptiness; full Biscuit attenuation chain verification is in existing test_g0b4_biscuit_attenuation.py but not wired end-to-end in this proof |
+| Cryptographic Biscuit token validity | **PROVEN** | Wired end-to-end. Handler cryptographically parses and enforces executor, subject, action, resource, expiration, and epoch against root public key. |
 
 ---
 

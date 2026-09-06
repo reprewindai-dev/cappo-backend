@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from cappo_backend.db.base import Base
+from cappo_backend.security.biscuit import mint_biscuit_capability
 from cappo_backend.services.capability_handler import (
     CapabilityHandler,
     ConsequenceDominanceViolation,
@@ -118,7 +119,20 @@ def _make_ctx(
     # silently replacing them with valid UUIDs.
     eid = str(uuid.uuid4()) if execution_id is _UNSET else execution_id
     rid = str(uuid.uuid4()) if receipt_id is _UNSET else receipt_id
-    bt = "real-biscuit-token" if biscuit_token is _UNSET else biscuit_token
+    if biscuit_token is _UNSET:
+        eid_for_bt = str(uuid.uuid4()) if execution_id is _UNSET else execution_id
+        bt = mint_biscuit_capability(
+            caller_spiffe_id="test:principal",
+            executor_spiffe_id="cappo-backend",
+            capability_id="test@v1",
+            reads=[],
+            writes=["execute"],
+            resources=["provider-dispatch"],
+            execution_id=eid_for_bt if eid_for_bt else "unset",
+            ttl_seconds=600
+        )
+    else:
+        bt = biscuit_token
     # For intent_hash and mount_id, use a derived default only if unset
     _eid_for_hash = eid if eid else "unset"
     ih = hashlib.sha256(f"intent:{_eid_for_hash}".encode()).hexdigest() if intent_hash is _UNSET else intent_hash
@@ -394,6 +408,33 @@ class TestD_ConsequenceDominance:
             handler.execute(ctx, _MockOrchestrator())
 
         assert "CONSEQUENCE_DOMINANCE_VIOLATION" in exc_info.value.error_code
+
+    def test_cryptographic_biscuit_attenuation_is_enforced(self, proof_db: Session):
+        """D4: A fabricated non-empty Biscuit string is denied cryptographically.
+        The handler must use the actual CAPPO verify_biscuit_capability."""
+        handler = CapabilityHandler(proof_db)
+        
+        ctx = _make_ctx(biscuit_token="fabricated_biscuit_token_that_is_non_empty")
+        
+        with pytest.raises(ConsequenceDominanceViolation) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+            
+        assert "cryptographic validation failed" in str(exc_info.value).lower()
+
+    def test_executor_claiming_success_without_durable_target_fails(self, proof_db: Session):
+        """D5: An executor claiming success while the durable target consequence is absent
+        must never produce established success. Observation must be target-side independent."""
+        handler = CapabilityHandler(proof_db)
+        
+        ctx = _make_ctx(is_activation=True)
+        
+        # Orchestrator claims success, but the target table is actually empty.
+        # This simulates an executor lying or failing silently.
+        with pytest.raises(ConsequenceObservationFailure) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+            
+        assert "withheld" in str(exc_info.value).lower()
+
 
 
 # ===========================================================================

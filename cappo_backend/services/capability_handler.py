@@ -249,16 +249,34 @@ class CapabilityHandler:
             raise ConsequenceDominanceViolation(
                 "Execution rejected: no handler-bound mount_id."
             )
+
         if not ctx.biscuit_token or not ctx.biscuit_token.strip():
             raise ConsequenceDominanceViolation(
-                "Execution rejected: cryptographic authority token (biscuit) "
-                "is required. Construction discipline is not structural "
-                "dominance -- the token must be present and handler-bound."
+                "Execution rejected: no handler-bound biscuit_token."
             )
-
-    # ------------------------------------------------------------------
-    # Dispatch
-    # ------------------------------------------------------------------
+            
+        from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
+        try:
+            trusted_state = TrustedRevocationState()
+            trusted_state.known_epochs["workspace"] = 0
+            valid = verify_biscuit_capability(
+                token_b64=ctx.biscuit_token,
+                executor_spiffe_id="cappo-backend",
+                action=ctx.action,
+                resource=ctx.resource,
+                subject_spiffe_id=ctx.principal,
+                trusted_state=trusted_state
+            )
+            if not valid:
+                raise ConsequenceDominanceViolation(
+                    "Execution rejected: cryptographic validation failed for biscuit token."
+                )
+        except Exception as e:
+            if isinstance(e, ConsequenceDominanceViolation):
+                raise
+            raise ConsequenceDominanceViolation(
+                f"Execution rejected: cryptographic validation failed: {str(e)}"
+            )
 
     def _dispatch(
         self,
@@ -296,15 +314,20 @@ class CapabilityHandler:
     def _observe_activation_consequence(
         self, ctx: VerifiedExecutionContext
     ) -> dict | None:
-        from cappo_backend.services.activation_target import ActivationTargetExecutor
-        observer = ActivationTargetExecutor(self._db)
-        observation = observer.observe(
-            workspace_id=ctx.workspace_id,
-            execution_id=ctx.execution_id,
-        )
-        if observation is None or not observation.get("persisted"):
+        from cappo_backend.services.activation_target import observe_activation_consequence
+        try:
+            observation = observe_activation_consequence(
+                db=self._db,
+                execution_id=ctx.execution_id,
+                workspace_id=ctx.workspace_id,
+            )
+            if observation is None or not getattr(observation, "consequence_id", None):
+                return None
+            if hasattr(observation, "__dict__"):
+                return observation.__dict__
+            return {"persisted": True, "observation": observation}
+        except Exception:
             return None
-        return observation
 
     def _observe_generic_consequence(
         self,
