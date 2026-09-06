@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from cappo_backend.config import Settings
 from cappo_backend.security.mcp_gateway import MCPGateway
@@ -22,7 +22,7 @@ def _token(gateway: MCPGateway, **overrides):
     payload = {
         "approver_id": "human-approval-1",
         "capability_id": "payments.release",
-        "expires_at": (datetime.utcnow() + timedelta(minutes=5)).timestamp(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp(),
         "nonce": "request-nonce-1",
         "policy_snapshot_id": "policy-snapshot-1",
         "request_hash": "request-hash-1",

@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from cappo_backend.services.mcp_v2 import CurrentMetric, get_mcp_v2_stack
-from cappo_backend.services.safety import ApproverTrustError
+from cappo_backend.services.safety import ApproverTrustError, SelfApprovalForbiddenError
 
 router = APIRouter(prefix="/v1/governance/v2")
 
@@ -46,7 +46,7 @@ class DenyRequest(BaseModel):
 
 
 @router.post("/assess")
-def assess(body: AssessRequest) -> dict[str, Any]:
+def assess(body: AssessRequest, request: Request) -> dict[str, Any]:
     stack = get_mcp_v2_stack()
     metric = CurrentMetric(
         requests_per_hour=body.requests_per_hour,
@@ -54,8 +54,17 @@ def assess(body: AssessRequest) -> dict[str, Any]:
         time_of_day=body.time_of_day,
         new_capabilities=tuple(body.new_capabilities),
     )
+    jwt_payload = request.scope.get("jwt_payload") if isinstance(request.scope.get("jwt_payload"), dict) else {}
+    auth_agent = (
+        getattr(request.state, "agent_id", None)
+        or (getattr(request.state, "verified_eat", {}).get("subject") if hasattr(request.state, "verified_eat") and isinstance(request.state.verified_eat, dict) else None)
+        or jwt_payload.get("sub")
+        or jwt_payload.get("agent_id")
+        or request.headers.get("X-Authenticated-Agent-Id")
+        or body.agent_id
+    )
     return stack.pre_execution_assessment(
-        body.agent_id,
+        auth_agent,
         body.request,
         metric=metric,
         trust_score=body.trust_score,
@@ -96,6 +105,7 @@ def quarantine_queue() -> dict[str, Any]:
                 "approvers_required": qr.approvers_required,
                 "approvals_received": list(qr.approvals_received),
                 "deadline": qr.approval_deadline.isoformat(),
+                "requester_id": qr.requester_id,
             }
             for qr in stack.quarantine.all()
         ]
@@ -103,15 +113,42 @@ def quarantine_queue() -> dict[str, Any]:
 
 
 @router.post("/quarantine/{quarantine_id}/approve")
-def approve_quarantine(quarantine_id: str, body: ApproveRequest) -> dict[str, Any]:
+def approve_quarantine(quarantine_id: str, body: ApproveRequest, request: Request) -> dict[str, Any]:
     stack = get_mcp_v2_stack()
     if stack.quarantine.get(quarantine_id) is None:
         raise HTTPException(status_code=404, detail="quarantine not found")
+
+    # Authoritative identity extraction from verified auth context / headers / JWT payload
+    jwt_payload = request.scope.get("jwt_payload") if isinstance(request.scope.get("jwt_payload"), dict) else {}
+    auth_principal = request.scope.get("auth_principal")
+    jwt_sub = jwt_payload.get("sub") or jwt_payload.get("agent_id") or jwt_payload.get("subject")
+
+    auth_principal_name = None
+    if auth_principal and not auth_principal.startswith("api-key:"):
+        if auth_principal.startswith("spiffe://"):
+            auth_principal_name = auth_principal
+        elif auth_principal.startswith("jwt:") or auth_principal.startswith("mtls:"):
+            auth_principal_name = auth_principal.split(":")[-1]
+            if auth_principal_name.startswith("CN="):
+                auth_principal_name = auth_principal_name.removeprefix("CN=")
+        else:
+            auth_principal_name = auth_principal
+
+    auth_approver = (
+        getattr(request.state, "agent_id", None)
+        or (getattr(request.state, "verified_eat", {}).get("subject") if hasattr(request.state, "verified_eat") and isinstance(request.state.verified_eat, dict) else None)
+        or jwt_sub
+        or request.headers.get("X-Authenticated-Agent-Id")
+        or auth_principal_name
+    )
     try:
         reached = stack.quarantine.approve(
-            quarantine_id, body.approver_id, approver_trust=body.approver_trust
+            quarantine_id,
+            body.approver_id,
+            approver_trust=body.approver_trust,
+            authenticated_approver_id=auth_approver,
         )
-    except ApproverTrustError as exc:
+    except (ApproverTrustError, SelfApprovalForbiddenError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"quorum_reached": reached, "status": stack.quarantine.get(quarantine_id).status}
 

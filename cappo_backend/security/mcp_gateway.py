@@ -674,7 +674,7 @@ class MCPGateway:
         # Calculate request hash for cryptographic binding
         request_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         
-        run_timeline.append({"phase": "INTAKE", "timestamp": datetime.utcnow().isoformat(), "agent_id": agent_id, "capability_id": capability_id, "request_hash": request_hash, "nonce": request_nonce})
+        run_timeline.append({"phase": "INTAKE", "timestamp": datetime.now(timezone.utc).isoformat(), "agent_id": agent_id, "capability_id": capability_id, "request_hash": request_hash, "nonce": request_nonce})
 
         try:
             # ====================================================================
@@ -757,7 +757,7 @@ class MCPGateway:
                 requests_per_hour=15.0,
                 failure_rate=0.02,
                 new_capabilities=[],
-                time_of_day=datetime.utcnow().hour,
+                time_of_day=datetime.now(timezone.utc).hour,
                 requests_in_window=15
             )
             all_anomalies = self.anomaly_detection.detect_anomalies(agent_id, current_metric)
@@ -765,7 +765,9 @@ class MCPGateway:
             
             if critical_anomalies:
                 run_timeline.append({"phase": "SAFETY_VERIFICATION", "status": "QUARANTINED", "anomalies": len(critical_anomalies)})
-                quarantine = self.quarantine_service.quarantine(request, critical_anomalies, {"applied": True, "suppressed_score": 20})
+                quarantine = self.quarantine_service.quarantine(
+                    request, critical_anomalies, {"applied": True, "suppressed_score": 20}, requester_id=agent_id
+                )
                 return self._handle_quarantine(quarantine, connection_id)
                 
             estimated_workload_cost = 5.0
@@ -786,7 +788,7 @@ class MCPGateway:
                 
                 if approval_token_payload:
                     is_valid, validated_approver, error_msg = self._validate_bound_approval_token(
-                        approval_token_payload, request_hash, policy_snapshot_id, capability_id, request_nonce
+                        approval_token_payload, request_hash, policy_snapshot_id, capability_id, request_nonce, requester_id=agent_id
                     )
                     if not is_valid:
                         run_timeline.append({"phase": "APPROVAL_STATE", "status": "REJECTED", "reason": error_msg})
@@ -1166,7 +1168,7 @@ class MCPGateway:
         except Exception:
             pass
             
-    def _validate_bound_approval_token(self, token_payload: Dict[str, Any], request_hash: str, policy_snapshot_id: str, capability_id: str, request_nonce: str) -> Tuple[bool, Optional[str], str]:
+    def _validate_bound_approval_token(self, token_payload: Dict[str, Any], request_hash: str, policy_snapshot_id: str, capability_id: str, request_nonce: str, requester_id: Optional[str] = None) -> Tuple[bool, Optional[str], str]:
         """
         Cryptographically validates that an approval token is mathematically bound to this exact request.
         Prevents replay attacks across different payloads, policies, or capabilities.
@@ -1174,6 +1176,35 @@ class MCPGateway:
         try:
             if not isinstance(token_payload, dict):
                 return False, None, "Token must be a structured payload."
+
+            # Check Requester/Approver Separation across all token identity claims
+            from cappo_backend.services.safety import extract_leaf_identity, normalize_identity
+
+            token_approver_claims = [
+                token_payload.get("approver_id"),
+                token_payload.get("agent_id"),
+                token_payload.get("subject"),
+                token_payload.get("actor_identity"),
+                token_payload.get("requester_id"),
+            ]
+            if requester_id:
+                norm_requester = normalize_identity(requester_id)
+                requester_leaf = extract_leaf_identity(requester_id)
+                norm_requester_leaf = normalize_identity(requester_leaf) if requester_leaf else None
+
+                for candidate in token_approver_claims:
+                    if candidate:
+                        norm_cand = normalize_identity(candidate)
+                        cand_leaf = extract_leaf_identity(candidate)
+                        norm_cand_leaf = normalize_identity(cand_leaf) if cand_leaf else None
+
+                        if (
+                            norm_cand == norm_requester
+                            or (norm_requester_leaf and norm_cand == norm_requester_leaf)
+                            or (norm_cand_leaf and norm_cand_leaf == norm_requester)
+                            or (norm_cand_leaf and norm_requester_leaf and norm_cand_leaf == norm_requester_leaf)
+                        ):
+                            return False, None, f"SELF_APPROVAL_FORBIDDEN: requester '{requester_id}' cannot approve own request"
                 
             # Distributed Single-Use Replay Check is handled explicitly by _mark_nonce_spent in the flow
             if self._is_nonce_spent(request_nonce):
@@ -1185,7 +1216,7 @@ class MCPGateway:
                 
             # Check Expiry
             expiry = token_payload.get("expires_at", 0)
-            if datetime.utcnow().timestamp() > expiry:
+            if datetime.now(timezone.utc).timestamp() > expiry:
                 return False, None, "Approval token has expired."
                 
             # Check Request Binding
