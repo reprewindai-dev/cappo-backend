@@ -5,6 +5,7 @@ from sqlalchemy import Enum as SQLEnum
 
 from cappo_backend.db.base import Base
 
+
 class KMSKeyStatus(enum.Enum):
     ACTIVE = "ACTIVE"
     RETIRED = "RETIRED"

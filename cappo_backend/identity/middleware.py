@@ -1,9 +1,17 @@
+# ruff: noqa
 import json
 from enum import Enum
 from typing import Optional
-from .models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
+
 from .errors import *
+from .models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
 from .validator import IdentityValidator
+
 
 class RouteClassification(Enum):
     PUBLIC = "public"
@@ -53,8 +61,8 @@ class WIDMiddlewareContext:
         wpt = WorkloadProofToken(**wpt_payload)
         
         # In a real system, we compute sha256(authority_token_raw).
-        import json
         import hashlib
+        import json
         if authority_payload:
             auth_bytes = json.dumps(authority_payload, sort_keys=True).encode()
             expected_auth_hash = hashlib.sha256(auth_bytes).hexdigest()

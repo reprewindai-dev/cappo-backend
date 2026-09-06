@@ -1,8 +1,9 @@
 import json
 import os
 import time
+
 import pytest
-from jsonschema import validate, ValidationError
+from jsonschema import ValidationError, validate
 
 SCHEMAS_DIR = os.path.join(os.path.dirname(__file__), "../../schemas/identity")
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "../fixtures/identity")

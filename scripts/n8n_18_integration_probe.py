@@ -1,10 +1,11 @@
-import httpx
-import uuid
-import json
-import sys
 import hashlib
+import json
 import os
+import sys
+import uuid
 from pathlib import Path
+
+import httpx
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -80,7 +81,7 @@ def run_test(audience: str, expect_success: bool) -> bool:
             print(f'PASS: Duplicate rejected via exception {e}')
         
         print('Physical record verified.')
-        print(f'PASS: Positive test succeeded. Settlement and consequence confirmed.')
+        print('PASS: Positive test succeeded. Settlement and consequence confirmed.')
         return True
 
 def main():

@@ -51,7 +51,6 @@ from cappo_backend.services.orchestrator import (
     RuntimeOwnershipError,
 )
 
-
 # ---------------------------------------------------------------------------
 # Materialization policy
 # ---------------------------------------------------------------------------
@@ -255,7 +254,7 @@ class CapabilityHandler:
                 "Execution rejected: no handler-bound biscuit_token."
             )
             
-        from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
+        from cappo_backend.security.biscuit import TrustedRevocationState, verify_biscuit_capability
         try:
             trusted_state = TrustedRevocationState()
             trusted_state.known_epochs["workspace"] = 0

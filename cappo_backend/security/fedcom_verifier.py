@@ -2,9 +2,10 @@ import hashlib
 import hmac
 import json
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from cappo_backend.models.fedcom_v1 import VeklomExecutionEnvelope
+
 
 class FedcomVerificationError(Exception):
     """Base exception for FEDCOM verification failures."""

@@ -1,13 +1,15 @@
-import json
 import hashlib
-from typing import Optional
+import json
 from enum import Enum
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from typing import Optional
+
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import SessionLocal
 from cappo_backend.models.n8n_governed_target_models import ExecutionRegistry
+
 
 class ExecutionState(str, Enum):
     RESERVED = "RESERVED"

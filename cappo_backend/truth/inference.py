@@ -1,5 +1,7 @@
-from typing import List, Any
-from cappo_backend.truth.models import TruthClaim, ClaimState
+from typing import Any, List
+
+from cappo_backend.truth.models import ClaimState, TruthClaim
+
 
 class UncertifiedContextError(Exception): pass
 

@@ -1,14 +1,17 @@
+import base64
+import json
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
-import json
-import base64
-import time
-from cappo_backend.main import app
 from starlette.requests import Request
 from starlette.responses import Response
+
+from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
-from cappo_backend.config import get_settings, Settings
+from cappo_backend.main import app
+
 
 def override_get_session():
     yield MagicMock()

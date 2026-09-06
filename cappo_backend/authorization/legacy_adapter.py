@@ -1,6 +1,13 @@
-from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from cappo_backend.identity.models import AuthorityArtifact, WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken
+from sqlalchemy.orm import Session
+
+from cappo_backend.identity.models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
+
 
 class LegacyCredentialAdapter:
     def __init__(self, db: Session):

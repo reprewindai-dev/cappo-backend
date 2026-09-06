@@ -1,5 +1,6 @@
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 
 class PGLEvidenceError(Exception):
     """Base class for PGL Evidence append denials."""

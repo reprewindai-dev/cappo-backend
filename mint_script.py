@@ -1,7 +1,9 @@
 
-import os
 import asyncio
-from cappo_backend.security.biscuit import mint_biscuit_capability, get_root_key_pair
+import os
+
+from cappo_backend.security.biscuit import get_root_key_pair, mint_biscuit_capability
+
 
 async def run():
     kp = get_root_key_pair()

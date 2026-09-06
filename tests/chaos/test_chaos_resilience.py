@@ -5,9 +5,11 @@ Tests release-level survivability under hostile runtime conditions.
 Ensures that infrastructure failures cannot synthesize authority or truth.
 """
 
-import pytest
-import time
 import os
+import time
+
+import pytest
+
 
 def test_chaos_db_unavailable():
     """If Postgres is partitioned, execution must fail-closed, not authorize from cache."""

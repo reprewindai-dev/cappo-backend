@@ -37,7 +37,6 @@ from cappo_backend.services.capability_handler import (
     VerifiedExecutionContext,
 )
 
-
 # ---------------------------------------------------------------------------
 # In-memory DB fixture (independent of the shared conftest engine)
 # ---------------------------------------------------------------------------
@@ -524,7 +523,7 @@ class TestD_ConsequenceDominance:
         assert "cryptographic validation failed" in str(exc_info.value).lower()
 
     def test_cryptographic_biscuit_revoked_execution(self, proof_db: Session, monkeypatch):
-        from cappo_backend.security.biscuit import mint_biscuit_capability, TrustedRevocationState
+        from cappo_backend.security.biscuit import TrustedRevocationState, mint_biscuit_capability
         handler = CapabilityHandler(proof_db)
         bt = mint_biscuit_capability(
             caller_spiffe_id="test:principal",
@@ -553,7 +552,7 @@ class TestD_ConsequenceDominance:
         assert "cryptographic validation failed" in str(exc_info.value).lower()
 
     def test_cryptographic_biscuit_stale_epoch(self, proof_db: Session, monkeypatch):
-        from cappo_backend.security.biscuit import mint_biscuit_capability, TrustedRevocationState
+        from cappo_backend.security.biscuit import TrustedRevocationState, mint_biscuit_capability
         handler = CapabilityHandler(proof_db)
         bt = mint_biscuit_capability(
             caller_spiffe_id="test:principal",
@@ -573,7 +572,10 @@ class TestD_ConsequenceDominance:
         orig_assert = handler._assert_handler_bound_authority
         def mocked_assert(ctx_inner):
             # Same logic but known_epochs["workspace"] = 1
-            from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
+            from cappo_backend.security.biscuit import (
+                TrustedRevocationState,
+                verify_biscuit_capability,
+            )
             trusted_state = TrustedRevocationState()
             trusted_state.known_epochs["workspace"] = 1
             valid = verify_biscuit_capability(
@@ -653,7 +655,7 @@ class TestE_ReplaySemantics:
         assert result["activation_target"]["idempotent_replay"] is True
         assert result["activation_target"]["execution_id"] == eid
         # Consequence count in DB: still exactly 1 (not 2)
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select
         count = proof_db.execute(
             select(func.count()).where(
                 ActivationConsequence.execution_id == eid
@@ -667,11 +669,11 @@ class TestE_ReplaySemantics:
         """E2: Replay of an execution_id with a different intent_hash must fail closed.
         This prevents an attacker from reusing an execution_id to redirect authority."""
         from cappo_backend.models.activation_consequence import ActivationConsequence
-        from cappo_backend.services.canonical import sha256_json
         from cappo_backend.services.activation_target import (
             ActivationTargetExecutor,
             ActivationTargetInvariantError,
         )
+        from cappo_backend.services.canonical import sha256_json
 
         eid = str(uuid.uuid4())
         rid = str(uuid.uuid4())

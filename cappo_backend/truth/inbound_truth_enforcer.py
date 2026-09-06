@@ -1,7 +1,9 @@
 import hashlib
 import json
-from typing import List, Dict, Set, Tuple, Optional
-from cappo_backend.truth.models import TruthClaim, FactRequirement, ClaimState, TypedPayload
+from typing import Dict, List, Optional, Set, Tuple
+
+from cappo_backend.truth.models import ClaimState, FactRequirement, TruthClaim, TypedPayload
+
 
 class InboundTruthError(Exception):
     def __init__(self, message, evaluated_claims=None):

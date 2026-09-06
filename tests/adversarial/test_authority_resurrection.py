@@ -36,7 +36,6 @@ from cappo_backend.capability_mount.service import MountRegistry
 from cappo_backend.config import Settings
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
-
 CALLER_SPIFFE = "spiffe://example.org/workload/cappo-backend"
 EXECUTOR_SPIFFE = "spiffe://example.org/workload/my-agent"
 CAPABILITY_ID = "bank-transfer@v1"
@@ -114,6 +113,7 @@ def _mount_and_execute(db: Session) -> tuple:
 def _rollback_nonce(db: Session, mount_id: str) -> None:
     """Simulate DB snapshot restore by reverting nonce_consumed = False."""
     from sqlalchemy import select
+
     from cappo_backend.models.capability_mount import CapabilityMount
     row = db.execute(
         select(CapabilityMount).where(CapabilityMount.mount_id == mount_id)

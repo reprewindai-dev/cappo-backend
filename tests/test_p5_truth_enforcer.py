@@ -1,11 +1,15 @@
-import pytest
+# ruff: noqa
 import time
 from uuid import uuid4
+
+import pytest
+
 from cappo_backend.identity.models import AuthorityArtifact
-from cappo_backend.p5.states import TruthState, SinkClass
 from cappo_backend.p5.engine import P5Engine, compute_proof_subject_hash
-from cappo_backend.p5.truth_enforcer import P5TruthEnforcer
 from cappo_backend.p5.errors import *
+from cappo_backend.p5.states import SinkClass, TruthState
+from cappo_backend.p5.truth_enforcer import P5TruthEnforcer
+
 
 @pytest.fixture
 def engine(db):

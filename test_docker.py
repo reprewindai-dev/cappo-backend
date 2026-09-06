@@ -1,6 +1,7 @@
 import subprocess
-import time
 import sys
+import time
+
 
 def run(cmd, timeout=30):
     print(f"> {cmd}")

@@ -38,13 +38,12 @@ from cappo_backend.api.routers.execution_projection_router import (
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.health_router import router as health_router
-from cappo_backend.api.routers.status_observation_router import router as status_observation_router
-
 from cappo_backend.api.routers.interlink import router as interlink_router
 from cappo_backend.api.routers.interlink_vnp import router as interlink_vnp_router
 from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.api.routers.platform_router import router as platform_router
 from cappo_backend.api.routers.protocol_router import router as protocol_router
+from cappo_backend.api.routers.status_observation_router import router as status_observation_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router

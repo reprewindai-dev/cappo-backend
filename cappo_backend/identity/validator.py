@@ -1,9 +1,17 @@
-import time
+# ruff: noqa
 import re
+import time
 from typing import Optional
-from .models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
+
 from .errors import *
+from .models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
 from .replay_cache import ReplayCache
+
 
 class IdentityValidator:
     def __init__(self, expected_audience: str, replay_cache: ReplayCache):

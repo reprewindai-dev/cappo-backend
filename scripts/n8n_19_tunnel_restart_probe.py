@@ -8,16 +8,18 @@ N8N-19 Test 9 - Tunnel Restart + Identical Replay Proof
 5. Replay the exact same execution_id X
 6. Verify consequence_count is still exactly 1
 """
-import httpx
-import uuid
-import json
-import sys
-import os
-import time
 import datetime
+import json
+import os
 import subprocess
+import sys
+import time
+import uuid
 from pathlib import Path
+
+import httpx
 from cryptography.hazmat.primitives.asymmetric import ed25519
+
 from cappo_backend.execution.sandbox_file_connector import SandboxFileAppendConnector
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -94,7 +96,7 @@ def main():
 
     available = any(tunnel_available() for _ in range(3) or time.sleep(2) or [True])
     if not available:
-        print(f'FAILED: Tunnel not available.'); tunnel.kill(); sys.exit(1)
+        print('FAILED: Tunnel not available.'); tunnel.kill(); sys.exit(1)
     print(f'[{ts()}] Tunnel up.')
 
     print(f'\n[{ts()}] STEP 2 - Initial request (execution_id={execution_id})')
@@ -148,9 +150,9 @@ def main():
     print('ALL TUNNEL RESTART PROBES PASSED.')
     print('====================================================')
     print(f'execution_id:       {execution_id}')
-    print(f'consequence before: 1')
-    print(f'tunnel killed:      STEP 3')
-    print(f'tunnel restarted:   STEP 5')
+    print('consequence before: 1')
+    print('tunnel killed:      STEP 3')
+    print('tunnel restarted:   STEP 5')
     print(f'consequence after:  {c2}')
 
 if __name__ == '__main__':

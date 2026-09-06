@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import cappo_backend.models  # noqa: F401  (registers all models on Base.metadata)
+from alembic import context
 from cappo_backend.config import get_settings
 from cappo_backend.db.base import Base
 

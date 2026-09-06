@@ -7,10 +7,11 @@ returns HTTP 402. Absence of a row means unmetered.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import enum
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String, ForeignKey, Enum as SQLEnum
+from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cappo_backend.db.base import Base

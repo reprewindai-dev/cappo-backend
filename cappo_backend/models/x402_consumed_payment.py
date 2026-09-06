@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Numeric, String, Column
+from sqlalchemy import Column, DateTime, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base

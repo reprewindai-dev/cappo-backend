@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from cappo_backend.api.routers.capability_mount_router import get_registry
-from cappo_backend.authorization.legacy_adapter import LegacyCredentialAdapter
 from cappo_backend.authorization.errors import CappoAuthorizationError
+from cappo_backend.authorization.legacy_adapter import LegacyCredentialAdapter
 from cappo_backend.capability_mount.models import Decision
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session

@@ -1,10 +1,13 @@
+# ruff: noqa
 import time
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from cappo_backend.identity.models import AuthorityArtifact
-from cappo_backend.p5.states import TruthState
+from cappo_backend.identity.replay_cache import ReplayCache
 from cappo_backend.p5.engine import P5Engine, compute_proof_subject_hash
 from cappo_backend.p5.errors import *
-from cappo_backend.identity.replay_cache import ReplayCache
+from cappo_backend.p5.states import TruthState
+
 
 class P5TruthEnforcer:
     def __init__(self, engine: P5Engine, replay_cache: Optional[ReplayCache] = None):

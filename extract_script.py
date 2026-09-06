@@ -1,7 +1,9 @@
 
-import os
 import asyncio
+import os
+
 from cappo_backend.security.biscuit import extract_authority_context
+
 
 async def run():
     try:

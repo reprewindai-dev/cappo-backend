@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Request, Response
 import httpx
 import uvicorn
+from fastapi import FastAPI, Request, Response
 
 app = FastAPI()
 

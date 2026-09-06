@@ -4,6 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+
 class ProofProfile(str, Enum):
     BASIC_V1 = "fedcom/basic-v1"
     SANDBOXED_V1 = "fedcom/sandboxed-v1"
