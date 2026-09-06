@@ -724,11 +724,7 @@ async def governed_exec(
             executor_override=executor_override,
         )
         
-        biscuit_token = None
-        if not test_only_echo:
-            # We already have authority_payload parsed above!
-            if authority_payload:
-                biscuit_token = dict(authority_payload).get("biscuit_token")
+        biscuit_token = request.headers.get("Veklom-Authority")
                 
         ctx = VerifiedExecutionContext(
             principal=principal,

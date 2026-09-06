@@ -34,6 +34,7 @@ from .models import (
     CapabilityPackage,
     Decision,
     EphemeralScopedToken,
+    PersistentServiceToken,
     ExecutionAuditEvent,
     Mount,
     MountPolicy,
@@ -147,7 +148,14 @@ class MountRegistry:
 
     def _record(self, row: CapabilityMount) -> MountRecord:
         mount = Mount.model_validate(row.mount_json)
-        token = EphemeralScopedToken.model_validate(row.token_json).model_copy(
+        raw_token_json = row.token_json
+        token_type = raw_token_json.get("type", "ephemeral_scoped") if isinstance(raw_token_json, dict) else "ephemeral_scoped"
+        if token_type == "persistent_service":
+            token_cls = PersistentServiceToken
+        else:
+            token_cls = EphemeralScopedToken
+            
+        token = token_cls.model_validate(row.token_json).model_copy(
             update={"nonce_consumed": row.nonce_consumed}
         )
 
