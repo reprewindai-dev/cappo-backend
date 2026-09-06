@@ -307,3 +307,21 @@ def extract_authority_context(token_b64: str):
         import logging
         logging.getLogger("cappo.security").error(f"AUTHORITY_EXTRACTION_FAILED: {type(e).__name__}: {str(e)}")
         return None
+
+
+def extract_execution_id(token_b64: str) -> str | None:
+    """Extract the execution_id fact from a verified Biscuit token."""
+    try:
+        kp = get_root_key_pair()
+        token = Biscuit.from_base64(token_b64, kp.public_key)
+        auth_builder = AuthorizerBuilder()
+        auth_builder.add_code("allow if true;")
+        auth = auth_builder.build(token)
+        execution_facts = auth.query(
+            biscuit_auth.Rule("rule($execution_id) <- execution_id($execution_id)")
+        )
+        if not execution_facts:
+            return None
+        return str(execution_facts[0].terms[0]).strip('"')
+    except Exception:
+        return None

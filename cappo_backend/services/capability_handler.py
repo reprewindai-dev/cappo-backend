@@ -254,7 +254,11 @@ class CapabilityHandler:
                 "Execution rejected: no handler-bound biscuit_token."
             )
             
-        from cappo_backend.security.biscuit import TrustedRevocationState, verify_biscuit_capability
+        from cappo_backend.security.biscuit import (
+            TrustedRevocationState,
+            extract_execution_id,
+            verify_biscuit_capability,
+        )
         try:
             trusted_state = TrustedRevocationState()
             trusted_state.known_epochs["workspace"] = 0
@@ -269,6 +273,11 @@ class CapabilityHandler:
             if not valid:
                 raise ConsequenceDominanceViolation(
                     "Execution rejected: cryptographic validation failed for biscuit token."
+                )
+            biscuit_execution_id = extract_execution_id(ctx.biscuit_token)
+            if biscuit_execution_id != ctx.execution_id:
+                raise ConsequenceDominanceViolation(
+                    "Execution rejected: biscuit execution_id does not bind to the lease execution_id."
                 )
         except Exception as e:
             if isinstance(e, ConsequenceDominanceViolation):

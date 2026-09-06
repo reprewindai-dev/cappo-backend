@@ -1,5 +1,8 @@
+"""Scaffolding only: substrates are stubs; this does not prove multi-substrate execution."""
+
 import uuid
 from typing import Any, Protocol
+
 
 class ComputeSubstrate(Protocol):
     """Interface for materializing and executing governed compute."""

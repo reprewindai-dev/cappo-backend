@@ -1,8 +1,12 @@
-import pytest
+"""Scaffolding only: substrates are stubs; this does not prove multi-substrate execution."""
+
 import uuid
 from typing import Any
 
+import pytest
+
 from cappo_backend.services.substrate import SubstrateOrchestrator
+
 
 class MockDatabase:
     """CFB Trenton supply chain logistics database mock."""
