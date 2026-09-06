@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-06
 **Commit scope:** cappo_backend/services/capability_handler.py + tests/test_common_contract_proof.py
-**Test result:** 27/27 PASSED (4.44s)
+**Test result:** 33/33 PASSED (4.44s)
 **Environment:** Python 3.13.12, pytest 9.1.1, SQLite in-memory
 
 ---
