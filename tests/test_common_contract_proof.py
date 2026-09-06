@@ -442,7 +442,164 @@ class TestD_ConsequenceDominance:
 # Proves: idempotent no-op vs second-consequence DENY vs invalid-authority DENY.
 # ===========================================================================
 
+
+    def test_cryptographic_biscuit_wrong_executor(self, proof_db: Session):
+        from cappo_backend.security.biscuit import mint_biscuit_capability
+        handler = CapabilityHandler(proof_db)
+        bt = mint_biscuit_capability(
+            caller_spiffe_id="test:principal",
+            executor_spiffe_id="WRONG_EXECUTOR",
+            capability_id="test@v1",
+            reads=[],
+            writes=["execute"],
+            resources=["provider-dispatch"],
+            execution_id="some-exec-id",
+            ttl_seconds=600,
+            revocation_scope="workspace",
+            revocation_epoch=0
+        )
+        ctx = _make_ctx(biscuit_token=bt, execution_id="some-exec-id")
+        with pytest.raises(ConsequenceDominanceViolation) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+        assert "cryptographic validation failed" in str(exc_info.value).lower()
+
+    def test_cryptographic_biscuit_wrong_action(self, proof_db: Session):
+        from cappo_backend.security.biscuit import mint_biscuit_capability
+        handler = CapabilityHandler(proof_db)
+        bt = mint_biscuit_capability(
+            caller_spiffe_id="test:principal",
+            executor_spiffe_id="cappo-backend",
+            capability_id="test@v1",
+            reads=["read-only"],
+            writes=[],
+            resources=["provider-dispatch"],
+            execution_id="some-exec-id",
+            ttl_seconds=600,
+            revocation_scope="workspace",
+            revocation_epoch=0
+        )
+        ctx = _make_ctx(biscuit_token=bt, execution_id="some-exec-id")
+        with pytest.raises(ConsequenceDominanceViolation) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+        assert "cryptographic validation failed" in str(exc_info.value).lower()
+
+    def test_cryptographic_biscuit_wrong_resource(self, proof_db: Session):
+        from cappo_backend.security.biscuit import mint_biscuit_capability
+        handler = CapabilityHandler(proof_db)
+        bt = mint_biscuit_capability(
+            caller_spiffe_id="test:principal",
+            executor_spiffe_id="cappo-backend",
+            capability_id="test@v1",
+            reads=[],
+            writes=["execute"],
+            resources=["WRONG-RESOURCE"],
+            execution_id="some-exec-id",
+            ttl_seconds=600,
+            revocation_scope="workspace",
+            revocation_epoch=0
+        )
+        ctx = _make_ctx(biscuit_token=bt, execution_id="some-exec-id")
+        with pytest.raises(ConsequenceDominanceViolation) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+        assert "cryptographic validation failed" in str(exc_info.value).lower()
+
+    def test_cryptographic_biscuit_expired_token(self, proof_db: Session):
+        from cappo_backend.security.biscuit import mint_biscuit_capability
+        handler = CapabilityHandler(proof_db)
+        bt = mint_biscuit_capability(
+            caller_spiffe_id="test:principal",
+            executor_spiffe_id="cappo-backend",
+            capability_id="test@v1",
+            reads=[],
+            writes=["execute"],
+            resources=["provider-dispatch"],
+            execution_id="some-exec-id",
+            ttl_seconds=-600, # expired
+            revocation_scope="workspace",
+            revocation_epoch=0
+        )
+        ctx = _make_ctx(biscuit_token=bt, execution_id="some-exec-id")
+        with pytest.raises(ConsequenceDominanceViolation) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+        assert "cryptographic validation failed" in str(exc_info.value).lower()
+
+    def test_cryptographic_biscuit_revoked_execution(self, proof_db: Session, monkeypatch):
+        from cappo_backend.security.biscuit import mint_biscuit_capability, TrustedRevocationState
+        handler = CapabilityHandler(proof_db)
+        bt = mint_biscuit_capability(
+            caller_spiffe_id="test:principal",
+            executor_spiffe_id="cappo-backend",
+            capability_id="test@v1",
+            reads=[],
+            writes=["execute"],
+            resources=["provider-dispatch"],
+            execution_id="revoked-exec-id",
+            ttl_seconds=600,
+            revocation_scope="workspace",
+            revocation_epoch=0
+        )
+        ctx = _make_ctx(biscuit_token=bt, execution_id="revoked-exec-id")
+        
+        orig_init = TrustedRevocationState.__init__
+        def mocked_init(self, *args, **kwargs):
+            orig_init(self, *args, **kwargs)
+            self.revoked_execution_ids.add("revoked-exec-id")
+            self.known_epochs["workspace"] = 0
+            
+        monkeypatch.setattr(TrustedRevocationState, "__init__", mocked_init)
+        
+        with pytest.raises(ConsequenceDominanceViolation) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+        assert "cryptographic validation failed" in str(exc_info.value).lower()
+
+    def test_cryptographic_biscuit_stale_epoch(self, proof_db: Session, monkeypatch):
+        from cappo_backend.security.biscuit import mint_biscuit_capability, TrustedRevocationState
+        handler = CapabilityHandler(proof_db)
+        bt = mint_biscuit_capability(
+            caller_spiffe_id="test:principal",
+            executor_spiffe_id="cappo-backend",
+            capability_id="test@v1",
+            reads=[],
+            writes=["execute"],
+            resources=["provider-dispatch"],
+            execution_id="some-exec-id",
+            ttl_seconds=600,
+            revocation_scope="workspace",
+            revocation_epoch=0 # stale relative to mocked handler check!
+        )
+        ctx = _make_ctx(biscuit_token=bt, execution_id="some-exec-id")
+        
+        # Override the handler's checking method directly to simulate the system expecting epoch=1
+        orig_assert = handler._assert_handler_bound_authority
+        def mocked_assert(ctx_inner):
+            # Same logic but known_epochs["workspace"] = 1
+            from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
+            trusted_state = TrustedRevocationState()
+            trusted_state.known_epochs["workspace"] = 1
+            valid = verify_biscuit_capability(
+                token_b64=ctx_inner.biscuit_token,
+                executor_spiffe_id="cappo-backend",
+                action=ctx_inner.action,
+                resource=ctx_inner.resource,
+                subject_spiffe_id=ctx_inner.principal,
+                trusted_state=trusted_state
+            )
+            if not valid:
+                raise ConsequenceDominanceViolation(
+                    "Execution rejected: cryptographic validation failed for biscuit token."
+                )
+        
+        monkeypatch.setattr(handler, "_assert_handler_bound_authority", mocked_assert)
+        
+        with pytest.raises(ConsequenceDominanceViolation) as exc_info:
+            handler.execute(ctx, _MockOrchestrator())
+        assert "cryptographic validation failed" in str(exc_info.value).lower()
+
+
+
 class TestE_ReplaySemantics:
+
+
 
     def test_exact_replay_returns_idempotent_result(self, proof_db: Session):
         """E1: Exact replay of a committed execution returns the existing
