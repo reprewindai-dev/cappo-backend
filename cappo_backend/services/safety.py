@@ -328,3 +328,6 @@ class RequestQuarantineService:
 
     def all(self) -> list[QuarantinedRequest]:
         return list(self._quarantined.values())
+
+class SelfApprovalForbiddenError(Exception):
+    pass
