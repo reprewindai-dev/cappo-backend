@@ -16,10 +16,32 @@ from cappo_backend.models.free_run_quota import FreeRunQuota
 from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.security.biscuit import mint_biscuit_capability
 from cappo_backend.services.activation_target import ACTIVATION_WRITE_ACTION
+from cappo_backend.services.executor import ProviderExecutionError
+from cappo_backend.services.run_state import RunState
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class _ConnectionResetExecutor:
+    def execute(self, _request: dict) -> dict:
+        raise ConnectionError("provider socket reset after accept")
+
+
+class _ProviderExecutionFailureExecutor:
+    def execute(self, _request: dict) -> dict:
+        raise ProviderExecutionError("provider execution failed after accept")
+
+
+class _CountingSuccessExecutor:
+    def __init__(self) -> None:
+        self.count = 0
+
+    def execute(self, _request: dict) -> dict:
+        self.count += 1
+        return {"response": "success", "provider": "counting", "tokens": 0}
+
 
 def _build_canonical_environment(
     db: Session,
@@ -245,6 +267,40 @@ def _assert_no_governed_run(db: Session, execution_id: str) -> None:
         ).scalars().first()
         is None
     )
+
+
+def _assert_uncertain_failure_is_durable(
+    db: Session,
+    execution_id: str,
+    response,
+) -> None:
+    assert 500 <= response.status_code < 600
+    body = response.json()
+    assert body["detail"] == {
+        "error": "CONSEQUENCE_OUTCOME_UNCERTAIN",
+        "detail": body["detail"]["detail"],
+        "outcome": "OUTCOME_UNCERTAIN",
+        "retryable": False,
+        "terminal": False,
+    }
+    assert "result" not in body
+
+    db.expire_all()
+    run = db.execute(
+        select(GovernedRun).where(GovernedRun.run_id == execution_id)
+    ).scalars().one()
+    assert run.state == RunState.FAILED.value
+
+    events = db.execute(
+        select(ConsequenceExecutionEvent)
+        .where(ConsequenceExecutionEvent.operation_id == f"exec:{execution_id}")
+        .order_by(ConsequenceExecutionEvent.version)
+    ).scalars().all()
+    uncertain = [
+        event for event in events if event.state == "outcome_unknown"
+    ]
+    assert len(uncertain) == 1
+    assert uncertain[0].completion_proof_type == "outcome_uncertain"
 
 
 def test_consequence_dominance_proof_invalid_biscuit_fails(client: TestClient, db: Session):
@@ -505,6 +561,74 @@ def test_consequence_dominance_proof_revoked_lease_state_fails(
         "reason": "lease_invariant_violation",
     }
     _assert_no_governed_run(db, execution_id)
+
+
+def test_consequence_dominance_proof_provider_exception_is_outcome_uncertain_with_evidence(
+    client: TestClient,
+    db: Session,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "cappo_backend.api.routers.exec_router.build_executor",
+        lambda *args, **kwargs: _ConnectionResetExecutor(),
+    )
+    client._transport.raise_server_exceptions = False
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+
+    response = _post_exec(client, mount, execution_id, biscuit)
+
+    _assert_uncertain_failure_is_durable(db, execution_id, response)
+
+
+def test_consequence_dominance_proof_provider_execution_error_is_outcome_uncertain(
+    client: TestClient,
+    db: Session,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "cappo_backend.api.routers.exec_router.build_executor",
+        lambda *args, **kwargs: _ProviderExecutionFailureExecutor(),
+    )
+    client._transport.raise_server_exceptions = False
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+
+    response = _post_exec(client, mount, execution_id, biscuit)
+
+    _assert_uncertain_failure_is_durable(db, execution_id, response)
+
+
+def test_consequence_dominance_proof_outcome_uncertain_forbids_automatic_reexecution(
+    client: TestClient,
+    db: Session,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "cappo_backend.api.routers.exec_router.build_executor",
+        lambda *args, **kwargs: _ConnectionResetExecutor(),
+    )
+    client._transport.raise_server_exceptions = False
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+
+    first = _post_exec(client, mount, execution_id, biscuit)
+    _assert_uncertain_failure_is_durable(db, execution_id, first)
+
+    counting_executor = _CountingSuccessExecutor()
+    monkeypatch.setattr(
+        "cappo_backend.api.routers.exec_router.build_executor",
+        lambda *args, **kwargs: counting_executor,
+    )
+    replay = _post_exec(client, mount, execution_id, biscuit)
+
+    assert replay.status_code == 403
+    assert "CAPABILITY_LEASE_DENIED" in replay.text
+    assert "token_replay" in replay.text
+    assert counting_executor.count == 0
 
 
 def test_consequence_dominance_proof_expired_mount_fails(client: TestClient, db: Session):

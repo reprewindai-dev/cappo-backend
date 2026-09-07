@@ -242,12 +242,22 @@ def _execute_run(
             status_code = 503
         elif exc.error_code == "RUNTIME_OWNERSHIP_CONFLICT":
             status_code = 409
+        elif exc.error_code == "CONSEQUENCE_OUTCOME_UNCERTAIN":
+            status_code = 502
         raise HTTPException(
             status_code=status_code,
             detail={
                 "error": exc.error_code,
                 "detail": str(exc),
-                "terminal": True,
+                **(
+                    {
+                        "outcome": "OUTCOME_UNCERTAIN",
+                        "retryable": False,
+                        "terminal": False,
+                    }
+                    if exc.error_code == "CONSEQUENCE_OUTCOME_UNCERTAIN"
+                    else {"terminal": True}
+                ),
             },
         )
     except ConsequenceObservationFailure as exc:
