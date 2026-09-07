@@ -37,8 +37,16 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
+from cappo_backend.models.execution_identity import ExecutionIdentity
+from cappo_backend.security.biscuit import (
+    TrustedRevocationState,
+    extract_execution_id,
+    verify_biscuit_capability,
+)
 from cappo_backend.services.executor import (
     Executor,
     ExecutorUnavailableError,
@@ -151,6 +159,34 @@ class ConsequenceObservationFailure(Exception):
         self.reason = reason
 
 
+def _build_trusted_revocation_state(
+    db: Session,
+    ctx: VerifiedExecutionContext,
+) -> TrustedRevocationState:
+    state = TrustedRevocationState()
+    lease = db.execute(
+        select(CapabilityLease).where(
+            CapabilityLease.mount_id == ctx.mount_id,
+            CapabilityLease.execution_identity == ctx.execution_id,
+        )
+    ).scalars().first()
+    if lease is None:
+        state.known_epochs["workspace"] = 0
+    else:
+        state.known_epochs[lease.revocation_scope] = lease.revocation_epoch
+        if lease.lease_state in {
+            LeaseState.REVOKED.value,
+            LeaseState.EXPIRED.value,
+            LeaseState.SUSPENDED.value,
+        }:
+            state.revoke_execution(ctx.execution_id)
+
+    ei = db.get(ExecutionIdentity, ctx.execution_id)
+    if ei is not None and ei.revoked:
+        state.revoke_execution(ctx.execution_id)
+    return state
+
+
 # ---------------------------------------------------------------------------
 # Canonical capability handler
 # ---------------------------------------------------------------------------
@@ -254,14 +290,8 @@ class CapabilityHandler:
                 "Execution rejected: no handler-bound biscuit_token."
             )
             
-        from cappo_backend.security.biscuit import (
-            TrustedRevocationState,
-            extract_execution_id,
-            verify_biscuit_capability,
-        )
         try:
-            trusted_state = TrustedRevocationState()
-            trusted_state.known_epochs["workspace"] = 0
+            trusted_state = _build_trusted_revocation_state(self._db, ctx)
             valid = verify_biscuit_capability(
                 token_b64=ctx.biscuit_token,
                 executor_spiffe_id="cappo-backend",

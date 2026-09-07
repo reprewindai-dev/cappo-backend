@@ -8,8 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
+from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.free_run_quota import FreeRunQuota
 from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.security.biscuit import mint_biscuit_capability
@@ -113,6 +115,7 @@ def _mint(
     executor_spiffe_id: str | None = "cappo-backend",
     ttl_seconds: int = 600,
     revocation_scope: str = "workspace",
+    revocation_epoch: int = 0,
 ) -> str:
     return mint_biscuit_capability(
         caller_spiffe_id=caller_spiffe_id,
@@ -124,6 +127,7 @@ def _mint(
         execution_id=execution_id,
         ttl_seconds=ttl_seconds,
         revocation_scope=revocation_scope,
+        revocation_epoch=revocation_epoch,
     )
 
 
@@ -175,6 +179,73 @@ def _events_for_execution(
     events = _events_for(db, f"exec:{execution_id}")
     events.extend(_events_for(db, execution_id))
     return sorted(events, key=lambda event: (event.operation_id, event.version))
+
+
+def _add_lease(
+    db: Session,
+    mount: CapabilityMount,
+    execution_id: str,
+    *,
+    revocation_epoch: int,
+    lease_state: str = LeaseState.ACTIVE.value,
+) -> CapabilityLease:
+    lease = CapabilityLease(
+        lease_id=f"lease-{execution_id}",
+        mount_id=mount.mount_id,
+        capability_id="test@v1",
+        policy_version="1.0",
+        execution_identity=execution_id,
+        subject_spiffe_id="auth-disabled",
+        executor_spiffe_id="cappo-backend",
+        biscuit_hash="test-hash",
+        expires_at=_now() + timedelta(seconds=300),
+        lease_state=lease_state,
+        revocation_epoch=revocation_epoch,
+        revocation_scope="workspace",
+        allowed_actions={"execute"},
+        allowed_resources={"provider-dispatch"},
+    )
+    db.add(lease)
+    db.commit()
+    return lease
+
+
+def _add_execution_identity(
+    db: Session,
+    execution_id: str,
+    *,
+    workspace_id: str,
+    revoked: bool,
+) -> ExecutionIdentity:
+    identity = ExecutionIdentity(
+        ei_id=execution_id,
+        run_id=execution_id,
+        tenant_id=workspace_id,
+        pgl_certificate_id="pgl-test",
+        subject_json={},
+        capabilities_json=[],
+        delegation_json={},
+        budget_json={},
+        authority_bundle_hash="authority-test",
+        policy_hash="policy-test",
+        expires_at=_now() + timedelta(hours=1),
+        signature="signature-test",
+        identity_json={"execution_id": execution_id},
+        revoked=revoked,
+    )
+    db.add(identity)
+    db.commit()
+    return identity
+
+
+def _assert_no_governed_run(db: Session, execution_id: str) -> None:
+    assert (
+        db.execute(
+            select(GovernedRun).where(GovernedRun.run_id == execution_id)
+        ).scalars().first()
+        is None
+    )
+
 
 def test_consequence_dominance_proof_invalid_biscuit_fails(client: TestClient, db: Session):
     execution_id = str(uuid.uuid4())
@@ -352,6 +423,88 @@ def test_consequence_dominance_proof_binds_run_to_lease_execution_id(
     }
     assert execution_id in run_ids
     assert "attacker-chosen" not in run_ids
+
+
+def test_consequence_dominance_proof_revoked_execution_identity_fails(
+    client: TestClient,
+    db: Session,
+):
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+    _add_execution_identity(
+        db,
+        execution_id,
+        workspace_id=mount.owner_workspace,
+        revoked=True,
+    )
+
+    response = _post_exec(client, mount, execution_id, biscuit)
+
+    assert response.status_code == 403
+    assert "CONSEQUENCE_DOMINANCE_VIOLATION" in response.text
+    _assert_no_governed_run(db, execution_id)
+
+
+def test_consequence_dominance_proof_stale_revocation_epoch_fails(
+    client: TestClient,
+    db: Session,
+):
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id, revocation_epoch=0)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+    _add_lease(db, mount, execution_id, revocation_epoch=1)
+
+    response = _post_exec(client, mount, execution_id, biscuit)
+
+    assert response.status_code == 403
+    assert "CONSEQUENCE_DOMINANCE_VIOLATION" in response.text
+    _assert_no_governed_run(db, execution_id)
+
+
+def test_consequence_dominance_proof_current_revocation_epoch_succeeds(
+    client: TestClient,
+    db: Session,
+):
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id, revocation_epoch=1)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+    _add_lease(db, mount, execution_id, revocation_epoch=1)
+
+    response = _post_exec(client, mount, execution_id, biscuit)
+
+    assert response.status_code == 200, response.json()
+    assert (
+        db.execute(
+            select(GovernedRun).where(GovernedRun.run_id == execution_id)
+        ).scalars().first()
+        is not None
+    )
+
+
+def test_consequence_dominance_proof_revoked_lease_state_fails(
+    client: TestClient,
+    db: Session,
+):
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id, revocation_epoch=1)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+    _add_lease(
+        db,
+        mount,
+        execution_id,
+        revocation_epoch=1,
+        lease_state=LeaseState.REVOKED.value,
+    )
+
+    response = _post_exec(client, mount, execution_id, biscuit)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == {
+        "error": "CAPABILITY_LEASE_DENIED",
+        "reason": "lease_invariant_violation",
+    }
+    _assert_no_governed_run(db, execution_id)
 
 
 def test_consequence_dominance_proof_expired_mount_fails(client: TestClient, db: Session):
