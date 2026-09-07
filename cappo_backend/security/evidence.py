@@ -29,6 +29,10 @@ def get_evidence_key_pair() -> ed25519.Ed25519PrivateKey:
             pass
         return pk
 
+def get_evidence_public_key() -> ed25519.Ed25519PublicKey:
+    """Return the verification key corresponding to the active evidence root."""
+    return get_evidence_key_pair().public_key()
+
 def mint_signed_execution_evidence(
     canonical_receipt: dict,
     key_file: str = ".evidence_root_key",

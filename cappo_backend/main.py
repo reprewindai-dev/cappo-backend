@@ -35,6 +35,7 @@ from cappo_backend.api.routers.execution_keys_router import router as execution_
 from cappo_backend.api.routers.execution_projection_router import (
     router as execution_projection_router,
 )
+from cappo_backend.api.routers.execution_proof_router import router as execution_proof_router
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.health_router import router as health_router
@@ -55,6 +56,9 @@ from cappo_backend.observability.logging import configure_logging
 from cappo_backend.observability.middleware import RequestLoggingMiddleware
 from cappo_backend.security.amphoteric_middleware import AmphotericSensingMiddleware
 from cappo_backend.security.auth_middleware import AuthMiddleware
+from cappo_backend.security.consequence_replay_prerequisite import (
+    ConsequenceReplayPrerequisiteMiddleware,
+)
 from cappo_backend.security.spiffe_middleware import SVIDEnforcementMiddleware
 
 
@@ -130,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(OllamaBleedSanitizerMiddleware)
     app.add_middleware(SVIDEnforcementMiddleware, settings=settings)
+    app.add_middleware(ConsequenceReplayPrerequisiteMiddleware, settings=settings)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.add_middleware(AmphotericSensingMiddleware)
     app.add_middleware(
@@ -157,6 +162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vnp_admin_router)
     app.include_router(agents_router)
     app.include_router(authorization_router)
+    app.include_router(execution_proof_router)
     app.include_router(exec_router)
     app.include_router(execution_keys_router)
     app.include_router(execution_projection_router)
