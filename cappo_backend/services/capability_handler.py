@@ -47,10 +47,10 @@ from cappo_backend.security.biscuit import (
     extract_execution_id,
     verify_biscuit_capability,
 )
+from cappo_backend.services.consequence_lifecycle import ConsequenceOutcomeUncertain
 from cappo_backend.services.executor import (
     Executor,
     ExecutorUnavailableError,
-    ProviderExecutionError,
     TerminalExecutionError,
 )
 from cappo_backend.services.orchestrator import (
@@ -337,11 +337,7 @@ class CapabilityHandler:
             raise HandlerAuthorizationError(str(exc), "RUNTIME_OWNERSHIP_CONFLICT") from exc
         except ExecutorUnavailableError as exc:
             raise HandlerAuthorizationError(str(exc), "EXECUTOR_UNAVAILABLE") from exc
-        except ProviderExecutionError as exc:
-            raise HandlerAuthorizationError(
-                str(exc), "CONSEQUENCE_OUTCOME_UNCERTAIN"
-            ) from exc
-        except Exception as exc:
+        except ConsequenceOutcomeUncertain as exc:
             raise HandlerAuthorizationError(
                 str(exc), "CONSEQUENCE_OUTCOME_UNCERTAIN"
             ) from exc

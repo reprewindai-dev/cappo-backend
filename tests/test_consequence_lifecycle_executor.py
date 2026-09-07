@@ -12,7 +12,10 @@ from cappo_backend.db.base import Base
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
 from cappo_backend.services.canonical import sha256_json
-from cappo_backend.services.consequence_lifecycle import ConsequenceLifecycleExecutor
+from cappo_backend.services.consequence_lifecycle import (
+    ConsequenceLifecycleExecutor,
+    ConsequenceOutcomeUncertain,
+)
 from cappo_backend.services.executor import ProviderExecutionError
 
 
@@ -148,7 +151,7 @@ def test_transport_failure_is_outcome_unknown_not_failed(db: Session) -> None:
         resource="provider-dispatch",
     )
 
-    with pytest.raises(ProviderExecutionError):
+    with pytest.raises(ConsequenceOutcomeUncertain):
         executor.execute({"prompt": "go"})
 
     assert _states(db) == ["authorized", "started", "outcome_unknown"]

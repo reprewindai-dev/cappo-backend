@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,13 +23,22 @@ from cappo_backend.models.consequence_execution import (
     ConsequenceState,
     build_proof_subject_hash,
 )
+from cappo_backend.security.mcp_gateway import EIValidationError
 from cappo_backend.services.canonical import sha256_json
 from cappo_backend.services.executor import (
     Executor,
     ExecutorUnavailableError,
+    ProviderCredentialRejectedError,
     ProviderExecutionError,
+    ProviderPolicyRejectedError,
+    ProviderRateLimitedError,
     TerminalExecutionError,
 )
+from cappo_backend.services.orchestrator import RuntimeOwnershipError
+
+
+class ConsequenceOutcomeUncertain(Exception):
+    """Raised when executor-stage completion cannot establish outcome truth."""
 
 
 class ConsequenceLifecycleRecorder:
@@ -262,7 +272,9 @@ class ConsequenceLifecycleExecutor:
                 proof_type="callback_exception",
             )
             raise
-        except (ProviderExecutionError, ExecutorUnavailableError) as exc:
+        except (EIValidationError, RuntimeOwnershipError, HTTPException):
+            raise
+        except ExecutorUnavailableError as exc:
             # A transport/provider failure can occur after a remote system has
             # accepted the request. Do not overclaim FAILED without observation.
             self._recorder.complete(
@@ -272,6 +284,14 @@ class ConsequenceLifecycleExecutor:
                 error_summary=str(exc),
             )
             raise
+        except ProviderExecutionError as exc:
+            self._recorder.complete(
+                operation_id=self._operation_id,
+                succeeded=False,
+                outcome_uncertain=True,
+                error_summary=str(exc),
+            )
+            raise ConsequenceOutcomeUncertain(str(exc)) from exc
         except Exception as exc:
             self._recorder.complete(
                 operation_id=self._operation_id,
@@ -279,10 +299,21 @@ class ConsequenceLifecycleExecutor:
                 outcome_uncertain=True,
                 error_summary=str(exc),
             )
-            raise
+            raise ConsequenceOutcomeUncertain(str(exc)) from exc
 
         try:
             proof_type, proof_ref = self._completion_proof(result)
+        except (
+            ExecutorUnavailableError,
+            ProviderRateLimitedError,
+            ProviderCredentialRejectedError,
+            ProviderPolicyRejectedError,
+            EIValidationError,
+            TerminalExecutionError,
+            RuntimeOwnershipError,
+            HTTPException,
+        ):
+            raise
         except Exception as exc:
             # The consequence callback returned, but CAPPO could not establish
             # acceptable completion proof. The only truthful terminal state is
@@ -293,7 +324,7 @@ class ConsequenceLifecycleExecutor:
                 outcome_uncertain=True,
                 error_summary=f"completion proof verification failed: {exc}",
             )
-            raise
+            raise ConsequenceOutcomeUncertain(str(exc)) from exc
 
         self._recorder.complete(
             operation_id=self._operation_id,

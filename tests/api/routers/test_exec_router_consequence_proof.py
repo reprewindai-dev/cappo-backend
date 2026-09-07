@@ -15,8 +15,10 @@ from cappo_backend.models.execution_identity import ExecutionIdentity
 from cappo_backend.models.free_run_quota import FreeRunQuota
 from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.security.biscuit import mint_biscuit_capability
+from cappo_backend.security.mcp_gateway import EIValidationError
 from cappo_backend.services.activation_target import ACTIVATION_WRITE_ACTION
 from cappo_backend.services.executor import ProviderExecutionError
+from cappo_backend.services.orchestrator import RunOrchestrator
 from cappo_backend.services.run_state import RunState
 
 
@@ -629,6 +631,40 @@ def test_consequence_dominance_proof_outcome_uncertain_forbids_automatic_reexecu
     assert "CAPABILITY_LEASE_DENIED" in replay.text
     assert "token_replay" in replay.text
     assert counting_executor.count == 0
+
+
+def test_consequence_dominance_proof_pre_execution_failure_is_not_relabelled_uncertain(
+    client: TestClient,
+    db: Session,
+    monkeypatch,
+):
+    def fail_law0(_orchestrator, _run):
+        raise EIValidationError("pre-execution identity validation failed")
+
+    monkeypatch.setattr(RunOrchestrator, "_enforce_law0", fail_law0)
+    client._transport.raise_server_exceptions = False
+    execution_id = str(uuid.uuid4())
+    biscuit = _mint(execution_id)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=biscuit)
+
+    response = _post_exec(client, mount, execution_id, biscuit)
+
+    assert response.status_code == 403
+    body = response.json()
+    assert body["detail"]["error"] == "EXECUTION_IDENTITY_REQUIRED"
+    assert body["detail"].get("outcome") != "OUTCOME_UNCERTAIN"
+
+    db.expire_all()
+    run = db.execute(
+        select(GovernedRun).where(GovernedRun.run_id == execution_id)
+    ).scalars().one()
+    assert run.state == RunState.FAILED.value
+    events = db.execute(
+        select(ConsequenceExecutionEvent).where(
+            ConsequenceExecutionEvent.operation_id == f"exec:{execution_id}"
+        )
+    ).scalars().all()
+    assert not any(event.state == "outcome_unknown" for event in events)
 
 
 def test_consequence_dominance_proof_expired_mount_fails(client: TestClient, db: Session):
