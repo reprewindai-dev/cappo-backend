@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.engine import mark_mount_revoked
@@ -116,6 +117,33 @@ class MountRecord:
     token: EphemeralScopedToken
     binding: ExecutionBinding
     anchoring: AnchorResult | None = None
+
+
+def _consume_nonce_atomically(
+    db: Session,
+    mount_id: str,
+    token_id: str,
+    nonce: str,
+) -> bool:
+    """Consume one mount nonce with a database-level compare-and-update."""
+    statement = (
+        update(CapabilityMount)
+        .where(
+            CapabilityMount.mount_id == mount_id,
+            CapabilityMount.token_id == token_id,
+            CapabilityMount.token_nonce == nonce,
+            CapabilityMount.nonce_consumed.is_(False),
+            CapabilityMount.terminated.is_(False),
+        )
+        .values(nonce_consumed=True)
+        .execution_options(synchronize_session=False)
+    )
+    try:
+        result = db.execute(statement)
+    except OperationalError:
+        db.rollback()
+        return False
+    return result.rowcount == 1
 
 
 class MountRegistry:
@@ -877,6 +905,11 @@ class MountRegistry:
                 lease.offline_side_effect_limit -= 1
                 db.add(lease)
 
+        if decision is Decision.ALLOW and not _consume_nonce_atomically(
+            db, mount_id, token_id, nonce
+        ):
+            decision, reason = Decision.DENY, "token_replay"
+
         if decision is Decision.ALLOW:
             for evidence in verified_evidence:
                 db.add(
@@ -904,7 +937,7 @@ class MountRegistry:
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor, None
         receipt: CapabilityActionReceipt | None = None
         if decision is Decision.ALLOW:
-            row.nonce_consumed = True
+            db.refresh(row)
             _actioned_at = utc_now()
             _biscuit_sha256 = None
             if record.token.biscuit_token:
