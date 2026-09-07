@@ -808,7 +808,7 @@ def test_consequence_dominance_proof_persistent_and_ephemeral_share_authority_se
     ephemeral_states = {event.state for event in ephemeral_events}
     persistent_states = {event.state for event in persistent_events}
     assert persistent_states == {"authorized", "started", "succeeded"}
-    assert ephemeral_states == persistent_states
+    assert ephemeral_states == persistent_states | {"DISSOLVED"}
     receipts = db.execute(
         select(CapabilityActionReceipt).where(
             CapabilityActionReceipt.token_id.in_(
@@ -818,7 +818,11 @@ def test_consequence_dominance_proof_persistent_and_ephemeral_share_authority_se
         )
     ).scalars().all()
     assert len(receipts) == 2
-    assert not any(event.state == "DISSOLVED" for event in ephemeral_events)
+    dissolutions = [e for e in ephemeral_events if e.state == "DISSOLVED"]
+    assert len(dissolutions) == 1
+    assert dissolutions[0].resource == "ephemeral_dissolution"
+    assert dissolutions[0].execution_id == ephemeral_id
+    assert dissolutions[0].mount_id == ephemeral_mount.mount_id
     assert not any(event.state == "DISSOLVED" for event in persistent_events)
 
     ephemeral_replay = _post_exec(

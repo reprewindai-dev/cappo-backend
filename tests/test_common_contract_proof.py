@@ -119,7 +119,7 @@ def _make_ctx(
     eid = str(uuid.uuid4()) if execution_id is _UNSET else execution_id
     rid = str(uuid.uuid4()) if receipt_id is _UNSET else receipt_id
     if biscuit_token is _UNSET:
-        eid_for_bt = str(uuid.uuid4()) if execution_id is _UNSET else execution_id
+        eid_for_bt = eid
         bt = mint_biscuit_capability(
             caller_spiffe_id="test:principal",
             executor_spiffe_id="cappo-backend",

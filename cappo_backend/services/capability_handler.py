@@ -371,32 +371,35 @@ class CapabilityHandler:
             "evidence_preserved": True,
             "consequence_preserved": True,
         }
-        self._record_dissolution(dissolution_record)
+        self._record_dissolution(ctx, dissolution_record)
         return True
 
-    def _record_dissolution(self, record: dict) -> None:
+    def _record_dissolution(self, ctx: VerifiedExecutionContext, record: dict) -> None:
         import json
-        try:
-            from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
-            event = ConsequenceExecutionEvent(
-                event_id=str(uuid.uuid4()),
-                operation_id=record["execution_id"],
-                intent_hash=hashlib.sha256(
-                    json.dumps(record, sort_keys=True).encode()
-                ).hexdigest(),
-                version=9999,
-                state="DISSOLVED",
-                actor=record["execution_id"],
-                resource="ephemeral_dissolution",
-                proof_subject_hash=hashlib.sha256(
-                    f"dissolved:{record['instance_id']}:{record['execution_id']}".encode()
-                ).hexdigest(),
-                evidence=record,
-            )
-            self._db.add(event)
-            self._db.flush()
-        except Exception:
-            self._db.rollback()
+
+        from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
+
+        event = ConsequenceExecutionEvent(
+            event_id=str(uuid.uuid4()),
+            operation_id=record["execution_id"],
+            intent_hash=hashlib.sha256(
+                json.dumps(record, sort_keys=True).encode()
+            ).hexdigest(),
+            version=9999,
+            state="DISSOLVED",
+            receipt_id=ctx.receipt_id,
+            mount_id=ctx.mount_id,
+            execution_id=ctx.execution_id,
+            principal=ctx.principal,
+            action=ctx.action,
+            resource="ephemeral_dissolution",
+            completion_proof_type="ephemeral_dissolution",
+            completion_proof_ref=hashlib.sha256(
+                f"dissolved:{record['instance_id']}:{record['execution_id']}".encode()
+            ).hexdigest(),
+        )
+        self._db.add(event)
+        self._db.flush()
 
     # ------------------------------------------------------------------
     # Evidence correlation
