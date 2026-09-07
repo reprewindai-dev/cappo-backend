@@ -165,6 +165,13 @@ class RunOrchestrator:
     # ------------------------------------------------------------------
 
     def create_run(self, request: dict[str, Any]) -> GovernedRun:
+        """Create the durable run before governance or any side effect.
+
+        A trusted caller may supply ``execution_id`` to bind a pre-issued
+        CapabilityLease to the run. The identifier is only correlation; it does
+        not grant authority. Public /v1/exec injects it only after validating the
+        lease proof and workspace ownership.
+        """
         # If genome layers are present and a GenomeService is available,
         # register a real genome and derive genome_hash from the Merkle root.
         genome_hash = request.get("genome_hash")
@@ -187,8 +194,20 @@ class RunOrchestrator:
                 )
                 genome_hash = result["genome_hash"]
 
+        requested_execution_id = request.get("execution_id")
+        if requested_execution_id is not None and (
+            not isinstance(requested_execution_id, str)
+            or not requested_execution_id.strip()
+        ):
+            raise ValueError("execution_id must be a non-empty string when supplied")
+        run_id = (
+            requested_execution_id.strip()
+            if isinstance(requested_execution_id, str)
+            else str(uuid.uuid4())
+        )
+
         run = GovernedRun(
-            run_id=str(uuid.uuid4()),
+            run_id=run_id,
             workspace_id=request.get("workspace_id", "default"),
             tenant_id=request.get("tenant_id", "default"),
             delegation_depth=int(request.get("delegation_depth", 0)),

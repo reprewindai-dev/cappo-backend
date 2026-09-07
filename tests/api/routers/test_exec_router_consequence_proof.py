@@ -11,6 +11,7 @@ from cappo_backend.models.capability_action_receipt import CapabilityActionRecei
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
 from cappo_backend.models.free_run_quota import FreeRunQuota
+from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.security.biscuit import mint_biscuit_capability
 from cappo_backend.services.activation_target import ACTIVATION_WRITE_ACTION
 
@@ -319,6 +320,38 @@ def test_consequence_dominance_proof_valid_request(client: TestClient, db: Sessi
     
     response = client.post("/v1/exec", json=payload, headers=headers)
     assert response.status_code == 200, response.json()
+
+
+def test_consequence_dominance_proof_binds_run_to_lease_execution_id(
+    client: TestClient,
+    db: Session,
+):
+    execution_id = str(uuid.uuid4())
+    valid_biscuit = _mint(execution_id)
+    mount = _build_canonical_environment(db, execution_id, biscuit_token=valid_biscuit)
+
+    payload = _payload(mount, execution_id)
+    payload["execution_id"] = "attacker-chosen"
+    response = client.post(
+        "/v1/exec",
+        json=payload,
+        headers={
+            "X-Workspace-ID": mount.owner_workspace,
+            "Veklom-Authority": valid_biscuit,
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    run_ids = {
+        run.run_id
+        for run in db.execute(
+            select(GovernedRun).where(
+                GovernedRun.workspace_id == mount.owner_workspace
+            )
+        ).scalars()
+    }
+    assert execution_id in run_ids
+    assert "attacker-chosen" not in run_ids
 
 
 def test_consequence_dominance_proof_expired_mount_fails(client: TestClient, db: Session):

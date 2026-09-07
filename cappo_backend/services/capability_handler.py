@@ -293,7 +293,9 @@ class CapabilityHandler:
     ) -> dict:
         """Dispatch execution through the orchestrator under bounded authority."""
         try:
-            return orchestrator.run_governed(ctx.payload)
+            return orchestrator.run_governed(
+                {**ctx.payload, "execution_id": ctx.execution_id}
+            )
         except (GovernanceDeniedError, MissingGovernanceDecisionError) as exc:
             raise HandlerAuthorizationError(str(exc), "GOVERNANCE_DENIED") from exc
         except TerminalExecutionError as exc:
