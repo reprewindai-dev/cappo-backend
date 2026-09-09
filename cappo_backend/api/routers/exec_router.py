@@ -497,7 +497,7 @@ async def governed_exec(
         wit_payload = _get_b64_json(request.headers, "Workload-Identity")
         ect_payload = _get_b64_json(request.headers, "Execution-Context")
         wpt_payload = _get_b64_json(request.headers, "Workload-Proof")
-        authority_payload = _get_b64_json(request.headers, "Veklom-Authority")
+        authority_payload = None  # Deprecated client JSON authority format
 
     if hasattr(request.app.state, "redis_client") and request.app.state.redis_client:
         replay_cache = RedisReplayCache(request.app.state.redis_client)
@@ -525,7 +525,7 @@ async def governed_exec(
                 wit_payload=wit_payload,
                 ect_payload=ect_payload,
                 wpt_payload=wpt_payload,
-                authority_payload=authority_payload,
+                # authority_payload=authority_payload, (Dropped: client authority is untrusted)
             )
             if authority_payload:
                 wit = WorkloadIdentityToken(**wit_payload) if wit_payload else None
@@ -726,9 +726,19 @@ async def governed_exec(
             lifecycle=lifecycle,
             executor_override=executor_override,
         )
+        # TRUSTED ASSERTION SEAM:
+        # Strip client-supplied authority. We mint/retrieve the authoritative machine 
+        # token exclusively from the server-side registry.
+        biscuit_token = record.token.biscuit_token
         
-        biscuit_token = request.headers.get("Veklom-Authority")
-                
+        if not biscuit_token:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "CRYPTOGRAPHIC_AUTHORITY_REQUIRED", "detail": "No server-side capability token found."},
+            )
+            
+        
+
         ctx = VerifiedExecutionContext(
             principal=principal,
             workspace_id=str(canonical_workspace),
@@ -823,6 +833,7 @@ async def governed_exec(
             if lease_ref is not None and lease_receipt_id
             else None
         ),
+        authority_envelope=result.get("authority_envelope"),
         links={
             "audit": {
                 "href": f"/api/v1/gpc/audit/{run.run_id if run else 'unknown'}",

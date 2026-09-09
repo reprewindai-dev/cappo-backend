@@ -84,7 +84,16 @@ def test_consequence_dominance_proof_direct_target_without_mount_fails(client: T
     assert response.status_code == 403
     assert "CAPABILITY_LEASE_REQUIRED" in response.json()["detail"]["error"]
 
-def test_consequence_dominance_proof_wrong_executor_fails(client: TestClient, db: Session):
+def test_consequence_dominance_proof_wrong_executor_fails(client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch):
+    call_count = 0
+    def fake_run_governed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return {}
+    
+    from cappo_backend.services.orchestrator import RunOrchestrator
+    monkeypatch.setattr(RunOrchestrator, "run_governed", fake_run_governed)
+
     execution_id = str(uuid.uuid4())
     biscuit = mint_biscuit_capability(
         caller_spiffe_id="auth-disabled",
@@ -112,8 +121,18 @@ def test_consequence_dominance_proof_wrong_executor_fails(client: TestClient, db
     }
     response = client.post("/v1/exec", json=payload, headers=headers)
     assert response.status_code == 403
+    assert call_count == 0
 
-def test_consequence_dominance_proof_mutated_intent_fails(client: TestClient, db: Session):
+def test_consequence_dominance_proof_mutated_intent_fails(client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch):
+    call_count = 0
+    def fake_run_governed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return {}
+    
+    from cappo_backend.services.orchestrator import RunOrchestrator
+    monkeypatch.setattr(RunOrchestrator, "run_governed", fake_run_governed)
+
     execution_id = str(uuid.uuid4())
     biscuit = mint_biscuit_capability(
         caller_spiffe_id="auth-disabled",
@@ -141,6 +160,7 @@ def test_consequence_dominance_proof_mutated_intent_fails(client: TestClient, db
     }
     response = client.post("/v1/exec", json=payload, headers=headers)
     assert response.status_code == 403
+    assert call_count == 0
 
 
 def test_consequence_dominance_proof_valid_request(client: TestClient, db: Session):
@@ -303,6 +323,7 @@ def test_consequence_dominance_proof_persistent_and_ephemeral_invariants(client:
     payload_1 = {
         "action": "execute",
         "action_cost_cents": 0,
+        "execution_mode": "ephemeral",
         "capability_lease": {
             "mount_id": mount_1.mount_id,
             "token_id": mount_1.token_id,
@@ -330,8 +351,10 @@ def test_consequence_dominance_proof_persistent_and_ephemeral_invariants(client:
     assert resp_2.status_code == 200, resp_2.text
 
     # Mechanically compare that both modes traverse the same authority/invariant structure
-    auth_env_1 = resp_1.json()["authority_envelope"]
-    auth_env_2 = resp_2.json()["authority_envelope"]
+    auth_env_1 = resp_1.json().get("authority_envelope")
+    auth_env_2 = resp_2.json().get("authority_envelope")
+    print(f"DEBUG resp1={resp_1.json()}")
+    print(f"DEBUG resp2={resp_2.json()}")
 
     assert auth_env_1["authority"]["biscuit_bound"] is True
     assert auth_env_2["authority"]["biscuit_bound"] is True

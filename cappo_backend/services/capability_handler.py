@@ -254,6 +254,29 @@ class CapabilityHandler:
                 "Execution rejected: no handler-bound biscuit_token."
             )
 
+        from cappo_backend.security.biscuit import verify_biscuit_capability
+        from cappo_backend.security.biscuit import TrustedRevocationState
+        
+        # In a real environment, revocation state would be fetched from the DB/Redis.
+        trusted_state = TrustedRevocationState()
+        trusted_state.known_epochs["workspace"] = 0
+        
+        # Enforce exact match on execution_id
+        is_valid = verify_biscuit_capability(
+            token_b64=ctx.biscuit_token,
+            executor_spiffe_id="cappo-backend",
+            action=ctx.action,
+            resource=ctx.resource or "any",
+            subject_spiffe_id=ctx.principal,
+            trusted_state=trusted_state,
+            execution_id=ctx.execution_id
+        )
+        
+        if not is_valid:
+            raise ConsequenceDominanceViolation(
+                "Execution rejected: Biscuit verification failed or execution_id mismatch."
+            )
+
     def _dispatch(
         self,
         ctx: VerifiedExecutionContext,
@@ -304,26 +327,47 @@ class CapabilityHandler:
             return {"persisted": True, "observation": observation}
         except Exception:
             return None
-
     def _observe_generic_consequence(
-        self,
-        ctx: VerifiedExecutionContext,
-        raw_result: dict,
+        self, ctx: VerifiedExecutionContext, raw_result: dict
     ) -> dict | None:
         from cappo_backend.models.governed_run import GovernedRun
-        run = self._db.query(GovernedRun).filter_by(run_id=ctx.execution_id).first()
-        if not run:
-            # Fallback to check if executor stored it as execution_id in identity
-            run = self._db.query(GovernedRun).filter(GovernedRun.execution_identity["execution_id"].astext == ctx.execution_id).first()
+        try:
+            runs = self._db.query(GovernedRun).filter(
+                GovernedRun.workspace_id == ctx.workspace_id
+            ).all()
+
+            run = next(
+                (
+                    r
+                    for r in runs
+                    if isinstance(r.request_payload, dict)
+                    and r.request_payload.get("execution_id") == ctx.execution_id
+                ),
+                None,
+            )
+
+            # Fallback if execution_identity was somehow used
+            if not run:
+                run = next(
+                    (
+                        r
+                        for r in runs
+                        if isinstance(r.execution_identity, dict)
+                        and r.execution_identity.get("execution_id") == ctx.execution_id
+                    ),
+                    None,
+                )
+
             if not run:
                 return None
 
-        return {
-            "persisted": True,
-            "execution_id": ctx.execution_id,
-            "run_id": run.run_id,
-            "observation_source": "independent_run_record_query",
-        }
+            return {
+                "execution_id": ctx.execution_id,
+                "run_id": run.run_id,
+                "observation_source": "independent_run_record_query",
+            }
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Ephemeral dissolution
