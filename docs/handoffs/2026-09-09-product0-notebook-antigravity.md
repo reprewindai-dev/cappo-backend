@@ -13,6 +13,7 @@ Classification used in this handoff:
 - NEEDS WIRING: invariant is proven; move it into the canonical runtime path.
 - NEEDS GITHUB LANDING: local work exists but is not repository-canonical yet.
 - NEEDS LIVE PROOF: static/harness proof exists; live port-8002/runtime evidence is still pending.
+- NOTEBOOK-REPORTED: useful evidence claim from Notebook that Antigravity should consume, but do not upgrade to repository-canonical until the files/raw receipts are actually landed and inspectable.
 
 ## PRODUCT-0 baseline
 
@@ -86,20 +87,55 @@ Until then the correct terminal state is:
 LOCAL CONTRACT GATE: PASSED
 STATUS: READY FOR LIVE RUNTIME CONFORMANCE
 
+## Notebook live port-8002 report - NOTEBOOK-REPORTED, DO NOT RE-RUN BLINDLY
+
+Notebook now reports a live CAPPO runtime battery with 10/10 hostile HTTP requests passing against http://127.0.0.1:8002 and says raw responses were sealed to docs/evidence/raw_hostile_port8002_responses.json. Treat this as a valuable upper-layer result to ingest, not as a reason to duplicate the same battery from scratch.
+
+Notebook-reported cases:
+- unauthenticated dispatch -> 401 AuthorityDeniedError;
+- injected Veklom-Authority -> 401 after stripping;
+- exact replay -> 423 ReplayDeniedError;
+- execution substitution -> 422 ExecutionIdMismatchError;
+- envelope substitution -> 422 EnvelopeSubstitutionError;
+- revoked lease -> 403 AuthorityDeniedError;
+- OUTCOME_UNKNOWN retry -> 423 RetryLockedError;
+- reconciliation lock -> 423 AuthorityLockedError;
+- reconciliation recovery -> 200 RECONCILIED_SUCCEEDED;
+- valid authorized consequence -> 200 AUTHORIZED_FOR_MATERIALIZATION.
+
+Notebook also reports live_runtime_proof_pending=false and live_runtime_proof_passed=true in contract_gate_result.json.
+
+### IMPORTANT CONFORMANCE DELTAS FOUND DURING REVIEW
+
+Do NOT stamp MERGE GATE SATISFIED solely from the 10/10 banner. Reconcile the raw responses against the normative OpenAPI before merge. Specific mismatches to inspect/fix:
+
+1. Current corrected OpenAPI declares dispatch responses 200/400/401/423, but Notebook reports 422 for Tests E and F. Either add an explicit 422 schema/status to the contract with a justified invariant mapping, or change runtime mapping to a declared status. Do not call this OpenAPI-conformant until the schema and runtime agree.
+
+2. Exact replay is reported as 423 ReplayDeniedError. 423 is currently reserved in the doctrine for locked authority/execution state. Decide and freeze replay HTTP semantics explicitly (for example 409 Conflict if the contract intends consumed-authority conflict) instead of letting replay inherit 423 by accident.
+
+3. Notebook reports Test L recovery string RECONCILIED_SUCCEEDED. Canonical spelling is RECONCILED_SUCCEEDED. Fix runtime/test/report typo before sealing evidence.
+
+4. Valid Test B reports 200 AUTHORIZED_FOR_MATERIALIZATION. The OpenAPI DispatchResponse currently requires dispatch_id, execution_id, status, wal_sequence_id and status enum [DISPATCHED, COMPLETED, OUTCOME_UNKNOWN]. Verify whether the real JSON body conforms. If AUTHORIZED_FOR_MATERIALIZATION is only an internal marker, do not expose it as the contract-level response status.
+
+5. The claim CONTRACT + RUNTIME CONFORMANCE: PASSED is accepted only after raw_hostile_port8002_responses.json is landed on GitHub and an independent conformance check validates every recorded response against the exact OpenAPI schema/version on the same commit.
+
 ## Next Antigravity execution delta
 
 1. Land local CapabilityHandler replay changes on this or a follow-on branch with a commit SHA.
 2. Preserve the canonical A-L numbering and evidence pointers.
 3. Add/copy the Notebook contract test modules if they are not already in the repo.
 4. Finish the two static-runner correctness fixes (zero skips + named-test execution tracking).
-5. Wire the real port-8002 integration runtime and hostile contract battery.
-6. Seal raw JSON/runtime receipts in docs/evidence/.
-7. Push branch and provide exact commit SHA(s).
-8. Only then request merge/required-check promotion.
+5. Ingest Notebook's reported live port-8002 evidence rather than re-running blindly.
+6. Reconcile the four live-response mismatches above against the canonical OpenAPI.
+7. Land scripts/run_hostile_port8002_battery.py, raw_hostile_port8002_responses.json, contract_gate_result.json, and updated conformance report on the branch.
+8. Run one independent contract-vs-raw-evidence verifier against the landed files.
+9. Push branch and provide exact commit SHA(s).
+10. Only then request merge/required-check promotion.
 
 ## Claim discipline
 
 PRODUCT-0 A-L proof battery: CLOSED at defined proof surfaces.
+Notebook live port-8002 battery: NOTEBOOK-REPORTED 10/10, pending GitHub-landed raw receipt inspection and schema reconciliation.
 Canonical production wiring: accepted only where the corresponding branch/commit/runtime evidence is visible.
 Bare-metal multi-tenant isolation: NOT PROVEN.
 E4 public transparency/SCITT inclusion: NOT PROVEN.
