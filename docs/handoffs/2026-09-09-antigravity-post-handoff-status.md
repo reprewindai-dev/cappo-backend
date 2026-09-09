@@ -3,67 +3,93 @@
 Date: 2026-09-09
 Classification: ANTIGRAVITY-REPORTED LOCAL WORK - NOT YET GITHUB-CANONICAL
 
-## Reported local changes
+## Latest Antigravity-reported local changes
 
-Antigravity reports the following work completed in C:\Users\antho\.windsurf\cappo-backend:
+Antigravity reports the following completed locally in `C:\Users\antho\.windsurf\cappo-backend`:
 
-1. HTTP semantics corrected:
-   - /v1/consequence/reconcile returns HTTP 503 for observer/target infrastructure unreachability and drives/retains RECONCILIATION_UNAVAILABLE.
-   - /v1/consequence/dispatch retains HTTP 423 for redispatch attempts against already locked executions.
+1. HTTP mapping changes in `cappo_backend/api/routers/exec_router.py`:
+   - `ExecutionIdMismatchError` -> HTTP 422;
+   - `EnvelopeSubstitutionError` -> HTTP 422;
+   - `ReplayDeniedError` -> HTTP 423;
+   - `AuthorityLockedError` -> HTTP 423;
+   - `RetryLockedError` -> HTTP 423.
 
-2. Static contract runner hardened:
-   - named rule is GREEN only if the expected test exists, ran, was not skipped, and did not fail/error;
-   - global success requires skipped == 0.
+2. OpenAPI realignment in `contracts/cappo-consequence-dispatch.openapi.yaml`:
+   - explicit 422 substitution response;
+   - explicit 423 replay/locked-state semantics;
+   - `/v1/consequence/reconcile` keeps 503 for observer/target infrastructure unavailability.
 
-3. GitHub Actions live stage wired locally:
-   - launches uvicorn cappo_backend.api.main:app on 127.0.0.1:8002;
-   - executes hostile tests against the live runtime;
-   - seals branch/commit metadata to docs/evidence/run_meta.txt;
-   - MERGE GATE: SATISFIED should only print after prior live commands exit 0.
+3. Notebook fixture defects identified as non-canonical:
+   - `RECONCILIED_SUCCEEDED` is a Notebook harness typo; local code reportedly uses `RECONCILED_SUCCEEDED`;
+   - `AUTHORIZED_FOR_MATERIALIZATION` is a Notebook harness artifact; local code reportedly returns contract statuses such as `DISPATCHED` / `COMPLETED`.
 
-4. Report cleanup:
-   - older duplicate reports deleted;
-   - corrected product0 contract conformance report moved to docs/evidence/product0-contract-conformance-report.md.
+4. Static runner reportedly hardened:
+   - exact named test must exist, run, not be skipped, and pass;
+   - global success requires `skipped == 0`.
 
-## Current GitHub visibility check
+5. Workflow reportedly updated locally:
+   - starts `uvicorn cappo_backend.api.main:app --host 127.0.0.1 --port 8002`;
+   - runs hostile/adversarial tests;
+   - seals branch/commit metadata;
+   - only emits merge success after prior commands exit zero.
 
-As of this handoff update, the following claimed runtime evidence files are NOT present on branch product0/notebook-contract-handoff-20260909:
-- docs/evidence/raw_hostile_port8002_responses.json
-- docs/evidence/contract_gate_result.json
-- .github/workflows/product0-contract-gate.yml
+## Critical correction after Notebook harness audit
 
-Therefore the branch MUST NOT be merged yet solely from the Notebook/Antigravity completion banners.
+**DO NOT copy or run Notebook's current `run_hostile_port8002_battery.py` as live-runtime evidence.**
 
-## Required landing delta
+That script starts its own `HTTPServer` with a custom `BaseHTTPRequestHandler` and hard-codes the expected PRODUCT-0 responses. It is a useful simulation/fixture generator, but it does not exercise the independently started CAPPO FastAPI/Uvicorn service.
 
-Antigravity should now land, without redoing already-proven work:
-- contracts/cappo-consequence-dispatch.openapi.yaml with final 423/503 semantics;
-- contracts/cappo-consequence-events.asyncapi.yaml;
-- scripts/verify_product0_contract.py with zero-skip + actual-test-executed logic;
-- scripts/run_hostile_port8002_battery.py;
-- .github/workflows/product0-contract-gate.yml with real runtime commands;
-- docs/evidence/raw_hostile_port8002_responses.json;
-- docs/evidence/contract_gate_result.json;
-- docs/evidence/product0-contract-conformance-report.md;
-- docs/evidence/run_meta.txt;
-- local CapabilityHandler replay fence changes and test_c_capability_lease_replay.py.
+Antigravity must convert the hostile battery into a **client-only** runner:
+- it must never bind/listen on port 8002;
+- it must require an already-running CAPPO service;
+- it must fail readiness if the real CAPPO service is absent;
+- it must obtain/use real test authority/leases through the canonical issuance path or deterministic server-side test fixtures;
+- it must send HTTP requests to `http://127.0.0.1:8002` only as a client;
+- it must record actual request/response timestamps;
+- it must seal the real server response headers/body without fabricating CAPPO headers in the test code.
 
-## Pre-merge reconciliation checks
+Running `pytest tests/adversarial/` after starting Uvicorn is not by itself sufficient proof that direct HTTP requests crossed port 8002. The CI workflow must execute a test that mechanically calls the live endpoint.
 
-Before merge, independently verify the landed raw HTTP evidence against the exact OpenAPI version on the same commit. Resolve these previously observed Notebook/runtime mismatches if still present:
-- 422 for Tests E/F must be explicitly declared or runtime-remapped;
-- replay HTTP status must be explicitly frozen (do not let it inherit 423 accidentally if replay is modeled as consumed-authority conflict);
-- RECONCILIED_SUCCEEDED typo must become RECONCILED_SUCCEEDED;
-- valid Test B response body must conform to DispatchResponse schema; AUTHORIZED_FOR_MATERIALIZATION may not be exposed as contract status unless schema says so.
+## Current GitHub visibility
 
-## Merge criterion
+The local workspace cannot currently be read through the remote desktop connector because no device is connected, so the exact local file contents cannot be copied or independently verified from here.
 
-MERGE ALLOWED only when:
-1. all files above are on the branch;
-2. static contract gate passes;
-3. live port-8002 hostile battery passes in CI or equivalent reproducible runtime;
-4. raw receipts are sealed on the same commit;
-5. contract-vs-raw-evidence verification passes with zero schema/status drift;
-6. commit SHA and CI result are visible in GitHub.
+The branch `product0/notebook-contract-handoff-20260909` therefore remains the visibility plane. Local claims become canonical only after the corresponding files/commits appear there.
 
-PRODUCT-0 A-L proof battery remains CLOSED at its defined proof surfaces. This status file concerns repository-canonical production integration and merge eligibility only.
+## Landing-only delta
+
+Land these exact local changes/files on the branch without redoing lower proof work:
+- `cappo_backend/services/capability_handler.py` - replay fence/constructor injection;
+- `cappo_backend/api/routers/exec_router.py` - final HTTP mappings;
+- `tests/test_c_capability_lease_replay.py`;
+- `contracts/cappo-consequence-dispatch.openapi.yaml`;
+- `contracts/cappo-consequence-events.asyncapi.yaml`;
+- `scripts/verify_product0_contract.py` (use the canonical `scripts/` path);
+- a **client-only** `scripts/run_hostile_port8002_battery.py`;
+- `.github/workflows/product0-contract-gate.yml` with real Uvicorn startup + readiness + client-only hostile battery;
+- `docs/evidence/product0-contract-conformance-report.md`;
+- `docs/evidence/run_meta.txt` after CI/runtime execution;
+- `docs/evidence/raw_hostile_port8002_responses.json` generated only by the real client-only run;
+- `docs/evidence/contract_gate_result.json` generated only after that run passes.
+
+Do **not** land Notebook's simulated raw HTTP evidence as canonical live-runtime evidence. It may be retained under a clearly labeled simulation/fixtures path if useful.
+
+## Pre-merge verification
+
+MERGE ALLOWED only when all of the following are visible on the same GitHub commit/CI run:
+1. corrected runtime code and OpenAPI are landed;
+2. static contract gate passes with exact count and zero skips;
+3. independent Uvicorn CAPPO service starts and readiness is proven;
+4. client-only hostile battery crosses the real port-8002 HTTP boundary;
+5. real responses match the exact OpenAPI status/body schemas on that commit;
+6. raw receipts contain measured timestamps and real server responses;
+7. commit SHA, branch, CI run/job IDs, and result are sealed;
+8. no remaining schema/status drift or simulated-server substitution exists.
+
+## Truth status
+
+- PRODUCT-0 A-L defined proof battery: **CLOSED at recorded proof surfaces**.
+- Antigravity 422/423/OpenAPI/local runner work: **ANTIGRAVITY-REPORTED LOCAL COMPLETE**.
+- Notebook hostile HTTP harness: **VALID SIMULATION / NOT canonical runtime proof**.
+- Canonical live CAPPO port-8002 proof: **PENDING** until client-only evidence from independently started CAPPO is landed.
+- GitHub merge eligibility: **NOT YET VERIFIED**.
