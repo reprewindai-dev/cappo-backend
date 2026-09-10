@@ -1,0 +1,56 @@
+{
+  "suite": "POSTGRES_E3_RLS_PREDATOR_CORRECTED",
+  "status": "DESIGN_VALID_REQUIRES_REAL_RERUN",
+  "evidence_policy": "No attack is PASS until captured from a real PostgreSQL session with preconditions and independent control observations.",
+  "attacks": [
+    {
+      "id": "RLS-ATTACK-01",
+      "name": "Cross-tenant read with positive control",
+      "precondition": "Observer proves target-tenant transition row exists in the same database before the worker query.",
+      "stimulus": "Tenant-A worker queries the exact known transition_id belonging to Tenant-B.",
+      "pass": "Worker returns 0 rows; observer still sees exactly 1 matching Tenant-B row."
+    },
+    {
+      "id": "RLS-ATTACK-02",
+      "name": "Worker tries to forge authoritative E3 row",
+      "stimulus": "Worker attempts INSERT into veklom_consequence_audit for either its own or another tenant.",
+      "pass": "SQLSTATE 42501 permission denied; worker has no INSERT privilege on authoritative E3 table."
+    },
+    {
+      "id": "RLS-ATTACK-03",
+      "name": "Worker tries to mutate or delete existing receipt",
+      "stimulus": "Worker attempts UPDATE and DELETE against an existing own-tenant audit row.",
+      "pass": "Both fail with insufficient privilege; observer confirms row bytes/commitment unchanged."
+    },
+    {
+      "id": "RLS-ATTACK-04",
+      "name": "Tenant-context spoofing",
+      "stimulus": "Worker SETs or set_config()s app.current_tenant_id to another tenant and repeats cross-tenant query.",
+      "pass": "No authority changes because RLS derives tenant from protected session_user mapping, not the custom GUC."
+    },
+    {
+      "id": "RLS-ATTACK-05",
+      "name": "Observer is read-only",
+      "stimulus": "E3 observer reads both tenants then attempts INSERT/UPDATE/DELETE.",
+      "pass": "Cross-tenant SELECT succeeds; all mutation attempts fail."
+    },
+    {
+      "id": "RLS-ATTACK-06",
+      "name": "Role bypass audit",
+      "stimulus": "Inspect pg_roles and table ownership for worker, adapter, and observer principals.",
+      "pass": "Worker/adapter/observer are not superusers, do not have BYPASSRLS, and do not own the audit table."
+    },
+    {
+      "id": "RLS-ATTACK-07",
+      "name": "Atomic mutation-plus-audit rollback",
+      "stimulus": "Inject failure between business mutation and audit INSERT within the same transaction.",
+      "pass": "After rollback, neither business effect nor E3 audit row is visible."
+    },
+    {
+      "id": "RLS-ATTACK-08",
+      "name": "Atomic mutation-plus-audit commit",
+      "stimulus": "Execute business mutation and audit INSERT in one transaction and commit.",
+      "pass": "Independent observer sees both final business state and exactly one audit row with matching transition_id, request_commitment, mutation_digest, and target transaction identity."
+    }
+  ]
+}
