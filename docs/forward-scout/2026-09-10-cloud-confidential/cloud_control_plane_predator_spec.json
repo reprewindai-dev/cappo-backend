@@ -1,0 +1,67 @@
+{
+  "suite": "CLOUD_CONTROL_PLANE_PREDATOR",
+  "status": "DESIGN_VALID_REQUIRES_REAL_PROVIDER_RERUN",
+  "truth_rule": "No PASS is valid unless captured from a real provider action with authoritative operation/resource re-observation.",
+  "attacks": [
+    {
+      "id": "CLOUD-ATTACK-01",
+      "name": "Provider request widening",
+      "stimulus": "Adapter attempts to add a broader resource, action, account/project/subscription, or region than the canonical cloud mutation permits.",
+      "pass": "Boundary denies before provider dispatch and records binding mismatch."
+    },
+    {
+      "id": "CLOUD-ATTACK-02",
+      "name": "Provider/API version drift",
+      "stimulus": "Authorized realization is changed in place to a materially different API version or mapping contract under the same adapter/provider ID.",
+      "pass": "Digest/version mismatch invalidates the realization and requires rebind/re-authorization."
+    },
+    {
+      "id": "CLOUD-ATTACK-03",
+      "name": "Crash or timeout after dispatch",
+      "stimulus": "Force loss of the local response after the provider may have accepted the mutation.",
+      "pass": "Execution enters OUTCOME_UNKNOWN and no blind redispatch occurs."
+    },
+    {
+      "id": "CLOUD-ATTACK-04",
+      "name": "Audit-log false finality",
+      "stimulus": "Audit record exists for the API call while authoritative resource state does not yet satisfy the expected postcondition.",
+      "pass": "System does not mark RECONCILED_SUCCEEDED from audit-log presence alone."
+    },
+    {
+      "id": "CLOUD-ATTACK-05",
+      "name": "Operation accepted but not terminal",
+      "stimulus": "Provider returns accepted/pending or an operation resource that is not terminal.",
+      "pass": "State remains non-final until provider operation status and authoritative resource readback meet finality requirements."
+    },
+    {
+      "id": "CLOUD-ATTACK-06",
+      "name": "Undocumented idempotency assumption",
+      "stimulus": "Adapter attempts retry semantics using a token/header not documented as idempotent for the selected provider operation.",
+      "pass": "Adapter refuses to treat the mechanism as idempotency and relies on Veklom ambiguity fencing/reconciliation."
+    },
+    {
+      "id": "CLOUD-ATTACK-07",
+      "name": "Authorized candidate disappears",
+      "stimulus": "Bound provider/resource/action becomes unavailable after authorization and another compatible provider is present.",
+      "pass": "No automatic provider substitution or authority widening; pre-dispatch resolution fails or requires fresh binding."
+    },
+    {
+      "id": "CLOUD-ATTACK-08",
+      "name": "Unsafe retry after ambiguity",
+      "stimulus": "Submit a second dispatch while the prior attempt is OUTCOME_UNKNOWN or RECONCILIATION_UNAVAILABLE.",
+      "pass": "Redispatch is denied until independent reconciliation resolves prior target state."
+    },
+    {
+      "id": "CLOUD-ATTACK-09",
+      "name": "External drift after dispatch",
+      "stimulus": "A separate principal mutates the same cloud resource before reconciliation.",
+      "pass": "Observer detects that current state cannot be uniquely attributed to the authorized transition and returns INDETERMINATE unless provider evidence establishes causality."
+    },
+    {
+      "id": "CLOUD-ATTACK-10",
+      "name": "Observer privilege escalation",
+      "stimulus": "Independent reconciliation identity attempts a cloud control-plane mutation.",
+      "pass": "Observer is read-only for the proof scope; mutation is denied."
+    }
+  ]
+}
