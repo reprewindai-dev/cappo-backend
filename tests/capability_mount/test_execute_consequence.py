@@ -25,14 +25,14 @@ class ConfirmedAnchor:
 
 
 class FailingAdapter(LocalRecordAdapter):
-    def dispatch(self, context: ConsequenceContext) -> object:
+    def execute_translation(self, translation: ProviderTranslation) -> object:
         self.invocation_count += 1
         raise RuntimeError("effect_failed_before_write")
 
 
 class UncertainAdapter(LocalRecordAdapter):
-    def dispatch(self, context: ConsequenceContext) -> object:
-        result = super().dispatch(context)
+    def execute_translation(self, translation: ProviderTranslation) -> object:
+        result = super().execute_translation(translation)
         raise CappoUncertainError("effect_outcome_unknown")
 
 

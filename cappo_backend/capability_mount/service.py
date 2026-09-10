@@ -27,7 +27,7 @@ from cappo_backend.services.mount_evidence import (
     VerifiedMountEvidence,
 )
 
-from .effects import TargetAdapterRegistry, ConsequenceContext, validate_resource
+from .effects import TargetAdapterRegistry, validate_resource
 from .engine import AuditSink, ExecutionBinding, Mounter
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
@@ -1249,15 +1249,39 @@ class MountRegistry:
             "suppression_confirmed": suppression_confirmed,
         }
 
-        context = ConsequenceContext(
-            action=action,
+        from cappo_backend.capability_mount.models import CanonicalEffectRequest, AdapterBinding
+        import hashlib
+        import json
+
+        args_digest = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode("utf-8")).hexdigest()
+        
+        canonical_request = CanonicalEffectRequest(
+            capability_id=str(record.mount.capability_id) if hasattr(record.mount, "capability_id") else "test-cap",
+            operation=action,
             resource=resource,
-            arguments=arguments,
-            operation_id=op_id,
+            arguments_digest=args_digest,
+            consequence_class=getattr(record.mount, "consequence_class", "default") or "default",
+            semantic_version="1.0"
+        )
+        
+        binding = AdapterBinding(
+            adapter_ref=target_ref,
+            adapter_version=getattr(adapter, "adapter_version", "1.0"),
+            provider_api_version=getattr(adapter, "provider_api_version", "v1"),
+            canonical_effect_digest=canonical_request.digest(),
+            mapping_digest="synthetic-test-mapping"
         )
 
         def invoke_effect(**_: object) -> object:
-            return adapter.dispatch(context)
+            translation = adapter.translate(canonical_request, binding, arguments)
+            
+            # The Semantic Isolation Integrity Check:
+            # Reversing the provider translation must yield a digest identical to the
+            # canonical effect request that was authorized.
+            if translation.reverse_normalize().digest() != canonical_request.digest():
+                raise PolicyError("semantic_translation_drift")
+            
+            return adapter.execute_translation(translation)
 
         try:
             # CAPPO's binding is the sole owner of authorization and execution.

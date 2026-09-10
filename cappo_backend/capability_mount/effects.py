@@ -6,29 +6,38 @@ import json
 import re
 from pathlib import Path
 from typing import Mapping, Protocol
+from dataclasses import dataclass
+
+from cappo_backend.capability_mount.models import CanonicalEffectRequest, AdapterBinding
 
 _RESOURCE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
-
 
 class CappoUncertainError(Exception):
     """Raised when an effect may have landed but its outcome cannot be determined."""
 
-
-from dataclasses import dataclass
-
-@dataclass(frozen=True)
-class ConsequenceContext:
-    action: str
-    resource: str
-    arguments: Mapping[str, object]
-    operation_id: str | None
-
+class ProviderTranslation(Protocol):
+    @property
+    def provider_operation(self) -> str: ...
+    @property
+    def provider_payload(self) -> Mapping[str, object]: ...
+    def reverse_normalize(self) -> CanonicalEffectRequest: ...
 
 class TargetAdapter(Protocol):
+    ref: str
+    adapter_version: str
+    provider_api_version: str
     actions: frozenset[str]
     invocation_count: int
 
-    def dispatch(self, context: ConsequenceContext) -> object:
+    def translate(
+        self,
+        canonical_request: CanonicalEffectRequest,
+        binding: AdapterBinding,
+        arguments: Mapping[str, object],
+    ) -> ProviderTranslation:
+        """Translate into a provider-specific operation."""
+
+    def execute_translation(self, translation: ProviderTranslation) -> object:
         """Invoke one registered, capability-owned effect."""
 
 
@@ -37,10 +46,22 @@ def validate_resource(resource: str) -> None:
         raise ValueError("invalid_target_resource")
 
 
+@dataclass(frozen=True)
+class LocalRecordTranslation:
+    canonical_request: CanonicalEffectRequest
+    provider_operation: str
+    provider_payload: Mapping[str, object]
+    
+    def reverse_normalize(self) -> CanonicalEffectRequest:
+        return self.canonical_request
+
+
 class LocalRecordAdapter(TargetAdapter):
     """Activation v1 file-backed record adapter."""
 
     ref = "activation.local-record"
+    adapter_version = "1.0.0"
+    provider_api_version = "v1"
     actions = frozenset({"record.create", "record.read", "record.delete"})
 
     def __init__(self, root: str | Path) -> None:
@@ -55,24 +76,38 @@ class LocalRecordAdapter(TargetAdapter):
             raise ValueError("invalid_target_resource")
         return path
 
-    def dispatch(self, context: ConsequenceContext) -> object:
+    def translate(
+        self,
+        canonical_request: CanonicalEffectRequest,
+        binding: AdapterBinding,
+        arguments: Mapping[str, object],
+    ) -> ProviderTranslation:
+        return LocalRecordTranslation(
+            canonical_request=canonical_request,
+            provider_operation=canonical_request.operation,
+            provider_payload={"arguments": dict(arguments), "resource": canonical_request.resource}
+        )
+
+    def execute_translation(self, translation: ProviderTranslation) -> object:
         self.invocation_count += 1
-        path = self._record_path(context.resource)
-        if context.action == "record.create":
-            document = dict(context.arguments)
+        path = self._record_path(str(translation.provider_payload["resource"]))
+        op = translation.provider_operation
+        
+        if op == "record.create":
+            document = dict(translation.provider_payload["arguments"]) # type: ignore
             path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
             return document
-        if context.action == "record.read":
+        if op == "record.read":
             try:
                 return json.loads(path.read_text(encoding="utf-8"))
             except FileNotFoundError as exc:
-                raise KeyError(context.resource) from exc
-        if context.action == "record.delete":
+                raise KeyError(translation.provider_payload["resource"]) from exc
+        if op == "record.delete":
             try:
                 path.unlink()
             except FileNotFoundError as exc:
-                raise KeyError(context.resource) from exc
-            return {"deleted": context.resource}
+                raise KeyError(translation.provider_payload["resource"]) from exc
+            return {"deleted": translation.provider_payload["resource"]}
         raise ValueError("target_not_mapped")
 
 
