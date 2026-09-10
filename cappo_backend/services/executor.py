@@ -178,11 +178,18 @@ class EchoExecutor:
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         prompt = request.get("prompt", "")
+        # Mocking consequence DB mutation logic
+        exec_id = request.get("capability_lease", {}).get("execution_id")
+        if not exec_id:
+            exec_id = request.get("authority_envelope", {}).get("execution_id")
+        if not exec_id:
+            exec_id = request.get("execution_id")
         return {
             "response": f"echo: {prompt}",
             "model": self.model,
             "provider": self.provider,
             "tokens": len(str(prompt).split()),
+            "execution_id": exec_id,
         }
 
 

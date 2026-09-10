@@ -1,6 +1,7 @@
 
-import os
 import asyncio
+import os
+
 from cappo_backend.security.biscuit import get_root_key_pair
 
 # Delete the existing key

@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from cappo_backend.api.routers.capability_mount_router import get_registry
-from cappo_backend.authorization.legacy_adapter import LegacyCredentialAdapter
 from cappo_backend.authorization.errors import CappoAuthorizationError
+from cappo_backend.authorization.legacy_adapter import LegacyCredentialAdapter
 from cappo_backend.capability_mount.models import Decision
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
@@ -42,6 +42,16 @@ from cappo_backend.services.activation_target import (
     ActivationTargetExecutor,
 )
 from cappo_backend.services.audit_service import AuditService
+from cappo_backend.services.capability_handler import (
+    CapabilityHandler,
+    ConsequenceDominanceViolation,
+    ConsequenceObservationFailure,
+    HandlerAuthorizationError,
+    HandlerExecutionResult,
+    MaterializationPolicy,
+    ReplayDeniedError,
+    VerifiedExecutionContext,
+)
 from cappo_backend.services.consequence_lifecycle import ConsequenceLifecycleExecutor
 from cappo_backend.services.eee import EEEBuilder, build_terminal_eee
 from cappo_backend.services.ei_builder import ExecutionIdentityBuilder
@@ -208,11 +218,58 @@ def _build_orchestrator(
 
 def _execute_run(
     orchestrator: RunOrchestrator,
-    payload: dict[str, Any],
+    ctx: VerifiedExecutionContext,
     db: Session,
 ) -> dict[str, Any]:
     try:
-        return orchestrator.run_governed(payload)
+        handler = CapabilityHandler(db)
+        handler_result = handler.execute(ctx, orchestrator)
+        return handler_result.raw_result
+    except ConsequenceDominanceViolation as exc:
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": exc.error_code,
+                "detail": str(exc),
+                "terminal": True,
+            },
+        )
+    except HandlerAuthorizationError as exc:
+        db.commit()
+        status_code = 403
+        if exc.error_code == "EXECUTOR_UNAVAILABLE":
+            status_code = 503
+        elif exc.error_code == "RUNTIME_OWNERSHIP_CONFLICT":
+            status_code = 409
+        elif exc.error_code == "CONSEQUENCE_OUTCOME_UNCERTAIN":
+            status_code = 502
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": exc.error_code,
+                "detail": str(exc),
+                **(
+                    {
+                        "outcome": "OUTCOME_UNCERTAIN",
+                        "retryable": False,
+                        "terminal": False,
+                    }
+                    if exc.error_code == "CONSEQUENCE_OUTCOME_UNCERTAIN"
+                    else {"terminal": True}
+                ),
+            },
+        )
+    except ConsequenceObservationFailure as exc:
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "CONSEQUENCE_OBSERVATION_FAILED",
+                "detail": str(exc),
+                "fail_closed": True,
+            },
+        )
     except EIValidationError as exc:
         db.commit()
         raise HTTPException(
@@ -223,26 +280,6 @@ def _execute_run(
                 "detail": str(exc),
                 "law0": True,
                 "incident_logged": True,
-            },
-        )
-    except MissingGovernanceDecisionError as exc:
-        db.commit()
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "CAPPO_GOVERNANCE_DECISION_REQUIRED",
-                "detail": str(exc),
-                "fail_closed": True,
-            },
-        )
-    except GovernanceDeniedError as exc:
-        db.commit()
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": "CAPPO_GOVERNANCE_DENIED",
-                "detail": str(exc),
-                "fail_closed": True,
             },
         )
     except ProviderRateLimitedError as exc:
@@ -267,37 +304,6 @@ def _execute_run(
                 "error": getattr(exc, "error_code", "PROVIDER_ERROR"),
                 "detail": str(exc),
                 "terminal": True,
-            },
-        )
-    except TerminalExecutionError as exc:
-        db.commit()
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": getattr(exc, "error_code", "EXECUTION_AUTHORITY_DENIED"),
-                "detail": str(exc),
-                "terminal": True,
-            },
-        )
-    except RuntimeOwnershipError as exc:
-        db.commit()
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "RUNTIME_OWNERSHIP_CONFLICT",
-                "detail": str(exc),
-                "fail_stop": True,
-                "retryable": False,
-            },
-        )
-    except ExecutorUnavailableError as exc:
-        db.commit()
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": "PROVIDER_UNAVAILABLE",
-                "detail": str(exc),
-                "retryable": True,
             },
         )
 
@@ -404,7 +410,10 @@ def _resolve_capability_lease(
 ):
     lease_ref = body.capability_lease
     if lease_ref is None:
-        return None
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "CAPABILITY_LEASE_REQUIRED", "detail": "All governed execution must have a canonical lease context."}
+        )
     principal = request.scope.get("auth_principal")
     if not isinstance(principal, str) or not principal:
         raise HTTPException(
@@ -724,7 +733,28 @@ async def governed_exec(
             lifecycle=lifecycle,
             executor_override=executor_override,
         )
-        result = _execute_run(orchestrator, payload, db)
+        
+        biscuit_token = request.headers.get("Veklom-Authority")
+                
+        ctx = VerifiedExecutionContext(
+            principal=principal,
+            workspace_id=str(canonical_workspace),
+            execution_id=record.token.execution_id,
+            mount_id=lease_ref.mount_id,
+            token_id=lease_ref.token_id,
+            nonce=lease_ref.nonce,
+            receipt_id=lease_receipt_id,
+            action=action,
+            intent_hash=lifecycle.intent_hash,
+            operation_id=operation_id,
+            resource=lifecycle_resource,
+            payload=payload,
+            materialization_policy=MaterializationPolicy.EPHEMERAL if body.execution_mode == "ephemeral" else MaterializationPolicy.PERSISTENT,
+            is_activation=is_activation_package,
+            biscuit_token=biscuit_token,
+        )
+        
+        result = _execute_run(orchestrator, ctx, db)
         if result and "tokens" in result and isinstance(result["tokens"], int):
             gate.record_tokens(str(canonical_workspace), result["tokens"])
     except HTTPException as exc:

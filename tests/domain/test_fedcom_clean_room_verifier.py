@@ -1,11 +1,14 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
+
 from cappo_backend.security.fedcom_verifier import (
-    FedcomCleanRoomVerifier, 
-    SignatureVerificationError, 
-    EnvelopeExpiredError
+    EnvelopeExpiredError,
+    FedcomCleanRoomVerifier,
+    SignatureVerificationError,
 )
-from tests.fixtures.fedcom_fixtures import generate_valid_envelope, TEST_SECRET_KEY
+from tests.fixtures.fedcom_fixtures import TEST_SECRET_KEY, generate_valid_envelope
+
 
 def test_clean_room_verifier_success():
     """Verify that a valid envelope passes the clean-room verification."""

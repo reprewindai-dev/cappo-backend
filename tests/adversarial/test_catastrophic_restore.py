@@ -16,6 +16,7 @@ Vectors tested:
 
 import pytest
 
+
 def test_t_cat_1_full_snapshot_rollback_anchored():
     """T-CAT-1: Restored DB attempts to execute a receipt that PGL confirms was anchored."""
     pass

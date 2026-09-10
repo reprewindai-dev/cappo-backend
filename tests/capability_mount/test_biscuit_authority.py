@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
 from cappo_backend.capability_mount.models import CapabilityPackage
-from tests.capability_mount.test_api import prepare, mount_payload
+from tests.capability_mount.test_api import mount_payload, prepare
+
 
 def get_mount_with_token(client: TestClient) -> dict:
     anchor = prepare(client)
@@ -117,8 +120,9 @@ def test_biscuit_authority_expired(client: TestClient, db: Session) -> None:
     token_id = body['token']['token_id']
     nonce = body['token']['nonce']
     
-    from cappo_backend.security.biscuit import mint_biscuit_capability
     import json
+
+    from cappo_backend.security.biscuit import mint_biscuit_capability
     biscuit_token = mint_biscuit_capability(
         caller_spiffe_id='legacy-unbound',
         executor_spiffe_id='legacy-unbound',
@@ -179,8 +183,9 @@ def test_biscuit_authority_wrong_workspace(client: TestClient, db: Session) -> N
     token_id = body['token']['token_id']
     nonce = body['token']['nonce']
     
-    from cappo_backend.security.biscuit import mint_biscuit_capability
     import json
+
+    from cappo_backend.security.biscuit import mint_biscuit_capability
     biscuit_token = mint_biscuit_capability(
         caller_spiffe_id='legacy-unbound',
         executor_spiffe_id='legacy-unbound',
@@ -268,8 +273,9 @@ def test_biscuit_authority_wrong_subject(client: TestClient, db: Session) -> Non
     token_id = body['token']['token_id']
     nonce = body['token']['nonce']
     
-    from cappo_backend.security.biscuit import mint_biscuit_capability
     import json
+
+    from cappo_backend.security.biscuit import mint_biscuit_capability
     biscuit_token = mint_biscuit_capability(
         caller_spiffe_id='vlink://different-machine',
         executor_spiffe_id='test:principal',
@@ -304,8 +310,9 @@ def test_biscuit_authority_wrong_executor(client: TestClient, db: Session) -> No
     token_id = body['token']['token_id']
     nonce = body['token']['nonce']
     
-    from cappo_backend.security.biscuit import mint_biscuit_capability
     import json
+
+    from cappo_backend.security.biscuit import mint_biscuit_capability
     biscuit_token = mint_biscuit_capability(
         caller_spiffe_id='test:principal',
         executor_spiffe_id='wrong-executor',
@@ -340,8 +347,9 @@ def test_biscuit_authority_legacy_unbound_impossible(client: TestClient, db: Ses
     token_id = body['token']['token_id']
     nonce = body['token']['nonce']
     
-    from cappo_backend.security.biscuit import mint_biscuit_capability
     import json
+
+    from cappo_backend.security.biscuit import mint_biscuit_capability
     # Explicitly minting one manually to show that if it WAS somehow minted,
     # the runtime enforcement rejects it because it doesn't match the caller identity.
     biscuit_token = mint_biscuit_capability(
@@ -373,8 +381,11 @@ def test_biscuit_authority_legacy_unbound_impossible(client: TestClient, db: Ses
     assert response.json()['reason'] == 'missing_cryptographic_authority'
 
 def test_biscuit_authority_explicit_revocation(client: TestClient, db: Session) -> None:
-    from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
-    from cappo_backend.security.biscuit import mint_biscuit_capability
+    from cappo_backend.security.biscuit import (
+        TrustedRevocationState,
+        mint_biscuit_capability,
+        verify_biscuit_capability,
+    )
     
     biscuit_token = mint_biscuit_capability(
         caller_spiffe_id='test:caller',
@@ -399,8 +410,11 @@ def test_biscuit_authority_explicit_revocation(client: TestClient, db: Session) 
     assert result is False
 
 def test_biscuit_authority_stale_epoch(client: TestClient, db: Session) -> None:
-    from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
-    from cappo_backend.security.biscuit import mint_biscuit_capability
+    from cappo_backend.security.biscuit import (
+        TrustedRevocationState,
+        mint_biscuit_capability,
+        verify_biscuit_capability,
+    )
     
     biscuit_token = mint_biscuit_capability(
         caller_spiffe_id='test:caller',
@@ -427,8 +441,11 @@ def test_biscuit_authority_stale_epoch(client: TestClient, db: Session) -> None:
     assert result is False
 
 def test_biscuit_authority_delegation_depth(client: TestClient, db: Session) -> None:
-    from cappo_backend.security.biscuit import verify_biscuit_capability
-    from cappo_backend.security.biscuit import mint_biscuit_capability, attenuate_biscuit_capability
+    from cappo_backend.security.biscuit import (
+        attenuate_biscuit_capability,
+        mint_biscuit_capability,
+        verify_biscuit_capability,
+    )
     
     biscuit_token = mint_biscuit_capability(
         caller_spiffe_id='test:caller',

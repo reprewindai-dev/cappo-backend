@@ -37,8 +37,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
+from cappo_backend.models.execution_identity import ExecutionIdentity
+from cappo_backend.security.biscuit import (
+    TrustedRevocationState,
+    extract_execution_id,
+    verify_biscuit_capability,
+)
+from cappo_backend.services.consequence_lifecycle import ConsequenceOutcomeUncertain
 from cappo_backend.services.executor import (
     Executor,
     ExecutorUnavailableError,
@@ -50,7 +59,6 @@ from cappo_backend.services.orchestrator import (
     RunOrchestrator,
     RuntimeOwnershipError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Materialization policy
@@ -150,6 +158,34 @@ class ConsequenceObservationFailure(Exception):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
+
+
+def _build_trusted_revocation_state(
+    db: Session,
+    ctx: VerifiedExecutionContext,
+) -> TrustedRevocationState:
+    state = TrustedRevocationState()
+    lease = db.execute(
+        select(CapabilityLease).where(
+            CapabilityLease.mount_id == ctx.mount_id,
+            CapabilityLease.execution_identity == ctx.execution_id,
+        )
+    ).scalars().first()
+    if lease is None:
+        state.known_epochs["workspace"] = 0
+    else:
+        state.known_epochs[lease.revocation_scope] = lease.revocation_epoch
+        if lease.lease_state in {
+            LeaseState.REVOKED.value,
+            LeaseState.EXPIRED.value,
+            LeaseState.SUSPENDED.value,
+        }:
+            state.revoke_execution(ctx.execution_id)
+
+    ei = db.get(ExecutionIdentity, ctx.execution_id)
+    if ei is not None and ei.revoked:
+        state.revoke_execution(ctx.execution_id)
+    return state
 
 
 # ---------------------------------------------------------------------------
@@ -255,10 +291,8 @@ class CapabilityHandler:
                 "Execution rejected: no handler-bound biscuit_token."
             )
             
-        from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
         try:
-            trusted_state = TrustedRevocationState()
-            trusted_state.known_epochs["workspace"] = 0
+            trusted_state = _build_trusted_revocation_state(self._db, ctx)
             valid = verify_biscuit_capability(
                 token_b64=ctx.biscuit_token,
                 executor_spiffe_id="cappo-backend",
@@ -270,6 +304,11 @@ class CapabilityHandler:
             if not valid:
                 raise ConsequenceDominanceViolation(
                     "Execution rejected: cryptographic validation failed for biscuit token."
+                )
+            biscuit_execution_id = extract_execution_id(ctx.biscuit_token)
+            if biscuit_execution_id != ctx.execution_id:
+                raise ConsequenceDominanceViolation(
+                    "Execution rejected: biscuit execution_id does not bind to the lease execution_id."
                 )
         except Exception as e:
             if isinstance(e, ConsequenceDominanceViolation):
@@ -285,7 +324,9 @@ class CapabilityHandler:
     ) -> dict:
         """Dispatch execution through the orchestrator under bounded authority."""
         try:
-            return orchestrator.run_governed(ctx.payload)
+            return orchestrator.run_governed(
+                {**ctx.payload, "execution_id": ctx.execution_id}
+            )
         except (GovernanceDeniedError, MissingGovernanceDecisionError) as exc:
             raise HandlerAuthorizationError(str(exc), "GOVERNANCE_DENIED") from exc
         except TerminalExecutionError as exc:
@@ -296,6 +337,10 @@ class CapabilityHandler:
             raise HandlerAuthorizationError(str(exc), "RUNTIME_OWNERSHIP_CONFLICT") from exc
         except ExecutorUnavailableError as exc:
             raise HandlerAuthorizationError(str(exc), "EXECUTOR_UNAVAILABLE") from exc
+        except ConsequenceOutcomeUncertain as exc:
+            raise HandlerAuthorizationError(
+                str(exc), "CONSEQUENCE_OUTCOME_UNCERTAIN"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Independent consequence observation
@@ -363,32 +408,35 @@ class CapabilityHandler:
             "evidence_preserved": True,
             "consequence_preserved": True,
         }
-        self._record_dissolution(dissolution_record)
+        self._record_dissolution(ctx, dissolution_record)
         return True
 
-    def _record_dissolution(self, record: dict) -> None:
+    def _record_dissolution(self, ctx: VerifiedExecutionContext, record: dict) -> None:
         import json
-        try:
-            from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
-            event = ConsequenceExecutionEvent(
-                event_id=str(uuid.uuid4()),
-                operation_id=record["execution_id"],
-                intent_hash=hashlib.sha256(
-                    json.dumps(record, sort_keys=True).encode()
-                ).hexdigest(),
-                version=9999,
-                state="DISSOLVED",
-                actor=record["execution_id"],
-                resource="ephemeral_dissolution",
-                proof_subject_hash=hashlib.sha256(
-                    f"dissolved:{record['instance_id']}:{record['execution_id']}".encode()
-                ).hexdigest(),
-                evidence=record,
-            )
-            self._db.add(event)
-            self._db.flush()
-        except Exception:
-            self._db.rollback()
+
+        from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
+
+        event = ConsequenceExecutionEvent(
+            event_id=str(uuid.uuid4()),
+            operation_id=record["execution_id"],
+            intent_hash=hashlib.sha256(
+                json.dumps(record, sort_keys=True).encode()
+            ).hexdigest(),
+            version=9999,
+            state="DISSOLVED",
+            receipt_id=ctx.receipt_id,
+            mount_id=ctx.mount_id,
+            execution_id=ctx.execution_id,
+            principal=ctx.principal,
+            action=ctx.action,
+            resource="ephemeral_dissolution",
+            completion_proof_type="ephemeral_dissolution",
+            completion_proof_ref=hashlib.sha256(
+                f"dissolved:{record['instance_id']}:{record['execution_id']}".encode()
+            ).hexdigest(),
+        )
+        self._db.add(event)
+        self._db.flush()
 
     # ------------------------------------------------------------------
     # Evidence correlation

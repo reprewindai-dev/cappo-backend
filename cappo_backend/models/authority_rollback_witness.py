@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base
 
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 

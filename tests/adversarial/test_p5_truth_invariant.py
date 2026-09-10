@@ -28,7 +28,6 @@ from cappo_backend.p5.engine import (
 )
 from cappo_backend.p5.models import P5Event, P5Operation
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

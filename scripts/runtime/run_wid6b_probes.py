@@ -1,5 +1,6 @@
 import json
 import time
+
 import requests
 
 BASE_URL = "https://cappo.veklom.com"

@@ -1,10 +1,10 @@
-import json
 import hashlib
-from typing import Dict, Any, List
+import json
+from typing import Any, Dict, List
 
-from cappo_backend.truth.models import TruthClaim, FactRequirement, ClaimState, TypedPayload
 from cappo_backend.truth.inbound_truth_enforcer import InboundTruthEnforcer, TruthLedger
-from cappo_backend.truth.inference import InferenceGateway, AdmissibleContextReceipt
+from cappo_backend.truth.inference import AdmissibleContextReceipt, InferenceGateway
+from cappo_backend.truth.models import ClaimState, FactRequirement, TruthClaim, TypedPayload
 
 # --- Mock Components for the Organism Loop ---
 

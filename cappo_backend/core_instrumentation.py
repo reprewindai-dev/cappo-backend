@@ -1,7 +1,7 @@
 import contextvars
-import os
 import hashlib
 import json
+import os
 
 semantic_commitment_var = contextvars.ContextVar('semantic_commitment', default=None)
 crash_point_var = contextvars.ContextVar('crash_point', default=os.environ.get('CRASH_AT', 'never'))

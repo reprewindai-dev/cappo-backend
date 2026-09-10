@@ -1,9 +1,18 @@
+# ruff: noqa
 import time
+
 import pytest
-from cappo_backend.identity.models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
-from cappo_backend.identity.replay_cache import ReplayCache
-from cappo_backend.authorization.errors import *
+
 from cappo_backend.authorization.cappo_auth import CappoPreauthorizationEnforcer
+from cappo_backend.authorization.errors import *
+from cappo_backend.identity.models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
+from cappo_backend.identity.replay_cache import ReplayCache
+
 
 @pytest.fixture
 def replay_cache():

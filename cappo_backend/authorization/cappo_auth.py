@@ -1,7 +1,16 @@
+# ruff: noqa
 import time
-from typing import Optional, List
+from typing import List, Optional
+
+from cappo_backend.identity.models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
+
 from .errors import *
-from cappo_backend.identity.models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
+
 
 class CappoPreauthorizationEnforcer:
     def __init__(self, replay_cache):

@@ -1,10 +1,14 @@
 import hashlib
 import hmac
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict
 
-from cappo_backend.models.fedcom_v1 import VeklomExecutionEnvelope, VeklomTransitionReceipt, AdmissionDecision
+from cappo_backend.models.fedcom_v1 import (
+    AdmissionDecision,
+    VeklomExecutionEnvelope,
+    VeklomTransitionReceipt,
+)
 
 # In a real environment, this would be an Ed25519 private key.
 # For the prototype mathematical proof, we use HMAC-SHA256.

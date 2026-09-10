@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+import logging
+import uuid
+
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-import httpx
-import uuid
-import logging
 
 from cappo_backend.db.session import SessionLocal
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent

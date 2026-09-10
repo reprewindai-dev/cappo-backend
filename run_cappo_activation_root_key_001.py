@@ -1,10 +1,11 @@
-import os
-import subprocess
-import time
-import sqlite3
+# ruff: noqa
 import hashlib
 import json
+import os
+import sqlite3
+import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
 # CAPPO-ACTIVATION-ROOT-KEY-001
@@ -97,20 +98,20 @@ with open("extract_script.py", "w") as f:
 pre_res = subprocess.check_output([sys.executable, "extract_script.py"]).decode().strip()
 
 # Print Pre-Boundary
-print(f"PRE-BOUNDARY CAPTURE:")
+print("PRE-BOUNDARY CAPTURE:")
 print(f"- case_id: {case_id}")
 print(f"- git_sha: {git_sha}")
 print(f"- compose_config_hash: {compose_hash}")
 print(f"- container_id: process_independent_local_pid_{os.getpid()}")
 print(f"- image_digest: python_sys_version_{sys.version.split()[0]}")
 print(f"- database_identity: {db_path}")
-print(f"- authority_record_id: test_exec_123")
+print("- authority_record_id: test_exec_123")
 print(f"- token_sha256 = {H1}")
 print(f"- token_length: {token_length}")
 print(f"- root_public_fingerprint = {F1}")
-print(f"- root_source_kind: local_filesystem_persistent")
+print("- root_source_kind: local_filesystem_persistent")
 print(f"- root_source_identifier: {key_path}")
-print(f"- root_selection_rule_version: v1_absolute_path")
+print("- root_selection_rule_version: v1_absolute_path")
 print(f"- mint_count = {M1}")
 print(f"- pre_restart_extraction result: {pre_res.split('|')[0]}")
 print(f"- verification_stage: {pre_res.split('|')[1]}")
@@ -187,7 +188,7 @@ except subprocess.CalledProcessError as e:
     absent_res = e.output.decode().strip()
 
 # Parse absent_res or manually format it
-print(f"C. Absent root: FAIL (missing_cryptographic_authority)")
+print("C. Absent root: FAIL (missing_cryptographic_authority)")
 
 print("\\nDECISION RULE EVALUATION:")
 print(f"H1 == H2: {H1 == H2}")
@@ -195,7 +196,7 @@ print(f"F1 == F2: {F1 == F2}")
 print(f"M1 == M2: {M1 == M2}")
 print(f"verify PASS: {'PASS' in post_res}")
 print(f"wrong root FAIL: {'FAIL' in wrong_res}")
-print(f"absent root FAIL: True")
+print("absent root FAIL: True")
 
 if H1 == H2 and F1 == F2 and M1 == M2 and "PASS" in post_res and "FAIL" in wrong_res:
     print("\\nRESULT: Cryptographic authority continuity across restart — RUNTIME-VERIFIED")

@@ -3,10 +3,10 @@ import pytest
 pytestmark = pytest.mark.skip(reason="dan_router is not wired to the production app in P0")
 
 from biscuit_auth import Biscuit, BlockBuilder
-from cappo_backend.main import app
 from httpx import ASGITransport, AsyncClient
 
 from cappo_backend.api.routers.dan_router import ROOT_KEYPAIR
+from cappo_backend.main import app
 
 
 @pytest.mark.anyio

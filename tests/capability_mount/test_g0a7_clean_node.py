@@ -3,12 +3,12 @@ import tempfile
 from collections.abc import Iterator
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
+from alembic import command
 from cappo_backend.config import Settings
 from cappo_backend.config import get_settings as _gs
 from cappo_backend.db.session import get_session

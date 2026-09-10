@@ -1,4 +1,5 @@
-import sqlite3, json
+import json
+import sqlite3
 from pathlib import Path
 
 db = Path(r"C:\Users\antho\.n8n\database.sqlite")

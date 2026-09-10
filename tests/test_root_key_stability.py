@@ -26,9 +26,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from biscuit_auth import Algorithm, KeyPair, PrivateKey
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -141,7 +139,10 @@ def test_biscuit_verifies_after_simulated_process_restart():
 
     _clear_biscuit_module_key_state()
     with patch("cappo_backend.security.biscuit.get_settings", return_value=settings):
-        from cappo_backend.security.biscuit import mint_biscuit_capability, verify_biscuit_capability
+        from cappo_backend.security.biscuit import (
+            mint_biscuit_capability,
+            verify_biscuit_capability,
+        )
         token = mint_biscuit_capability(
             caller_spiffe_id="spiffe://test/caller",
             executor_spiffe_id="spiffe://test/executor",
@@ -187,7 +188,10 @@ def test_cwd_change_does_not_alter_verification_root(tmp_path):
     _clear_biscuit_module_key_state()
     original_cwd = os.getcwd()
     with patch("cappo_backend.security.biscuit.get_settings", return_value=settings):
-        from cappo_backend.security.biscuit import mint_biscuit_capability, verify_biscuit_capability
+        from cappo_backend.security.biscuit import (
+            mint_biscuit_capability,
+            verify_biscuit_capability,
+        )
         token = mint_biscuit_capability(
             caller_spiffe_id="spiffe://test/caller",
             executor_spiffe_id="spiffe://test/executor",
@@ -265,7 +269,7 @@ def test_wrong_root_denies():
 
 def test_missing_production_root_fails_startup():
     """validate_production() must raise when BISCUIT_ROOT_PRIVATE_KEY_HEX is absent."""
-    from cappo_backend.config import Settings, InsecureProductionConfigError
+    from cappo_backend.config import InsecureProductionConfigError, Settings
     s = Settings(environment="production", biscuit_root_private_key_hex=None)
     with pytest.raises(InsecureProductionConfigError) as exc_info:
         s.validate_production()
@@ -281,6 +285,7 @@ def test_missing_production_root_fails_startup():
 def test_malformed_hex_root_fails_settings_validation():
     """Settings construction must raise on malformed BISCUIT_ROOT_PRIVATE_KEY_HEX."""
     from pydantic import ValidationError
+
     from cappo_backend.config import Settings
     with pytest.raises((ValidationError, ValueError)):
         Settings(biscuit_root_private_key_hex="not-valid-hex")
@@ -289,6 +294,7 @@ def test_malformed_hex_root_fails_settings_validation():
 def test_short_hex_root_fails_settings_validation():
     """Settings construction must raise on a valid-hex but too-short key."""
     from pydantic import ValidationError
+
     from cappo_backend.config import Settings
     with pytest.raises((ValidationError, ValueError)):
         Settings(biscuit_root_private_key_hex="deadbeef")  # only 8 chars, needs 64
@@ -301,6 +307,7 @@ def test_short_hex_root_fails_settings_validation():
 def test_cwd_relative_key_path_rejected():
     """A CWD-relative biscuit_root_key_path must be rejected at Settings construction."""
     from pydantic import ValidationError
+
     from cappo_backend.config import Settings
     with pytest.raises((ValidationError, ValueError)) as exc_info:
         Settings(biscuit_root_key_path="./my_key_file")
@@ -312,6 +319,7 @@ def test_cwd_relative_key_path_rejected():
 def test_unanchored_key_path_rejected():
     """An unanchored relative filename must be rejected at Settings construction."""
     from pydantic import ValidationError
+
     from cappo_backend.config import Settings
     with pytest.raises((ValidationError, ValueError)):
         Settings(biscuit_root_key_path="biscuit_root_key")
@@ -344,7 +352,10 @@ def test_lifecycle_authority_survives_persistence_and_process_boundary():
     # PHASE 1: Configure K and issue Biscuit
     _clear_biscuit_module_key_state()
     with patch("cappo_backend.security.biscuit.get_settings", return_value=settings):
-        from cappo_backend.security.biscuit import mint_biscuit_capability, extract_authority_context
+        from cappo_backend.security.biscuit import (
+            extract_authority_context,
+            mint_biscuit_capability,
+        )
         token_b64 = mint_biscuit_capability(
             caller_spiffe_id="spiffe://test/lifecycle-caller",
             executor_spiffe_id="spiffe://test/lifecycle-executor",
@@ -366,7 +377,10 @@ def test_lifecycle_authority_survives_persistence_and_process_boundary():
 
     # PHASE 5: Reload persisted token and verify
     with patch("cappo_backend.security.biscuit.get_settings", return_value=fresh_settings):
-        from cappo_backend.security.biscuit import verify_biscuit_capability, extract_authority_context
+        from cappo_backend.security.biscuit import (
+            extract_authority_context,
+            verify_biscuit_capability,
+        )
 
         # Verification passes
         verify_result = verify_biscuit_capability(
