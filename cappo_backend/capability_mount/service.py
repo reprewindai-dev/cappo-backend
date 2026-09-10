@@ -119,7 +119,7 @@ class MountRecord:
 
 
 class MountRegistry:
-    """Own package discovery and DB-backed ephemeral mount records."""
+    """Own CAPPO-side package registration and durable ephemeral mount state. External capability discovery/resolution belongs to cAPI."""
 
     def __init__(
         self,
@@ -140,6 +140,56 @@ class MountRegistry:
 
     def list_packages(self) -> list[CapabilityPackage]:
         return sorted(self.packages.values(), key=lambda package: package.id)
+
+    def evaluate_candidates(
+        self,
+        candidates: list[str],
+        context: dict[str, Any]
+    ) -> "CandidateEvaluationResult":
+        import hashlib
+        from .models import Decision, CandidateEvaluationResult
+        
+        permitted = []
+        rejected = {}
+        
+        budget = context.get("budget", 999999)
+        forbidden_providers = set(context.get("forbidden_providers", []))
+        
+        for candidate in candidates:
+            if candidate not in self.packages:
+                rejected[candidate] = "unknown_package"
+                continue
+            
+            pkg = self.packages[candidate]
+            pkg_cost = pkg.policy_defaults.get("cost", 0)
+            
+            if candidate in forbidden_providers:
+                rejected[candidate] = "policy_forbidden"
+            elif pkg_cost > budget:
+                rejected[candidate] = "budget_ceiling"
+            else:
+                permitted.append(candidate)
+                
+        if not permitted:
+            return CandidateEvaluationResult(
+                decision=Decision.DENY,
+                permitted_candidates=[],
+                rejected_candidates=rejected,
+                authority_reference=None,
+                binding_constraints_digest=None
+            )
+            
+        permitted.sort()
+        auth_ref = f"auth-{id(self)}"
+        digest = hashlib.sha256(f"{auth_ref}:{','.join(permitted)}".encode()).hexdigest()
+        
+        return CandidateEvaluationResult(
+            decision=Decision.ALLOW,
+            permitted_candidates=permitted,
+            rejected_candidates=rejected,
+            authority_reference=auth_ref,
+            binding_constraints_digest=digest
+        )
 
     def _db(self) -> Session:
         if self.db is None:
@@ -465,20 +515,49 @@ class MountRegistry:
         execution_id: str | None = None,
         caller_spiffe_id: str | None = None,
         executor_spiffe_id: str | None = None,
+        authority_evaluation: "CandidateEvaluationResult" | None = None,
     ) -> tuple[MountRecord | None, AnchorResult, str]:
+        from .models import Decision
         db = self._db()
+        
+        # Enforce authority constraints if an evaluation result is provided
+        if authority_evaluation is not None:
+            if authority_evaluation.decision == Decision.DENY:
+                anchor = self.anchor.anchor(
+                    "mount",
+                    action="mount",
+                    decision=Decision.DENY.value,
+                    reason="authority_denied",
+                    mount=None,
+                    token=None,
+                )
+                db.commit()
+                return None, anchor, "authority_denied"
+                
+            if package_ref not in authority_evaluation.permitted_candidates:
+                anchor = self.anchor.anchor(
+                    "mount",
+                    action="mount",
+                    decision=Decision.DENY.value,
+                    reason="binding_mismatch",
+                    mount=None,
+                    token=None,
+                )
+                db.commit()
+                return None, anchor, "binding_mismatch"
+                
         package = self.packages.get(package_ref)
         if package is None:
             anchor = self.anchor.anchor(
                 "mount",
                 action="mount",
                 decision=Decision.DENY.value,
-                reason="unknown_package",
+                reason="unknown_package" if authority_evaluation is None else "provider_disappeared",
                 mount=None,
                 token=None,
             )
             db.commit()
-            return None, anchor, "unknown_package"
+            return None, anchor, "unknown_package" if authority_evaluation is None else "provider_disappeared"
         try:
             mount, token = self.mounter.mount(
                 package,

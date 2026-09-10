@@ -39,6 +39,12 @@ class Decision(str, Enum):
     ALLOW = "allow"
     DENY = "deny"
 
+class CandidateEvaluationResult(ContractModel):
+    decision: Decision
+    permitted_candidates: list[str]
+    rejected_candidates: dict[str, str]
+    authority_reference: str | None = None
+    binding_constraints_digest: str | None = None
 
 class CapabilityPackage(ContractModel):
     id: str = Field(pattern=r"^[A-Za-z0-9._-]+@v[0-9]+$")
@@ -165,7 +171,7 @@ class EphemeralScopedToken(ContractModel):
     single_use: Literal[True] = True
     nonce_consumed: bool = False
     nonce: str = Field(min_length=1)
-    biscuit_token: str | None = None
+    biscuit_token: str | None = Field(default=None, exclude=True)
 
     @field_validator("expires_at")
     @classmethod
@@ -202,7 +208,7 @@ class PersistentServiceToken(ContractModel):
     single_use: Literal[False] = False
     nonce_consumed: bool = False
     nonce: str = Field(min_length=1)
-    biscuit_token: str | None = None
+    biscuit_token: str | None = Field(default=None, exclude=True)
 
     @field_validator("expires_at")
     @classmethod
