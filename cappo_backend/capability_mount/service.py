@@ -27,13 +27,14 @@ from cappo_backend.services.mount_evidence import (
     VerifiedMountEvidence,
 )
 
-from .effects import EffectTargetRegistry, validate_resource
+from .effects import TargetAdapterRegistry, ConsequenceContext, validate_resource
 from .engine import AuditSink, ExecutionBinding, Mounter
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
     CapabilityPackage,
     Decision,
     EphemeralScopedToken,
+    PersistentServiceToken,
     ExecutionAuditEvent,
     Mount,
     MountPolicy,
@@ -118,20 +119,20 @@ class MountRecord:
 
 
 class MountRegistry:
-    """Own package discovery and DB-backed ephemeral mount records."""
+    """Own CAPPO-side package registration and durable ephemeral mount state. External capability discovery/resolution belongs to cAPI."""
 
     def __init__(
         self,
         db: Session | None = None,
         anchor: EventAnchor | None = None,
         evidence_verifier: BoundMountEvidenceVerifier | None = None,
-        effect_targets: EffectTargetRegistry | None = None,
+        target_adapters: TargetAdapterRegistry | None = None,
     ) -> None:
         self.db = db
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
         self.evidence_verifier = evidence_verifier or BoundMountEvidenceVerifier()
-        self.effect_targets = effect_targets or EffectTargetRegistry()
+        self.target_adapters = target_adapters or TargetAdapterRegistry()
         self.mounter = Mounter()
 
     def register_package(self, package: CapabilityPackage) -> None:
@@ -140,6 +141,56 @@ class MountRegistry:
     def list_packages(self) -> list[CapabilityPackage]:
         return sorted(self.packages.values(), key=lambda package: package.id)
 
+    def evaluate_candidates(
+        self,
+        candidates: list[str],
+        context: dict[str, Any]
+    ) -> "CandidateEvaluationResult":
+        import hashlib
+        from .models import Decision, CandidateEvaluationResult
+        
+        permitted = []
+        rejected = {}
+        
+        budget = context.get("budget", 999999)
+        forbidden_providers = set(context.get("forbidden_providers", []))
+        
+        for candidate in candidates:
+            if candidate not in self.packages:
+                rejected[candidate] = "unknown_package"
+                continue
+            
+            pkg = self.packages[candidate]
+            pkg_cost = pkg.policy_defaults.get("cost", 0)
+            
+            if candidate in forbidden_providers:
+                rejected[candidate] = "policy_forbidden"
+            elif pkg_cost > budget:
+                rejected[candidate] = "budget_ceiling"
+            else:
+                permitted.append(candidate)
+                
+        if not permitted:
+            return CandidateEvaluationResult(
+                decision=Decision.DENY,
+                permitted_candidates=[],
+                rejected_candidates=rejected,
+                authority_reference=None,
+                binding_constraints_digest=None
+            )
+            
+        permitted.sort()
+        auth_ref = f"auth-{id(self)}"
+        digest = hashlib.sha256(f"{auth_ref}:{','.join(permitted)}".encode()).hexdigest()
+        
+        return CandidateEvaluationResult(
+            decision=Decision.ALLOW,
+            permitted_candidates=permitted,
+            rejected_candidates=rejected,
+            authority_reference=auth_ref,
+            binding_constraints_digest=digest
+        )
+
     def _db(self) -> Session:
         if self.db is None:
             raise RuntimeError("durable mount storage requires a database session")
@@ -147,7 +198,14 @@ class MountRegistry:
 
     def _record(self, row: CapabilityMount) -> MountRecord:
         mount = Mount.model_validate(row.mount_json)
-        token = EphemeralScopedToken.model_validate(row.token_json).model_copy(
+        raw_token_json = row.token_json
+        token_type = raw_token_json.get("type", "ephemeral_scoped") if isinstance(raw_token_json, dict) else "ephemeral_scoped"
+        if token_type == "persistent_service":
+            token_cls = PersistentServiceToken
+        else:
+            token_cls = EphemeralScopedToken
+            
+        token = token_cls.model_validate(row.token_json).model_copy(
             update={"nonce_consumed": row.nonce_consumed}
         )
 
@@ -457,20 +515,49 @@ class MountRegistry:
         execution_id: str | None = None,
         caller_spiffe_id: str | None = None,
         executor_spiffe_id: str | None = None,
+        authority_evaluation: "CandidateEvaluationResult" | None = None,
     ) -> tuple[MountRecord | None, AnchorResult, str]:
+        from .models import Decision
         db = self._db()
+        
+        # Enforce authority constraints if an evaluation result is provided
+        if authority_evaluation is not None:
+            if authority_evaluation.decision == Decision.DENY:
+                anchor = self.anchor.anchor(
+                    "mount",
+                    action="mount",
+                    decision=Decision.DENY.value,
+                    reason="authority_denied",
+                    mount=None,
+                    token=None,
+                )
+                db.commit()
+                return None, anchor, "authority_denied"
+                
+            if package_ref not in authority_evaluation.permitted_candidates:
+                anchor = self.anchor.anchor(
+                    "mount",
+                    action="mount",
+                    decision=Decision.DENY.value,
+                    reason="binding_mismatch",
+                    mount=None,
+                    token=None,
+                )
+                db.commit()
+                return None, anchor, "binding_mismatch"
+                
         package = self.packages.get(package_ref)
         if package is None:
             anchor = self.anchor.anchor(
                 "mount",
                 action="mount",
                 decision=Decision.DENY.value,
-                reason="unknown_package",
+                reason="unknown_package" if authority_evaluation is None else "provider_disappeared",
                 mount=None,
                 token=None,
             )
             db.commit()
-            return None, anchor, "unknown_package"
+            return None, anchor, "unknown_package" if authority_evaluation is None else "provider_disappeared"
         try:
             mount, token = self.mounter.mount(
                 package,
@@ -524,6 +611,10 @@ class MountRegistry:
             db.rollback()
             return None, anchor, "pgl_anchor_unconfirmed"
 
+        token_dict = token.model_dump(mode="json")
+        if getattr(token, "biscuit_token", None):
+            token_dict["biscuit_token"] = token.biscuit_token
+
         db.add(
             CapabilityMount(
                 mount_id=mount.id,
@@ -532,7 +623,7 @@ class MountRegistry:
                 owner_principal=owner_principal,
                 owner_workspace=owner_workspace or scope.workspace,
                 mount_json=mount.model_dump(mode="json"),
-                token_json=token.model_dump(mode="json"),
+                token_json=token_dict,
                 issued_at=token.issued_at,
                 expires_at=token.expires_at,
                 anchor_status=anchor.status,
@@ -1088,7 +1179,7 @@ class MountRegistry:
             and (token_id != row.token_id or nonce != row.token_nonce)
         ):
             return preflight_deny("token_mismatch", record)
-        adapter = self.effect_targets.resolve(target_ref)
+        adapter = self.target_adapters.resolve(target_ref)
         if adapter is None:
             return preflight_deny("unknown_effect_target", record)
         if action not in adapter.actions:
@@ -1145,7 +1236,7 @@ class MountRegistry:
                     ),
                 )
 
-        before_count = adapter.invocations_by_action.get(action, 0)
+        before_count = adapter.invocation_count
         result: object | None = None
         decision = Decision.ALLOW
         reason = "allowed"
@@ -1158,8 +1249,15 @@ class MountRegistry:
             "suppression_confirmed": suppression_confirmed,
         }
 
+        context = ConsequenceContext(
+            action=action,
+            resource=resource,
+            arguments=arguments,
+            operation_id=op_id,
+        )
+
         def invoke_effect(**_: object) -> object:
-            return adapter.invoke(action, resource, arguments)
+            return adapter.dispatch(context)
 
         try:
             # CAPPO's binding is the sole owner of authorization and execution.
@@ -1185,7 +1283,7 @@ class MountRegistry:
         ).scalar_one_or_none()
         consequence_state = latest.state if latest is not None else None
         receipt_id = latest.receipt_id if latest is not None else None
-        after_count = adapter.invocations_by_action.get(action, 0)
+        after_count = adapter.invocation_count
         target_invoked = after_count > before_count
 
         should_terminate = not (

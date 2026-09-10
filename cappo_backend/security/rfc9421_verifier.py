@@ -1,7 +1,9 @@
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+
 
 class RFC9421SignatureMiddleware(BaseHTTPMiddleware):
     """

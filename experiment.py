@@ -1,12 +1,13 @@
-import os
-import subprocess
-import time
-import requests
-import sqlite3
-import json
 import hashlib
-import sys
+import json
+import os
 import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+
+import requests
 
 CASE_ID = "CAPPO-ACTIVATION-ROOT-KEY-001"
 

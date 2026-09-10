@@ -1,13 +1,14 @@
-import sys
-import os
-import json
 import hashlib
+import json
+import os
+import sys
 
 from fastapi import Request
-from cappo_backend.core_instrumentation import semantic_commitment_var, crash_point_var, check_crash
 
 # Patch LocalRecordAdapter
 import cappo_backend.capability_mount.effects as effects
+from cappo_backend.core_instrumentation import check_crash, crash_point_var, semantic_commitment_var
+
 original_invoke = effects.LocalRecordAdapter.invoke
 def instrumented_invoke(self, action, resource, arguments):
     check_crash("before_invocation")
@@ -28,6 +29,7 @@ effects.LocalRecordAdapter.invoke = instrumented_invoke
 
 # Patch MountRegistry._record
 import cappo_backend.capability_mount.service as service
+
 original_record = service.MountRegistry._record
 
 def instrumented_record(self, row):
@@ -61,6 +63,7 @@ def instrumented_record(self, row):
 service.MountRegistry._record = instrumented_record
 
 from cappo_backend.main import app
+
 
 @app.middleware("http")
 async def semantic_commitment_middleware(request: Request, call_next):

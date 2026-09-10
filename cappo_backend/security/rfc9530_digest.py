@@ -1,8 +1,10 @@
-import hashlib
 import base64
+import hashlib
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+
 
 class RFC9530DigestMiddleware(BaseHTTPMiddleware):
     """

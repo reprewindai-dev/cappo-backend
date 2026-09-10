@@ -11,28 +11,31 @@ bypass is gone.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import time
 from typing import Any
 
-import json
-import base64
-import hashlib
-from fastapi.responses import JSONResponse
-from cappo_backend.identity.validator import IdentityValidator
-from cappo_backend.identity.middleware import WIDMiddlewareContext, RouteClassification
-from cappo_backend.identity.replay_cache import RedisReplayCache, ReplayCache
-from cappo_backend.identity.errors import IdentityValidationError
-from cappo_backend.authorization.errors import CappoAuthorizationError
-from cappo_backend.authorization.cappo_auth import CappoPreauthorizationEnforcer
-from cappo_backend.identity.models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
-
-
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from cappo_backend.authorization.cappo_auth import CappoPreauthorizationEnforcer
+from cappo_backend.authorization.errors import CappoAuthorizationError
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
+from cappo_backend.identity.errors import IdentityValidationError
+from cappo_backend.identity.middleware import RouteClassification, WIDMiddlewareContext
+from cappo_backend.identity.models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
+from cappo_backend.identity.replay_cache import RedisReplayCache, ReplayCache
+from cappo_backend.identity.validator import IdentityValidator
 from cappo_backend.security.http_signatures import (
     SignatureVerificationError,
     verify_rfc9421_request,

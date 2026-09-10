@@ -32,7 +32,6 @@ from sqlalchemy.orm import Session
 from cappo_backend.p5.models import P5Event, P5Operation, P5Outbox
 from cappo_backend.p5.states import P5EventType, SinkClass, TruthState
 
-
 # ---------------------------------------------------------------------------
 # Custom exceptions
 # ---------------------------------------------------------------------------

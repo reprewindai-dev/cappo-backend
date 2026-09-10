@@ -20,6 +20,7 @@ class ContractModel(BaseModel):
 
 class TokenType(str, Enum):
     EPHEMERAL_SCOPED = "ephemeral_scoped"
+    PERSISTENT_SERVICE = "persistent_service"
 
 
 class LifecycleState(str, Enum):
@@ -38,6 +39,12 @@ class Decision(str, Enum):
     ALLOW = "allow"
     DENY = "deny"
 
+class CandidateEvaluationResult(ContractModel):
+    decision: Decision
+    permitted_candidates: list[str]
+    rejected_candidates: dict[str, str]
+    authority_reference: str | None = None
+    binding_constraints_digest: str | None = None
 
 class CapabilityPackage(ContractModel):
     id: str = Field(pattern=r"^[A-Za-z0-9._-]+@v[0-9]+$")
@@ -110,7 +117,7 @@ class Grants(ContractModel):
 
 
 class MountToken(ContractModel):
-    type: TokenType = TokenType.EPHEMERAL_SCOPED
+    type: TokenType
     ttl_seconds: int = Field(ge=1, le=600)
 
 
@@ -150,6 +157,7 @@ class Mount(ContractModel):
 
 
 class EphemeralScopedToken(ContractModel):
+    type: Literal[TokenType.EPHEMERAL_SCOPED] = TokenType.EPHEMERAL_SCOPED
     token_id: str = Field(min_length=1)
     mount_id: str = Field(min_length=1)
     execution_id: str = Field(min_length=1)
@@ -183,3 +191,29 @@ class ExecutionAuditEvent(ContractModel):
     ts: datetime
     prev_hash: str | None
     event_hash: str = Field(min_length=1)
+
+
+class PersistentServiceToken(ContractModel):
+    type: Literal[TokenType.PERSISTENT_SERVICE] = TokenType.PERSISTENT_SERVICE
+    token_id: str = Field(min_length=1)
+    mount_id: str = Field(min_length=1)
+    execution_id: str = Field(min_length=1)
+    package_ref: str = Field(min_length=1)
+    scope: TokenDescriptorScope
+    grants: Grants
+    policy: MountPolicy
+    issued_at: datetime
+    expires_at: datetime
+    ttl_seconds: int = Field(ge=1)
+    single_use: Literal[False] = False
+    nonce_consumed: bool = False
+    nonce: str = Field(min_length=1)
+    biscuit_token: str | None = Field(default=None, exclude=True)
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_after_issue(cls, value: datetime, info: ValidationInfo) -> datetime:
+        issued_at = info.data.get("issued_at")
+        if isinstance(issued_at, datetime) and value <= issued_at:
+            raise ValueError("expires_at must be after issued_at")
+        return value

@@ -1,8 +1,10 @@
-import jwt
 import time
 import uuid
-from cryptography.hazmat.primitives.asymmetric import ed25519
+
+import jwt
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
 
 class CryptoEnvelope:
     """

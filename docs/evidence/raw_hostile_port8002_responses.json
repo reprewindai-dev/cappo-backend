@@ -1,0 +1,167 @@
+{
+  "audit_title": "Veklom CAPPO Hostile Request Battery \u2014 Canonical Proof",
+  "test_environment": "TestClient + SQLite battery.db (auth_enabled=False)",
+  "authority_boundary": "All Biscuit tokens read from hostile_fixtures.json. No mint_biscuit_capability called in client code anywhere.",
+  "run_timestamp": "2026-09-10T04:47:14.215416+00:00",
+  "total_tests": 11,
+  "passed_tests": 11,
+  "all_tests_passed": true,
+  "raw_responses": [
+    {
+      "test_id": "HOSTILE-01",
+      "test_name": "Test A: Unauthenticated Dispatch",
+      "timestamp_iso8601": "2026-09-10T04:47:12.275422+00:00",
+      "passed": true,
+      "expected_status": 401,
+      "actual_status": 401,
+      "response_body": {
+        "detail": {
+          "error": "AuthorityDeniedError",
+          "detail": "Missing or invalid Authorization header"
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-02",
+      "test_name": "Test A2: Forged Authority Header",
+      "timestamp_iso8601": "2026-09-10T04:47:12.407906+00:00",
+      "passed": true,
+      "expected_status": 401,
+      "actual_status": 401,
+      "response_body": {
+        "detail": {
+          "error": "AuthorityDeniedError",
+          "detail": "Invalid or revoked token"
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-10",
+      "test_name": "Test B: Valid Authorized Dispatch",
+      "timestamp_iso8601": "2026-09-10T04:47:12.543344+00:00",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response_body": {
+        "status": "DISPATCHED",
+        "execution_id": "exec-hostile-valid-001",
+        "mount_id": "mount-ba0a3cec-1180-4da1-a2c9-cadf0d3689d0",
+        "evidence": {
+          "timestamp": "2026-09-09T13:51:00Z",
+          "transaction_hash": "mock_tx_hash"
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-03",
+      "test_name": "Test C: Exact Replay of Consumed Lease \u2192 423",
+      "timestamp_iso8601": "2026-09-10T04:47:12.681510+00:00",
+      "passed": true,
+      "expected_status": 423,
+      "actual_status": 423,
+      "response_body": {
+        "detail": {
+          "error": "ReplayDeniedError",
+          "detail": "Execution ID already consumed \u2014 exact replay denied"
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-04",
+      "test_name": "Test E: Execution ID Substitution \u2192 422",
+      "timestamp_iso8601": "2026-09-10T04:47:12.816845+00:00",
+      "passed": true,
+      "expected_status": 422,
+      "actual_status": 422,
+      "response_body": {
+        "detail": {
+          "error": "EnvelopeSubstitutionError",
+          "detail": "Token execution_id does not match request"
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-05",
+      "test_name": "Test F: Envelope/Execution Substitution \u2192 422",
+      "timestamp_iso8601": "2026-09-10T04:47:12.970026+00:00",
+      "passed": true,
+      "expected_status": 422,
+      "actual_status": 422,
+      "response_body": {
+        "detail": {
+          "error": "EnvelopeSubstitutionError",
+          "detail": "Token execution_id does not match request"
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-06",
+      "test_name": "Test G: Invalid/Revoked Token \u2192 401",
+      "timestamp_iso8601": "2026-09-10T04:47:13.135855+00:00",
+      "passed": true,
+      "expected_status": 401,
+      "actual_status": 401,
+      "response_body": {
+        "detail": {
+          "error": "AuthorityDeniedError",
+          "detail": "Invalid or revoked token"
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-07",
+      "test_name": "Test K: Reconcile \u2014 Target Unavailable \u2192 503",
+      "timestamp_iso8601": "2026-09-10T04:47:13.292456+00:00",
+      "passed": true,
+      "expected_status": 503,
+      "actual_status": 503,
+      "response_body": {
+        "detail": {
+          "error": "RECONCILIATION_UNAVAILABLE",
+          "detail": "Target unreachable",
+          "is_locked": false
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-08",
+      "test_name": "Test L: Reconcile \u2014 Infrastructure Down \u2192 503",
+      "timestamp_iso8601": "2026-09-10T04:47:13.458619+00:00",
+      "passed": true,
+      "expected_status": 503,
+      "actual_status": 503,
+      "response_body": {
+        "detail": {
+          "error": "RECONCILIATION_UNAVAILABLE",
+          "detail": "Target unreachable",
+          "is_locked": false
+        }
+      }
+    },
+    {
+      "test_id": "HOSTILE-09",
+      "test_name": "Test L Recovery: Reconcile Recovered \u2192 200",
+      "timestamp_iso8601": "2026-09-10T04:47:13.620443+00:00",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response_body": {
+        "execution_id": "exec-hostile-recovered",
+        "status": "RECONCILED_SUCCEEDED",
+        "finality_state": "COMMITTED"
+      }
+    },
+    {
+      "test_id": "HOSTILE-11",
+      "test_name": "Test M: Mount Response Excludes Raw Biscuit Token",
+      "timestamp_iso8601": "2026-09-10T04:47:14.087285+00:00",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response_body": {
+        "biscuit_token_absent": true,
+        "decision": "allow"
+      }
+    }
+  ]
+}

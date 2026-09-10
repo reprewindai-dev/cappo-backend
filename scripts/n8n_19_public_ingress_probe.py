@@ -1,12 +1,14 @@
-import httpx
-import uuid
-import json
-import sys
-import os
-import time
+# ruff: noqa
 import datetime
-import jwt
+import json
+import os
+import sys
+import time
+import uuid
 from pathlib import Path
+
+import httpx
+import jwt
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -21,9 +23,15 @@ def configure_database() -> None:
 configure_database()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from cappo_backend.execution.kms import LocalKMSProvider, MockHardwareSecurityModule, KMSKeyRecord, KMSKeyStatus
-from cappo_backend.db.session import SessionLocal
 from cryptography.hazmat.primitives.asymmetric import ed25519
+
+from cappo_backend.db.session import SessionLocal
+from cappo_backend.execution.kms import (
+    KMSKeyRecord,
+    KMSKeyStatus,
+    LocalKMSProvider,
+    MockHardwareSecurityModule,
+)
 from scripts.n8n_17_connector_target import SandboxFileAppendConnector
 
 TARGET_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scratch', 'n8n17', 'n8n_governed_append.jsonl'))

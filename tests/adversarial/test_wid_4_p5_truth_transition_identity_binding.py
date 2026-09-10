@@ -1,16 +1,20 @@
+# ruff: noqa
 import time
-import pytest
 import uuid
+
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+
 from cappo_backend.db.base import Base
-from cappo_backend.p5.engine import P5Engine, compute_proof_subject_hash
-from cappo_backend.p5.states import TruthState
-from cappo_backend.p5.models import P5Operation, P5Event, P5Outbox
-from cappo_backend.p5.truth_enforcer import P5TruthEnforcer
 from cappo_backend.identity.models import AuthorityArtifact
 from cappo_backend.identity.replay_cache import ReplayCache
+from cappo_backend.p5.engine import P5Engine, compute_proof_subject_hash
 from cappo_backend.p5.errors import *
+from cappo_backend.p5.models import P5Event, P5Operation, P5Outbox
+from cappo_backend.p5.states import TruthState
+from cappo_backend.p5.truth_enforcer import P5TruthEnforcer
+
 
 @pytest.fixture
 def db_session():
@@ -209,7 +213,9 @@ def test_13_denial_leaves_p5_truth_state_unchanged(truth_enforcer, active_operat
     op = p5_engine._load(active_operation)
     assert op.current_truth_state == TruthState.OUTCOME_UNKNOWN.value
 
-from cappo_backend.p5.states import TruthState, P5EventType
+from cappo_backend.p5.states import P5EventType, TruthState
+
+
 # ...
 def test_14_denial_does_not_append_strengthened_success_event(truth_enforcer, active_operation, p5_engine, db_session):
     auth = make_authority(["execute"])

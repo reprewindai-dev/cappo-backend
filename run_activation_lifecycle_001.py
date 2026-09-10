@@ -1,13 +1,14 @@
+import asyncio
 import os
+import subprocess
 import sys
 import time
-import subprocess
-import asyncio
-import httpx
 import uuid
+
+import httpx
 import jwt
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 private_key = ed25519.Ed25519PrivateKey.generate()
 public_key = private_key.public_key()
@@ -32,11 +33,13 @@ os.environ["CAPABILITY_EFFECT_RECORD_ROOT"] = os.path.abspath("./test_effect_roo
 env = os.environ.copy()
 
 # Run DB metadata create all
-from cappo_backend.db.session import engine, SessionLocal
-from cappo_backend.db.base import Base
 import cappo_backend.models.capability_lease
+from cappo_backend.db.base import Base
+from cappo_backend.db.session import SessionLocal, engine
+
 Base.metadata.create_all(bind=engine)
 from cappo_backend.security.merkle_ops import seed_merkle_sequence
+
 with SessionLocal() as db:
     seed_merkle_sequence(db)
     db.commit()

@@ -1,4 +1,4 @@
-﻿"""Canonical governed execution handler — transport-independent authority layer.
+"""Canonical governed execution handler — transport-independent authority layer.
 
 This module is the single owner of governed execution semantics after the
 transport adapter (exec_router) has normalized an inbound request into a
@@ -51,7 +51,6 @@ from cappo_backend.services.orchestrator import (
     RuntimeOwnershipError,
 )
 
-
 # ---------------------------------------------------------------------------
 # Materialization policy
 # ---------------------------------------------------------------------------
@@ -78,6 +77,8 @@ class MaterializationPolicy(str, Enum):
 # Verified execution context (the normalized contract)
 # ---------------------------------------------------------------------------
 
+from cappo_backend.execution.vre_envelope import VREEnvelopeSpec
+
 @dataclass(frozen=True)
 class VerifiedExecutionContext:
     """The transport-normalized, authority-bound execution contract.
@@ -99,9 +100,10 @@ class VerifiedExecutionContext:
     operation_id: str
     resource: str
     payload: dict
-    materialization_policy: MaterializationPolicy = MaterializationPolicy.PERSISTENT
+    biscuit_token: str
+    materialization_policy: MaterializationPolicy
+    presented_envelope_spec: VREEnvelopeSpec | None = None
     is_activation: bool = False
-    biscuit_token: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +166,9 @@ class CapabilityHandler:
     policies execute through this single handler.
     """
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, replay_cache: Any = None) -> None:
         self._db = db
+        self.replay_cache = replay_cache
 
     def execute(
         self,
@@ -190,8 +193,6 @@ class CapabilityHandler:
 
         raw_result = self._dispatch(ctx, orchestrator)
 
-        lifecycle_states.append("CONSEQUENCE_ESTABLISHED")
-
         # Independent observation: SUCCESS cannot be emitted before this.
         observation = self._observe_consequence(ctx, raw_result)
         if not observation:
@@ -199,6 +200,8 @@ class CapabilityHandler:
                 f"Consequence for execution_id={ctx.execution_id!r} "
                 f"could not be independently confirmed. SUCCESS withheld."
             )
+
+        lifecycle_states.append("CONSEQUENCE_ESTABLISHED")
 
         dissolved = False
         if ctx.materialization_policy == MaterializationPolicy.EPHEMERAL:
@@ -254,29 +257,42 @@ class CapabilityHandler:
             raise ConsequenceDominanceViolation(
                 "Execution rejected: no handler-bound biscuit_token."
             )
-            
-        from cappo_backend.security.biscuit import verify_biscuit_capability, TrustedRevocationState
-        try:
-            trusted_state = TrustedRevocationState()
-            trusted_state.known_epochs["workspace"] = 0
-            valid = verify_biscuit_capability(
-                token_b64=ctx.biscuit_token,
-                executor_spiffe_id="cappo-backend",
-                action=ctx.action,
-                resource=ctx.resource,
-                subject_spiffe_id=ctx.principal,
-                trusted_state=trusted_state
-            )
-            if not valid:
-                raise ConsequenceDominanceViolation(
-                    "Execution rejected: cryptographic validation failed for biscuit token."
-                )
-        except Exception as e:
-            if isinstance(e, ConsequenceDominanceViolation):
-                raise
+
+        from cappo_backend.security.biscuit import verify_biscuit_capability
+        from cappo_backend.security.biscuit import TrustedRevocationState
+        
+        # In a real environment, revocation state would be fetched from the DB/Redis.
+        trusted_state = TrustedRevocationState()
+        trusted_state.known_epochs["workspace"] = 0
+        
+        # Enforce exact match on execution_id
+        is_valid = verify_biscuit_capability(
+            token_b64=ctx.biscuit_token,
+            executor_spiffe_id="cappo-backend",
+            action=ctx.action,
+            resource=ctx.resource or "any",
+            subject_spiffe_id=ctx.principal,
+            trusted_state=trusted_state,
+            execution_id=ctx.execution_id
+        )
+        
+        if not is_valid:
             raise ConsequenceDominanceViolation(
-                f"Execution rejected: cryptographic validation failed: {str(e)}"
+                "Execution rejected: Biscuit verification failed or execution_id mismatch."
             )
+
+        # Replay Denial: Atomic Single-Use Fence (Validate First, Consume Second)
+        if hasattr(self, 'replay_cache') and self.replay_cache:
+            # Construct canonical lease identity for replay cache
+            raw_identity = f"{ctx.workspace_id}:{ctx.mount_id}:{ctx.token_id}:{ctx.nonce}:{ctx.execution_id}"
+            import hashlib
+            replay_key = "cappo:lease_replay:" + hashlib.sha256(raw_identity.encode("utf-8")).hexdigest()
+            
+            # 3600s TTL since leases are short-lived.
+            if not self.replay_cache.check_and_store(replay_key, int(time.time()) + 3600):
+                raise ReplayDeniedError(
+                    "Execution rejected: REPLAY_DENIED. The authority lease has already been consumed."
+                )
 
     def _dispatch(
         self,
@@ -328,21 +344,47 @@ class CapabilityHandler:
             return {"persisted": True, "observation": observation}
         except Exception:
             return None
-
     def _observe_generic_consequence(
-        self,
-        ctx: VerifiedExecutionContext,
-        raw_result: dict,
+        self, ctx: VerifiedExecutionContext, raw_result: dict
     ) -> dict | None:
-        run_id = raw_result.get("run_id") or raw_result.get("execution_id")
-        if not run_id:
+        from cappo_backend.models.governed_run import GovernedRun
+        try:
+            runs = self._db.query(GovernedRun).filter(
+                GovernedRun.workspace_id == ctx.workspace_id
+            ).all()
+
+            run = next(
+                (
+                    r
+                    for r in runs
+                    if isinstance(r.request_payload, dict)
+                    and r.request_payload.get("execution_id") == ctx.execution_id
+                ),
+                None,
+            )
+
+            # Fallback if execution_identity was somehow used
+            if not run:
+                run = next(
+                    (
+                        r
+                        for r in runs
+                        if isinstance(r.execution_identity, dict)
+                        and r.execution_identity.get("execution_id") == ctx.execution_id
+                    ),
+                    None,
+                )
+
+            if not run:
+                return None
+
+            return {
+                "execution_id": ctx.execution_id,
+                "run_id": run.run_id,
+                "observation_source": "independent_run_record_query",
+            }
+        except Exception:
             return None
-        return {
-            "persisted": True,
-            "execution_id": ctx.execution_id,
-            "run_id": run_id,
-            "observation_source": "orchestrator_run_record",
-        }
 
     # ------------------------------------------------------------------
     # Ephemeral dissolution

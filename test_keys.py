@@ -1,4 +1,4 @@
-from biscuit_auth import Biscuit, KeyPair, PrivateKey, Algorithm
+from biscuit_auth import Algorithm, Biscuit, KeyPair, PrivateKey
 
 kp1 = KeyPair()
 builder = Biscuit.builder()

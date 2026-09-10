@@ -63,6 +63,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self._settings.auth_enabled:
             request.scope["auth_principal"] = "auth-disabled"
+            request.scope["auth_workspace"] = request.headers.get("X-Workspace-ID", "default-local-workspace")
+            request.scope["caller_spiffe_id"] = "spiffe://example.org/workload/cappo-backend"
             return await call_next(request)
 
         path = request.url.path

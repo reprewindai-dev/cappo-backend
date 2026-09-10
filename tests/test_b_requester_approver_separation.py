@@ -751,10 +751,18 @@ def test_b_safety_layer_service_boundary_case_deduplication_and_separation() -> 
     """
     from cappo_backend.services.safety_layer import (
         AnomalyDetection as SLAnomalyDetection,
+    )
+    from cappo_backend.services.safety_layer import (
         AnomalyType as SLAnomalyType,
+    )
+    from cappo_backend.services.safety_layer import (
         QuarantineStatus,
         RecommendedAction,
+    )
+    from cappo_backend.services.safety_layer import (
         RequestQuarantineService as SLRequestQuarantineService,
+    )
+    from cappo_backend.services.safety_layer import (
         Severity as SLSeverity,
     )
 
@@ -1020,7 +1028,10 @@ def test_b_predator_pydantic_model_request_identity_binding() -> None:
 @pytest.mark.anyio
 async def test_b_predator_gateway_process_request_binds_verified_agent_id() -> None:
     """Predator Test: MCPGateway.process_request binds verified agent_id to quarantine in Phase 4."""
-    from cappo_backend.core.governance.compliance_profiles import ComplianceProfile, ComplianceRegion
+    from cappo_backend.core.governance.compliance_profiles import (
+        ComplianceProfile,
+        ComplianceRegion,
+    )
     from cappo_backend.models.mcpapi_v2 import BehavioralBaseline
 
     gateway = MCPGateway(
