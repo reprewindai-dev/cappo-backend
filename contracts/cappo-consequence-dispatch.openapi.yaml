@@ -1,0 +1,488 @@
+openapi: 3.1.0
+info:
+  title: Veklom CAPPO Consequence Dispatch & Governance API
+  version: 0.9.0-PRODUCT-0
+  description: >
+    Canonical OpenAPI specification for fail-closed consequence dispatch,
+    authority verification, and target state reconciliation.
+    All paths require an authenticated principal. Raw Biscuit token material
+    is never serialized in any response.
+
+paths:
+  /v1/capability/mounts:
+    post:
+      summary: Server-Side Authority Minting
+      description: >
+        Requests a capability mount from the server. The server enforces
+        authenticated principal/workspace context, binds capability authority
+        to the principal, workspace, execution, scope, TTL, and SPIFFE context,
+        and mints a Biscuit internally. The public response returns the token
+        descriptor — it never exposes raw Biscuit material.
+      operationId: mintAuthority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MountRequest'
+      responses:
+        '200':
+          description: Mount ALLOW — capability token descriptor returned, no raw Biscuit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MountResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Workspace scope mismatch or identity missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/consequence/dispatch:
+    post:
+      summary: Fail-Closed Consequence Dispatch
+      description: >
+        Executes an authorized capability with cross-layer envelope digest
+        binding, replay prevention, and WAL consume-before-dispatch logging.
+      operationId: dispatchConsequence
+      x-veklom-invariants:
+        - rule: EXACT_DENIAL_CLASS_MAPPING
+          description: >
+            Must return specific error classes for substitution
+            (EnvelopeSubstitutionError, ExecutionIdMismatchError) and replay
+            (ReplayDeniedError).
+        - rule: AUTHORITY_CUSTODY_NO_LEAKS
+          description: Response body must never expose raw Biscuit tokens or unencrypted keys.
+        - rule: HTTP_423_LOCKED_FOR_OUTCOME_UNKNOWN
+          description: >
+            Retry attempts on executions in OUTCOME_UNKNOWN state, and exact
+            replay of a consumed lease, must return HTTP 423 Locked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispatchRequest'
+      responses:
+        '200':
+          description: Consequence dispatched and verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispatchResponse'
+        '401':
+          description: Authority verification failed (revoked, invalid, or substituted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Lease/Execution ID substitution or physical envelope substitution detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '423':
+          description: >
+            Execution locked: either exact replay of a consumed lease, or
+            redispatch attempt while execution is in OUTCOME_UNKNOWN state.
+            Automated retries are forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LockedResponse'
+
+  /v1/consequence/reconcile:
+    post:
+      summary: Independent Target State Reconciliation Observer
+      description: >
+        Performs read-after-write observation using trusted server-side endpoint
+        bindings to resolve ambiguous executions. Caller-supplied reconciliation
+        URLs are strictly ignored.
+      operationId: reconcileConsequence
+      x-veklom-invariants:
+        - rule: SERVER_BOUND_OBSERVER_ONLY
+          description: Observer endpoint resolution uses server-side registry bindings only.
+        - rule: HTTP_503_RECONCILIATION_UNAVAILABLE
+          description: >
+            HTTP 503 RECONCILIATION_UNAVAILABLE is strictly reserved for
+            target/observer infrastructure unreachability. HTTP 423 is strictly
+            reserved for subsequent redispatch/retry attempts while the execution
+            remains locked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconcileRequest'
+      responses:
+        '200':
+          description: Target state successfully observed and reconciled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationResponse'
+        '503':
+          description: >
+            Target/observer infrastructure unreachable. Execution transitions to
+            or retains RECONCILIATION_UNAVAILABLE lock state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+
+    # --- Authority Minting ---
+
+    MountRequest:
+      type: object
+      required:
+        - package_ref
+        - execution_scope
+      properties:
+        package_ref:
+          type: string
+          minLength: 1
+          description: Capability package identifier.
+        execution_scope:
+          $ref: '#/components/schemas/MountScope'
+        requested_action_scope:
+          $ref: '#/components/schemas/ActionScope'
+        role:
+          type: string
+          default: ephemeral_executor
+        ttl_seconds:
+          type: integer
+          minimum: 1
+          default: 300
+        execution_id:
+          type: string
+          nullable: true
+        executor_spiffe_id:
+          type: string
+          nullable: true
+
+    MountScope:
+      type: object
+      required:
+        - workspace
+        - project
+      properties:
+        workspace:
+          type: string
+        project:
+          type: string
+
+    ActionScope:
+      type: object
+      properties:
+        reads:
+          type: array
+          items:
+            type: string
+        writes:
+          type: array
+          items:
+            type: string
+        blocked:
+          type: array
+          items:
+            type: string
+
+    MountResponse:
+      type: object
+      required:
+        - decision
+        - reason
+        - anchoring
+      description: >
+        Public mount response. When decision=allow, token contains the
+        public token descriptor. Raw Biscuit material is never present.
+      properties:
+        decision:
+          type: string
+          enum: [allow, deny]
+        reason:
+          type: string
+        anchoring:
+          type: object
+          description: Anchor status and anchor_id.
+          properties:
+            status:
+              type: string
+            anchor_id:
+              type: string
+              nullable: true
+        mount:
+          $ref: '#/components/schemas/Mount'
+          nullable: true
+        token:
+          $ref: '#/components/schemas/EphemeralScopedToken'
+          nullable: true
+        ttl_seconds:
+          type: integer
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        nonce_consumed:
+          type: boolean
+          nullable: true
+
+    Mount:
+      type: object
+      required:
+        - id
+        - package_ref
+        - role
+        - scope
+        - token
+        - grants
+        - policy
+        - lifecycle
+      properties:
+        id:
+          type: string
+        package_ref:
+          type: string
+        role:
+          type: string
+        scope:
+          $ref: '#/components/schemas/MountScope'
+        token:
+          $ref: '#/components/schemas/MountToken'
+        grants:
+          $ref: '#/components/schemas/Grants'
+        policy:
+          $ref: '#/components/schemas/MountPolicy'
+        lifecycle:
+          type: object
+
+    MountToken:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [ephemeral_scoped, persistent_service]
+        ttl_seconds:
+          type: integer
+
+    EphemeralScopedToken:
+      type: object
+      description: >
+        Public token descriptor. biscuit_token is excluded — the raw Biscuit
+        material is retained server-side only and never serialized in responses.
+      required:
+        - type
+        - token_id
+        - mount_id
+        - execution_id
+        - package_ref
+        - scope
+        - grants
+        - policy
+        - issued_at
+        - expires_at
+        - ttl_seconds
+        - single_use
+        - nonce
+      properties:
+        type:
+          type: string
+          enum: [ephemeral_scoped]
+        token_id:
+          type: string
+        mount_id:
+          type: string
+        execution_id:
+          type: string
+        package_ref:
+          type: string
+        scope:
+          $ref: '#/components/schemas/TokenDescriptorScope'
+        grants:
+          $ref: '#/components/schemas/Grants'
+        policy:
+          $ref: '#/components/schemas/MountPolicy'
+        issued_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        ttl_seconds:
+          type: integer
+          minimum: 1
+          maximum: 600
+        single_use:
+          type: boolean
+          enum: [true]
+        nonce_consumed:
+          type: boolean
+        nonce:
+          type: string
+
+    TokenDescriptorScope:
+      type: object
+      required:
+        - workspace
+        - project
+      properties:
+        workspace:
+          type: string
+        project:
+          type: string
+
+    Grants:
+      type: object
+      properties:
+        reads:
+          type: array
+          items:
+            type: string
+        writes:
+          type: array
+          items:
+            type: string
+        resources:
+          type: array
+          items:
+            type: string
+        blocked:
+          type: array
+          items:
+            type: string
+        external_send:
+          type: array
+          items:
+            type: string
+        suppression_required:
+          type: array
+          items:
+            type: string
+
+    MountPolicy:
+      type: object
+      properties:
+        mode:
+          type: string
+          default: draft_only
+        default:
+          type: string
+          enum: [deny]
+        require_human_approval_for_external_send:
+          type: boolean
+        require_suppression_check:
+          type: boolean
+        persistent_memory_allowed:
+          type: boolean
+
+    # --- Consequence Dispatch ---
+
+    DispatchRequest:
+      type: object
+      required:
+        - execution_id
+        - action
+        - mount_id
+      properties:
+        execution_id:
+          type: string
+          description: Unique deterministic execution ID for replay prevention.
+        action:
+          type: string
+          description: Governance-bound action scope (e.g. fs.write).
+        resource:
+          type: string
+          description: Specific target resource.
+        mount_id:
+          type: string
+          description: Capability mount target.
+        prompt:
+          type: string
+          description: Contextual agent prompt or payload.
+        agent_id:
+          type: string
+
+    DispatchResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [DISPATCHED, COMPLETED, OUTCOME_UNKNOWN]
+        execution_id:
+          type: string
+        dispatch_id:
+          type: string
+        wal_sequence_id:
+          type: integer
+
+    # --- Reconciliation ---
+
+    ReconcileRequest:
+      type: object
+      required:
+        - execution_id
+      properties:
+        execution_id:
+          type: string
+        simulate_target_503:
+          type: boolean
+          description: >
+            Test-only flag to simulate target infrastructure unavailability.
+            Must not be used in production.
+
+    ReconciliationResponse:
+      type: object
+      required:
+        - execution_id
+        - status
+        - finality_state
+      properties:
+        execution_id:
+          type: string
+        status:
+          type: string
+          enum: [RECONCILED_SUCCEEDED, RECONCILED_FAILED, RECONCILIATION_UNAVAILABLE]
+        finality_state:
+          type: string
+
+    # --- Shared Error Shapes ---
+
+    LockedResponse:
+      type: object
+      required:
+        - error
+        - detail
+        - is_locked
+      properties:
+        error:
+          type: string
+          example: RetryLockedError
+        detail:
+          type: string
+        is_locked:
+          type: boolean
+          example: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
