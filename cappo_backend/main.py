@@ -98,14 +98,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     else:
         app.state.redis_client = None
 
-    effect_targets = TargetAdapterRegistry()
+    target_adapters = TargetAdapterRegistry()
     if settings.capability_effect_record_root:
-        effect_targets.register(
+        target_adapters.register(
             LocalRecordAdapter.ref,
             LocalRecordAdapter(settings.capability_effect_record_root),
         )
 
-    mount_registry = MountRegistry(effect_targets=effect_targets)
+    mount_registry = MountRegistry(target_adapters=target_adapters)
     for package in load_packages_from_json(settings.capability_packages_json):
         mount_registry.register_package(package)
     app.state.mount_registry = mount_registry

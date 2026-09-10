@@ -75,6 +75,7 @@ def mint_biscuit_capability(
     resources: list[str] | None = None,
     revocation_scope: str = "workspace",
     revocation_epoch: int = 0,
+    envelope_digest: str | None = None,
 ) -> str:
     kp = get_root_key_pair()
     builder = Biscuit.builder()
@@ -88,6 +89,11 @@ def mint_biscuit_capability(
     builder.add_code(f'capability_id("{capability_id}");')
     builder.add_code(f'revocation_scope("{revocation_scope}");')
     builder.add_code(f'revocation_epoch({revocation_epoch});')
+    
+    if envelope_digest is not None:
+        builder.add_code(f'allowed_envelope("{envelope_digest}");')
+        builder.add_code('check if current_envelope($env), allowed_envelope($env);')
+
     
     if executor_spiffe_id:
         builder.add_code(f'allowed_executor("{executor_spiffe_id}");')
@@ -127,6 +133,7 @@ def attenuate_biscuit_capability(
     writes: list[str] | None = None,
     ttl_seconds: int | None = None,
     resources: list[str] | None = None,
+    envelope_digest: str | None = None,
 ) -> str:
     """Attenuate an existing capability locally without the root key."""
     kp = get_root_key_pair()
@@ -152,7 +159,11 @@ def attenuate_biscuit_capability(
         from datetime import datetime, timedelta, timezone
         expires_dt = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
         expires_str = expires_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-        builder.add_code(f'check if time($time), $time <= {expires_str};')
+        builder.add_code(f'check if time($t), $t <= "{expires_str}";')
+
+    if envelope_digest is not None:
+        builder.add_code(f'allowed_envelope("{envelope_digest}");')
+        builder.add_code('check if current_envelope($env), allowed_envelope($env);')
         
     child_token = token.append(builder)
     return child_token.to_base64()
@@ -184,6 +195,8 @@ def verify_biscuit_capability(
     resource: str = "",
     subject_spiffe_id: str | None = None,
     trusted_state: TrustedRevocationState | None = None,
+    execution_id: str | None = None,
+    envelope_digest: str | None = None,
 ) -> bool:
     try:
         kp = get_root_key_pair()
@@ -195,6 +208,10 @@ def verify_biscuit_capability(
         else:
             auth_builder.add_code('current_subject("any");')
         auth_builder.add_code(f'current_action("{action}", "{resource}");')
+        
+        if envelope_digest is not None:
+            auth_builder.add_code(f'current_envelope("{envelope_digest}");')
+
         auth_builder.set_time()
         auth_builder.add_code('allow if true;')
 
@@ -206,12 +223,18 @@ def verify_biscuit_capability(
         # Enforce explicitly revoked execution IDs
         exec_facts = auth.query(biscuit_auth.Rule('rule($exec_id) <- execution_id($exec_id)'))
         if exec_facts:
+            token_exec_id = str(exec_facts[0].terms[0]).strip('"')
+            
+            # Enforce exact match if execution_id is provided
+            if execution_id is not None and token_exec_id != execution_id:
+                print(f"Biscuit verification failed: execution_id mismatch ({token_exec_id} != {execution_id})")
+                return False
+
             if not trusted_state:
                 print("Biscuit verification failed: Token contains execution_id but no trusted_state was provided.")
                 return False
-            exec_id = str(exec_facts[0].terms[0]).strip('"')
-            if exec_id in trusted_state.revoked_execution_ids:
-                print(f"Biscuit verification failed: Execution ID {exec_id} is explicitly revoked.")
+            if token_exec_id in trusted_state.revoked_execution_ids:
+                print(f"Biscuit verification failed: Execution ID {token_exec_id} is explicitly revoked.")
                 return False
 
         # Enforce known epochs for the given scope
@@ -304,6 +327,7 @@ def extract_authority_context(token_b64: str):
             authority_epoch=0
         )
     except Exception as e:
+        import traceback; traceback.print_exc()
         import logging
         logging.getLogger("cappo.security").error(f"AUTHORITY_EXTRACTION_FAILED: {type(e).__name__}: {str(e)}")
         return None

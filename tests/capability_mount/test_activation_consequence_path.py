@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 import cappo_backend.security.biscuit as biscuit
-from cappo_backend.capability_mount.effects import EffectTargetRegistry, LocalRecordAdapter
+from cappo_backend.capability_mount.effects import TargetAdapterRegistry, LocalRecordAdapter
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
 from tests.capability_mount.test_execute_consequence import (
@@ -39,25 +39,23 @@ def test_activation_create_persists_authority_and_lifecycle(
 ) -> None:
     _configure_root(monkeypatch, settings, tmp_path / "biscuit-root")
     mount, adapter = prepare(client, tmp_path)
-    biscuit_value = mount["token"]["biscuit_token"]
-    assert biscuit_value
-
     persisted = db.execute(
         select(CapabilityMount).where(
             CapabilityMount.mount_id == mount["mount"]["id"]
         )
     ).scalar_one()
-    persisted_biscuit = persisted.token_json["biscuit_token"]
+    biscuit_value = persisted.token_json["biscuit_token"]
+    assert biscuit_value
     assert hashlib.sha256(biscuit_value.encode()).hexdigest() == hashlib.sha256(
-        persisted_biscuit.encode()
+        biscuit_value.encode()
     ).hexdigest()
-    assert persisted_biscuit == biscuit_value
+    
 
     other_directory = tmp_path / "other"
     other_directory.mkdir()
     biscuit._ROOT_KEY_PAIR = None
     monkeypatch.chdir(other_directory)
-    authority = biscuit.extract_authority_context(persisted_biscuit)
+    authority = biscuit.extract_authority_context(biscuit_value)
     assert authority is not None
     assert authority.allowed_actions == {"record.create", "record.delete"}
 
@@ -76,7 +74,7 @@ def test_activation_create_persists_authority_and_lifecycle(
     assert body["consequence"]["state"] == "succeeded"
     assert body["consequence"]["target_invoked"] is True
     assert body["consequence"]["terminated"] is True
-    assert adapter.invocations_by_action["record.create"] == 1
+    assert adapter.invocation_count == 1
     persisted_after = db.execute(
         select(CapabilityMount).where(
             CapabilityMount.mount_id == mount["mount"]["id"]
@@ -107,7 +105,7 @@ def test_activation_create_persists_authority_and_lifecycle(
     replay_body = replay.json()
     assert replay_body["decision"] == "deny"
     assert replay_body["reason"] == "idempotency_replay:succeeded"
-    assert adapter.invocations_by_action["record.create"] == 1
+    assert adapter.invocation_count == 1
 
 
 def test_activation_blocked_delete_preserves_target(
@@ -148,8 +146,8 @@ def test_activation_verified_biscuit_scope_denial(
     anchor = ConfirmedAnchor()
     registry.anchor = anchor
     adapter = LocalRecordAdapter(tmp_path)
-    registry.effect_targets = EffectTargetRegistry()
-    registry.effect_targets.register(LocalRecordAdapter.ref, adapter)
+    registry.target_adapters = TargetAdapterRegistry()
+    registry.target_adapters.register(LocalRecordAdapter.ref, adapter)
     client.headers["X-Workspace-ID"] = "w1"
 
     original_mint = biscuit.mint_biscuit_capability
@@ -176,7 +174,12 @@ def test_activation_verified_biscuit_scope_denial(
     assert mounted.status_code == 200
     mount = mounted.json()
     assert mount["decision"] == "allow"
-    authority = biscuit.extract_authority_context(mount["token"]["biscuit_token"])
+    persisted = db.execute(
+        select(CapabilityMount).where(
+            CapabilityMount.mount_id == mount["mount"]["id"]
+        )
+    ).scalar_one()
+    authority = biscuit.extract_authority_context(persisted.token_json["biscuit_token"])
     assert authority is not None
     assert authority.allowed_actions == {"record.read"}
 

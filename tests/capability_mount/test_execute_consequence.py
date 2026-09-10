@@ -64,8 +64,8 @@ def prepare(
     registry.register_package(records_package())
     registry.anchor = ConfirmedAnchor()
     selected = adapter or LocalRecordAdapter(tmp_path)
-    registry.effect_targets = TargetAdapterRegistry()
-    registry.effect_targets.register(LocalRecordAdapter.ref, selected)
+    registry.target_adapters = TargetAdapterRegistry()
+    registry.target_adapters.register(LocalRecordAdapter.ref, selected)
     client.headers["X-Workspace-ID"] = "w1"
     mounted = client.post(
         "/v1/capability/mounts",

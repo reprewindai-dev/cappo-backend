@@ -1,0 +1,38 @@
+{
+  "receipt_id": "e477728e-95b5-49ea-bf01-973fc1cd82ed",
+  "envelope_digest": "74a5d1f74e90c476bb347a0178101bc9ad0c70b3c58d49722635ecb4d130251d",
+  "execution_uuid": "6b99700e-08ed-4907-8d88-1bdb72390627",
+  "scenario": "normal_ok",
+  "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/6b99700e-08ed-4907-8d88-1bdb72390627",
+  "host_pid": 480,
+  "configured_memory_max_bytes": 67108864,
+  "configured_fuel_budget": 50000000,
+  "envelope_memory_max_bytes": 67108864,
+  "envelope_fuel_budget": 50000000,
+  "binding_verified": true,
+  "binding_failure_reason": null,
+  "host_survived": true,
+  "workload_contained": true,
+  "outcome": "COMPLETED",
+  "outcome_evidence_source": "wasmtime_normal_return",
+  "evidence": {
+    "execution_uuid": "6b99700e-08ed-4907-8d88-1bdb72390627",
+    "host_pid": 480,
+    "pid_tree": [
+      480
+    ],
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/6b99700e-08ed-4907-8d88-1bdb72390627",
+    "configured_memory_max_bytes": 67108864,
+    "configured_fuel_budget": 50000000,
+    "peak_memory_bytes": 1048576,
+    "memory_max_at_termination": 67108864,
+    "exit_code": 0,
+    "exit_signal": null,
+    "oom_killed": false,
+    "fuel_trap_reason": null,
+    "deadline_exceeded": false,
+    "materialization_ts": 1788967441.0942223,
+    "termination_ts": 1788967441.106539
+  },
+  "issued_at": 1788967441.1070588
+}

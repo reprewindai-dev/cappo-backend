@@ -150,7 +150,7 @@ def get_registry(request: Request, db: Session = Depends(get_session)) -> MountR
     )
     registry = MountRegistry(db=db, anchor=anchor, evidence_verifier=verifier)
     registry.packages.update(shared.packages)
-    registry.effect_targets = shared.effect_targets
+    registry.target_adapters = shared.target_adapters
     return registry
 
 

@@ -218,11 +218,11 @@ def _configure_runtime() -> None:
     _prepare_database()
     app.dependency_overrides[get_session] = local_get_session
     registry = app.state.mount_registry
-    adapter = registry.effect_targets.resolve("activation.local-record")
+    adapter = registry.target_adapters.resolve("activation.local-record")
     if adapter is None:
         raise RuntimeError("activation.local-record was not registered")
     state_path = HARNESS_ROOT / "adapter_state.json"
-    registry.effect_targets.register(
+    registry.target_adapters.register(
         "activation.local-record", ObservedAdapter(adapter, state_path)
     )
 

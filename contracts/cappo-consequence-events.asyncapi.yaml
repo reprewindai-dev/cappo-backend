@@ -1,0 +1,189 @@
+# ==============================================================================
+# VEKLOM CAPPO CONSEQUENCE EVENT STREAM
+# AsyncAPI 3.0.0
+# Event contract for WAL transitions, VRE substrate events, and E3 reconciliation.
+# ==============================================================================
+
+asyncapi: 3.0.0
+info:
+  title: Veklom CAPPO Consequence Event Stream
+  version: 1.1.0
+  description: |
+    Event contract for durable dispatch state, VRE enforcement outcomes, and target-side
+    reconciliation. Event consumers MUST treat these records as observations/evidence, not as
+    authority to initiate a new consequence.
+
+defaultContentType: application/json
+
+channels:
+  walEvents:
+    address: cappo.wal.events
+    messages:
+      walAppend:
+        $ref: '#/components/messages/WalAppend'
+
+  vreSubstrateEvents:
+    address: cappo.vre.substrate
+    messages:
+      vreLifecycle:
+        $ref: '#/components/messages/VreLifecycle'
+
+  reconciliationEvents:
+    address: cappo.reconciliation.events
+    messages:
+      reconciliationState:
+        $ref: '#/components/messages/ReconciliationState'
+
+operations:
+  publishWalEvent:
+    action: send
+    channel:
+      $ref: '#/channels/walEvents'
+    messages:
+      - $ref: '#/channels/walEvents/messages/walAppend'
+
+  publishVreSubstrateEvent:
+    action: send
+    channel:
+      $ref: '#/channels/vreSubstrateEvents'
+    messages:
+      - $ref: '#/channels/vreSubstrateEvents/messages/vreLifecycle'
+
+  publishReconciliationEvent:
+    action: send
+    channel:
+      $ref: '#/channels/reconciliationEvents'
+    messages:
+      - $ref: '#/channels/reconciliationEvents/messages/reconciliationState'
+
+components:
+  messages:
+    WalAppend:
+      name: WalAppend
+      title: Durable consequence-dispatch state transition
+      payload:
+        $ref: '#/components/schemas/WalEvent'
+
+    VreLifecycle:
+      name: VreLifecycle
+      title: VRE substrate enforcement event
+      payload:
+        $ref: '#/components/schemas/VreEvent'
+
+    ReconciliationState:
+      name: ReconciliationState
+      title: Target-side reconciliation transition
+      payload:
+        $ref: '#/components/schemas/ReconciliationEvent'
+
+  schemas:
+    WalEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - seq_id
+        - execution_id
+        - lease_id
+        - state
+        - timestamp_ns
+      properties:
+        seq_id:
+          type: integer
+          minimum: 0
+        execution_id:
+          type: string
+        lease_id:
+          type: string
+        state:
+          type: string
+          enum:
+            - AUTHORIZED
+            - WAL_DISPATCH_INTENT_LOGGED
+            - LEASE_CONSUMED
+            - DISPATCHING
+            - OUTCOME_UNKNOWN
+            - RECONCILIATION_UNAVAILABLE
+            - RECONCILED_SUCCEEDED
+            - RECONCILED_FAILED
+        timestamp_ns:
+          type: integer
+          minimum: 0
+
+    VreEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - execution_id
+        - event_type
+        - termination_reason
+      properties:
+        execution_id:
+          type: string
+        envelope_digest:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{64}$'
+        event_type:
+          type: string
+          enum:
+            - ENVELOPE_MEMORY_EXCEEDED
+            - ENVELOPE_COMPUTE_EXHAUSTED
+            - ENVELOPE_DEADLINE_EXCEEDED
+            - COMPLETED
+        termination_reason:
+          type: string
+          enum:
+            - MEMORY_OOM
+            - COMPUTE_FUEL_EXHAUSTED
+            - DEADLINE_SIGKILL
+            - COMPLETED
+            - EXECUTION_ERROR
+        pid:
+          type: [integer, 'null']
+        exit_code:
+          type: [integer, 'null']
+        oom_kill_delta:
+          type: [integer, 'null']
+          minimum: 0
+        fuel_trap_reason:
+          type: [string, 'null']
+        hard_kill_issued:
+          type: [boolean, 'null']
+        cgroup_procs_remaining:
+          type: [integer, 'null']
+          minimum: 0
+
+    ReconciliationEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - execution_id
+        - from_state
+        - to_state
+        - independent_read_verified
+        - retry_allowed
+      properties:
+        execution_id:
+          type: string
+        target_binding_id:
+          type: [string, 'null']
+        target_resource_id:
+          type: [string, 'null']
+        from_state:
+          type: string
+          enum:
+            - OUTCOME_UNKNOWN
+            - RECONCILIATION_UNAVAILABLE
+        to_state:
+          type: string
+          enum:
+            - RECONCILED_SUCCEEDED
+            - RECONCILED_FAILED
+            - RECONCILIATION_UNAVAILABLE
+        independent_read_verified:
+          type: boolean
+        observation_digest:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{64}$'
+        retry_allowed:
+          type: boolean
+          description: False while consequence truth is unavailable or authority is terminally consumed.

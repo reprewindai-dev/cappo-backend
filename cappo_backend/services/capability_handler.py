@@ -77,6 +77,8 @@ class MaterializationPolicy(str, Enum):
 # Verified execution context (the normalized contract)
 # ---------------------------------------------------------------------------
 
+from cappo_backend.execution.vre_envelope import VREEnvelopeSpec
+
 @dataclass(frozen=True)
 class VerifiedExecutionContext:
     """The transport-normalized, authority-bound execution contract.
@@ -98,9 +100,10 @@ class VerifiedExecutionContext:
     operation_id: str
     resource: str
     payload: dict
-    materialization_policy: MaterializationPolicy = MaterializationPolicy.PERSISTENT
+    biscuit_token: str
+    materialization_policy: MaterializationPolicy
+    presented_envelope_spec: VREEnvelopeSpec | None = None
     is_activation: bool = False
-    biscuit_token: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +166,9 @@ class CapabilityHandler:
     policies execute through this single handler.
     """
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, replay_cache: Any = None) -> None:
         self._db = db
+        self.replay_cache = replay_cache
 
     def execute(
         self,
@@ -276,6 +280,19 @@ class CapabilityHandler:
             raise ConsequenceDominanceViolation(
                 "Execution rejected: Biscuit verification failed or execution_id mismatch."
             )
+
+        # Replay Denial: Atomic Single-Use Fence (Validate First, Consume Second)
+        if hasattr(self, 'replay_cache') and self.replay_cache:
+            # Construct canonical lease identity for replay cache
+            raw_identity = f"{ctx.workspace_id}:{ctx.mount_id}:{ctx.token_id}:{ctx.nonce}:{ctx.execution_id}"
+            import hashlib
+            replay_key = "cappo:lease_replay:" + hashlib.sha256(raw_identity.encode("utf-8")).hexdigest()
+            
+            # 3600s TTL since leases are short-lived.
+            if not self.replay_cache.check_and_store(replay_key, int(time.time()) + 3600):
+                raise ReplayDeniedError(
+                    "Execution rejected: REPLAY_DENIED. The authority lease has already been consumed."
+                )
 
     def _dispatch(
         self,

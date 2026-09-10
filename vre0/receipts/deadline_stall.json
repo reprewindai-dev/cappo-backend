@@ -1,0 +1,38 @@
+{
+  "receipt_id": "3a9f8c89-4d3c-46ab-8912-76fd5fc65078",
+  "envelope_digest": "41a79c0ee2657ad20c4a934120612df0863a6aa17aee7b142496aa3ac8660256",
+  "execution_uuid": "0be5a22e-bd29-49fc-b333-3e97f3afbef3",
+  "scenario": "deadline_stall",
+  "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/0be5a22e-bd29-49fc-b333-3e97f3afbef3",
+  "host_pid": 480,
+  "configured_memory_max_bytes": 67108864,
+  "configured_fuel_budget": 50000000,
+  "envelope_memory_max_bytes": 67108864,
+  "envelope_fuel_budget": 50000000,
+  "binding_verified": true,
+  "binding_failure_reason": null,
+  "host_survived": true,
+  "workload_contained": true,
+  "outcome": "ENVELOPE_DEADLINE_EXCEEDED",
+  "outcome_evidence_source": "wall_deadline_timer",
+  "evidence": {
+    "execution_uuid": "0be5a22e-bd29-49fc-b333-3e97f3afbef3",
+    "host_pid": 480,
+    "pid_tree": [
+      480
+    ],
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/0be5a22e-bd29-49fc-b333-3e97f3afbef3",
+    "configured_memory_max_bytes": 67108864,
+    "configured_fuel_budget": 50000000,
+    "peak_memory_bytes": 1306624,
+    "memory_max_at_termination": 67108864,
+    "exit_code": -1,
+    "exit_signal": null,
+    "oom_killed": false,
+    "fuel_trap_reason": null,
+    "deadline_exceeded": true,
+    "materialization_ts": 1788967440.7573352,
+    "termination_ts": 1788967441.0822093
+  },
+  "issued_at": 1788967441.0829353
+}

@@ -126,13 +126,13 @@ class MountRegistry:
         db: Session | None = None,
         anchor: EventAnchor | None = None,
         evidence_verifier: BoundMountEvidenceVerifier | None = None,
-        effect_targets: TargetAdapterRegistry | None = None,
+        target_adapters: TargetAdapterRegistry | None = None,
     ) -> None:
         self.db = db
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
         self.evidence_verifier = evidence_verifier or BoundMountEvidenceVerifier()
-        self.effect_targets = effect_targets or TargetAdapterRegistry()
+        self.target_adapters = target_adapters or TargetAdapterRegistry()
         self.mounter = Mounter()
 
     def register_package(self, package: CapabilityPackage) -> None:
@@ -1179,7 +1179,7 @@ class MountRegistry:
             and (token_id != row.token_id or nonce != row.token_nonce)
         ):
             return preflight_deny("token_mismatch", record)
-        adapter = self.effect_targets.resolve(target_ref)
+        adapter = self.target_adapters.resolve(target_ref)
         if adapter is None:
             return preflight_deny("unknown_effect_target", record)
         if action not in adapter.actions:

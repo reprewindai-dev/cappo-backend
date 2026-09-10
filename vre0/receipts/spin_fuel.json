@@ -1,0 +1,38 @@
+{
+  "receipt_id": "3564cee4-4579-4600-89a0-1307648fd127",
+  "envelope_digest": "d424b4664e41084b545d01b12e9367c64ca16356995d96538779a2feb4404165",
+  "execution_uuid": "cc4e3896-f038-42b7-8e09-cd2d39b4dc7e",
+  "scenario": "spin_fuel",
+  "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/cc4e3896-f038-42b7-8e09-cd2d39b4dc7e",
+  "host_pid": 480,
+  "configured_memory_max_bytes": 67108864,
+  "configured_fuel_budget": 50000000,
+  "envelope_memory_max_bytes": 67108864,
+  "envelope_fuel_budget": 50000000,
+  "binding_verified": true,
+  "binding_failure_reason": null,
+  "host_survived": true,
+  "workload_contained": true,
+  "outcome": "ENVELOPE_COMPUTE_EXHAUSTED",
+  "outcome_evidence_source": "wasmtime_fuel_trap",
+  "evidence": {
+    "execution_uuid": "cc4e3896-f038-42b7-8e09-cd2d39b4dc7e",
+    "host_pid": 480,
+    "pid_tree": [
+      480
+    ],
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/cc4e3896-f038-42b7-8e09-cd2d39b4dc7e",
+    "configured_memory_max_bytes": 67108864,
+    "configured_fuel_budget": 50000000,
+    "peak_memory_bytes": 14737408,
+    "memory_max_at_termination": 67108864,
+    "exit_code": -1,
+    "exit_signal": null,
+    "oom_killed": false,
+    "fuel_trap_reason": "error while executing at wasm backtrace:\n    0:     0x20 - <unknown>!<wasm function 0>\n\nCaused by:\n    wasm trap: all fuel consumed by WebAssembly\n",
+    "deadline_exceeded": false,
+    "materialization_ts": 1788967440.6323361,
+    "termination_ts": 1788967440.75034
+  },
+  "issued_at": 1788967440.7508438
+}
