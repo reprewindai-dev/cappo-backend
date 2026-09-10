@@ -47,7 +47,7 @@ from cappo_backend.api.routers.status_observation_router import router as status
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
-from cappo_backend.capability_mount.effects import EffectTargetRegistry, LocalRecordAdapter
+from cappo_backend.capability_mount.effects import TargetAdapterRegistry, LocalRecordAdapter
 from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
@@ -98,7 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     else:
         app.state.redis_client = None
 
-    effect_targets = EffectTargetRegistry()
+    effect_targets = TargetAdapterRegistry()
     if settings.capability_effect_record_root:
         effect_targets.register(
             LocalRecordAdapter.ref,

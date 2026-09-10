@@ -27,7 +27,7 @@ from cappo_backend.services.mount_evidence import (
     VerifiedMountEvidence,
 )
 
-from .effects import EffectTargetRegistry, validate_resource
+from .effects import TargetAdapterRegistry, ConsequenceContext, validate_resource
 from .engine import AuditSink, ExecutionBinding, Mounter
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
@@ -126,13 +126,13 @@ class MountRegistry:
         db: Session | None = None,
         anchor: EventAnchor | None = None,
         evidence_verifier: BoundMountEvidenceVerifier | None = None,
-        effect_targets: EffectTargetRegistry | None = None,
+        effect_targets: TargetAdapterRegistry | None = None,
     ) -> None:
         self.db = db
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
         self.evidence_verifier = evidence_verifier or BoundMountEvidenceVerifier()
-        self.effect_targets = effect_targets or EffectTargetRegistry()
+        self.effect_targets = effect_targets or TargetAdapterRegistry()
         self.mounter = Mounter()
 
     def register_package(self, package: CapabilityPackage) -> None:
@@ -611,6 +611,10 @@ class MountRegistry:
             db.rollback()
             return None, anchor, "pgl_anchor_unconfirmed"
 
+        token_dict = token.model_dump(mode="json")
+        if getattr(token, "biscuit_token", None):
+            token_dict["biscuit_token"] = token.biscuit_token
+
         db.add(
             CapabilityMount(
                 mount_id=mount.id,
@@ -619,7 +623,7 @@ class MountRegistry:
                 owner_principal=owner_principal,
                 owner_workspace=owner_workspace or scope.workspace,
                 mount_json=mount.model_dump(mode="json"),
-                token_json=token.model_dump(mode="json"),
+                token_json=token_dict,
                 issued_at=token.issued_at,
                 expires_at=token.expires_at,
                 anchor_status=anchor.status,
@@ -1232,7 +1236,7 @@ class MountRegistry:
                     ),
                 )
 
-        before_count = adapter.invocations_by_action.get(action, 0)
+        before_count = adapter.invocation_count
         result: object | None = None
         decision = Decision.ALLOW
         reason = "allowed"
@@ -1245,8 +1249,15 @@ class MountRegistry:
             "suppression_confirmed": suppression_confirmed,
         }
 
+        context = ConsequenceContext(
+            action=action,
+            resource=resource,
+            arguments=arguments,
+            operation_id=op_id,
+        )
+
         def invoke_effect(**_: object) -> object:
-            return adapter.invoke(action, resource, arguments)
+            return adapter.dispatch(context)
 
         try:
             # CAPPO's binding is the sole owner of authorization and execution.
@@ -1272,7 +1283,7 @@ class MountRegistry:
         ).scalar_one_or_none()
         consequence_state = latest.state if latest is not None else None
         receipt_id = latest.receipt_id if latest is not None else None
-        after_count = adapter.invocations_by_action.get(action, 0)
+        after_count = adapter.invocation_count
         target_invoked = after_count > before_count
 
         should_terminate = not (
