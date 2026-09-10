@@ -1,0 +1,45 @@
+{
+  "milestone": "LINUX-CONSOLIDATION-PASS",
+  "verdict": "VALID",
+  "execution_id": "exec-consolidation-001",
+  "chain_of_custody": {
+    "identity_binding": {
+      "pid": 1340,
+      "pidfd": 14,
+      "start_time_jiffies": 344697
+    },
+    "substrate_envelope": {
+      "cgroup_path": "/sys/fs/cgroup/exec-consolidation-001",
+      "cgroup_inode": 3781,
+      "memory_limit": "16M"
+    },
+    "independent_observations": [
+      {
+        "type": "EXEC",
+        "pid": 1790,
+        "cgroup_id": 3781,
+        "timestamp_ns": 3447009925782
+      },
+      {
+        "type": "OOM",
+        "pid": 1790,
+        "cgroup_id": 3781,
+        "timestamp_ns": 3447065412467
+      },
+      {
+        "type": "TEARDOWN",
+        "pid": 1773,
+        "cgroup_id": 3781,
+        "timestamp_ns": 3447084068375
+      }
+    ],
+    "native_enforcement": {
+      "low": 0,
+      "high": 0,
+      "max": 36,
+      "oom": 1,
+      "oom_kill": 1,
+      "oom_group_kill": 0
+    }
+  }
+}
