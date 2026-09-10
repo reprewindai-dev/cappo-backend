@@ -1,0 +1,67 @@
+{
+  "suite": "S5_ATTESTATION_PREDATOR",
+  "status": "DESIGN_VALID_REQUIRES_REAL_TEE_RERUN",
+  "truth_rule": "No PASS is valid unless the platform attestation object/report, verifier result, freshness binding, and relevant runtime evidence are captured from a real supported TEE.",
+  "attacks": [
+    {
+      "id": "S5-ATTACK-01",
+      "name": "Stale attestation replay",
+      "stimulus": "Replay a previously valid attestation object/report into a new execution with a fresh verifier challenge.",
+      "pass": "Verifier rejects because freshness/challenge binding does not match."
+    },
+    {
+      "id": "S5-ATTACK-02",
+      "name": "Workload measurement mismatch",
+      "stimulus": "Present a genuine platform attestation whose measured workload/platform state is outside the authorized baseline.",
+      "pass": "Attestation policy denies before consequence dispatch."
+    },
+    {
+      "id": "S5-ATTACK-03",
+      "name": "Execution key substitution",
+      "stimulus": "Verify one execution public key in attestation, then attempt target dispatch signed by a different key.",
+      "pass": "Dispatch is denied because the request signer is not the attested execution key."
+    },
+    {
+      "id": "S5-ATTACK-04",
+      "name": "Authority/envelope substitution",
+      "stimulus": "Reuse valid attestation evidence with a different lease, authority digest, execution_id, or envelope digest.",
+      "pass": "Binding mismatch is detected and no target consequence is dispatched."
+    },
+    {
+      "id": "S5-ATTACK-05",
+      "name": "Untrusted proxy request mutation",
+      "stimulus": "Parent/proxy alters action, resource, target, or payload after enclave/TEE signs the canonical consequence.",
+      "pass": "End-to-end signature/commitment verification fails and target dispatch is blocked or target rejects the altered request."
+    },
+    {
+      "id": "S5-ATTACK-06",
+      "name": "Unsupported attestation downgrade",
+      "stimulus": "Supply an unknown TEE/evidence format or remove required verifier fields and request fallback to a lower assurance profile.",
+      "pass": "System returns DENY or INDETERMINATE according to policy; no silent assurance downgrade occurs."
+    },
+    {
+      "id": "S5-ATTACK-07",
+      "name": "Valid S5, failed E3",
+      "stimulus": "Attestation succeeds but external target rejects or fails to commit the consequence.",
+      "pass": "S5 remains valid execution assurance while consequence state is FAILED/RECONCILED_FAILED; system does not claim E3 success."
+    },
+    {
+      "id": "S5-ATTACK-08",
+      "name": "Valid S5, ambiguous E3",
+      "stimulus": "Attestation succeeds, target dispatch may commit, and response is lost before confirmation.",
+      "pass": "System enters OUTCOME_UNKNOWN, fences authority, and requires independent target reconciliation despite successful attestation."
+    },
+    {
+      "id": "S5-ATTACK-09",
+      "name": "Verifier/policy version drift",
+      "stimulus": "Change measurement policy or verifier implementation after authorization without rebinding the assurance profile.",
+      "pass": "Version/digest mismatch invalidates the prior S5 binding and requires fresh verification/authority according to policy."
+    },
+    {
+      "id": "S5-ATTACK-10",
+      "name": "Attestation evidence tamper",
+      "stimulus": "Modify signed measurement, challenge/user-data/report-data, certificate-chain, or signature bytes.",
+      "pass": "Platform attestation verification fails closed before dispatch."
+    }
+  ]
+}
