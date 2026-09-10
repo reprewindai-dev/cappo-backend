@@ -15,12 +15,15 @@ _RESOURCE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 class CappoUncertainError(Exception):
     """Raised when an effect may have landed but its outcome cannot be determined."""
 
-class ProviderTranslation(Protocol):
-    @property
-    def provider_operation(self) -> str: ...
-    @property
-    def provider_payload(self) -> Mapping[str, object]: ...
-    def reverse_normalize(self) -> CanonicalEffectRequest: ...
+@dataclass(frozen=True)
+class ProviderCall:
+    provider_operation: str
+    provider_payload: Mapping[str, object]
+
+class ProviderProfile(Protocol):
+    normalizer_identity: str
+    mapping_version: str
+    def normalize_provider_call(self, call: ProviderCall, binding: AdapterBinding) -> CanonicalEffectRequest: ...
 
 class TargetAdapter(Protocol):
     ref: str
@@ -34,10 +37,10 @@ class TargetAdapter(Protocol):
         canonical_request: CanonicalEffectRequest,
         binding: AdapterBinding,
         arguments: Mapping[str, object],
-    ) -> ProviderTranslation:
+    ) -> ProviderCall:
         """Translate into a provider-specific operation."""
 
-    def execute_translation(self, translation: ProviderTranslation) -> object:
+    def execute_translation(self, call: ProviderCall) -> object:
         """Invoke one registered, capability-owned effect."""
 
 
@@ -46,14 +49,6 @@ def validate_resource(resource: str) -> None:
         raise ValueError("invalid_target_resource")
 
 
-@dataclass(frozen=True)
-class LocalRecordTranslation:
-    canonical_request: CanonicalEffectRequest
-    provider_operation: str
-    provider_payload: Mapping[str, object]
-    
-    def reverse_normalize(self) -> CanonicalEffectRequest:
-        return self.canonical_request
 
 
 class LocalRecordAdapter(TargetAdapter):
@@ -81,44 +76,74 @@ class LocalRecordAdapter(TargetAdapter):
         canonical_request: CanonicalEffectRequest,
         binding: AdapterBinding,
         arguments: Mapping[str, object],
-    ) -> ProviderTranslation:
-        return LocalRecordTranslation(
-            canonical_request=canonical_request,
+    ) -> ProviderCall:
+        return ProviderCall(
             provider_operation=canonical_request.operation,
-            provider_payload={"arguments": dict(arguments), "resource": canonical_request.resource}
+            provider_payload={"arguments": dict(arguments), "resource": canonical_request.resource, "capability_id": canonical_request.capability_id, "consequence_class": canonical_request.consequence_class, "semantic_version": canonical_request.semantic_version}
         )
 
-    def execute_translation(self, translation: ProviderTranslation) -> object:
+    def execute_translation(self, call: ProviderCall) -> object:
         self.invocation_count += 1
-        path = self._record_path(str(translation.provider_payload["resource"]))
-        op = translation.provider_operation
+        path = self._record_path(str(call.provider_payload["resource"]))
+        op = call.provider_operation
         
         if op == "record.create":
-            document = dict(translation.provider_payload["arguments"]) # type: ignore
+            document = dict(call.provider_payload["arguments"]) # type: ignore
             path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
             return document
         if op == "record.read":
             try:
                 return json.loads(path.read_text(encoding="utf-8"))
             except FileNotFoundError as exc:
-                raise KeyError(translation.provider_payload["resource"]) from exc
+                raise KeyError(call.provider_payload["resource"]) from exc
         if op == "record.delete":
             try:
                 path.unlink()
             except FileNotFoundError as exc:
-                raise KeyError(translation.provider_payload["resource"]) from exc
-            return {"deleted": translation.provider_payload["resource"]}
+                raise KeyError(call.provider_payload["resource"]) from exc
+            return {"deleted": call.provider_payload["resource"]}
         raise ValueError("target_not_mapped")
 
 
+
+class LocalRecordProfile:
+    normalizer_identity = "activation.local-record.normalizer"
+    mapping_version = "1.0.0"
+
+    def normalize_provider_call(self, call: ProviderCall, binding: AdapterBinding) -> CanonicalEffectRequest:
+        import hashlib
+        args = dict(call.provider_payload.get("arguments", {}))
+        resource = str(call.provider_payload.get("resource", ""))
+        capability_id = str(call.provider_payload.get("capability_id", ""))
+        consequence_class = str(call.provider_payload.get("consequence_class", ""))
+        semantic_version = str(call.provider_payload.get("semantic_version", ""))
+        
+        args_digest = hashlib.sha256(json.dumps(args, sort_keys=True).encode("utf-8")).hexdigest()
+        
+        return CanonicalEffectRequest(
+            capability_id=capability_id,
+            operation=call.provider_operation,
+            resource=resource,
+            arguments_digest=args_digest,
+            consequence_class=consequence_class,
+            semantic_version=semantic_version
+        )
+
 class TargetAdapterRegistry:
+
     """Registry of server-owned effect adapters."""
 
     def __init__(self) -> None:
         self._targets: dict[str, TargetAdapter] = {}
+        self._profiles: dict[str, ProviderProfile] = {}
 
-    def register(self, ref: str, adapter: TargetAdapter) -> None:
+    def register(self, ref: str, adapter: TargetAdapter, profile: ProviderProfile = None) -> None:
         self._targets[ref] = adapter
+        if profile:
+            self._profiles[ref] = profile
 
     def resolve(self, ref: str) -> TargetAdapter | None:
         return self._targets.get(ref)
+        
+    def resolve_profile(self, ref: str) -> ProviderProfile | None:
+        return self._profiles.get(ref)

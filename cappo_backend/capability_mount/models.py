@@ -250,3 +250,4 @@ class AdapterBinding(ContractModel):
     provider_api_version: str = Field(min_length=1)
     canonical_effect_digest: str = Field(min_length=1)
     mapping_digest: str = Field(min_length=1)
+    normalizer_identity: str = Field(min_length=1)

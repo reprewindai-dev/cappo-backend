@@ -10,6 +10,7 @@ from cappo_backend.capability_mount.effects import (
     CappoUncertainError,
     TargetAdapterRegistry,
     LocalRecordAdapter,
+    LocalRecordProfile
 )
 from cappo_backend.capability_mount.models import CapabilityPackage
 from cappo_backend.capability_mount.service import AnchorResult
@@ -63,9 +64,10 @@ def prepare(
     registry = client.app.state.mount_registry
     registry.register_package(records_package())
     registry.anchor = ConfirmedAnchor()
-    selected = adapter or LocalRecordAdapter(tmp_path)
-    registry.target_adapters = TargetAdapterRegistry()
-    registry.target_adapters.register(LocalRecordAdapter.ref, selected)
+    adapter = adapter or LocalRecordAdapter(tmp_path)
+    adapters = TargetAdapterRegistry()
+    adapters.register("activation.local-record", adapter, profile=LocalRecordProfile())
+    registry.target_adapters = adapters
     client.headers["X-Workspace-ID"] = "w1"
     mounted = client.post(
         "/v1/capability/mounts",
