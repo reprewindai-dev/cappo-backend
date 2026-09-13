@@ -1269,6 +1269,7 @@ class MountRegistry:
             resource=resource,
             arguments=arguments,
             operation_id=op_id,
+            workspace=row.owner_workspace,
         )
 
         def invoke_effect(**_: object) -> object:

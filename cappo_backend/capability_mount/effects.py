@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import os
 import re
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ class ConsequenceContext:
     resource: str
     arguments: Mapping[str, object]
     operation_id: str | None
+    workspace: str | None = None
+    workspace: str | None = None
 
 
 class TargetAdapter(Protocol):
@@ -92,68 +95,89 @@ class GovernedCounterAdapter(TargetAdapter):
         self.root.mkdir(parents=True, exist_ok=True)
         self.invocation_count = 0
         self.invocations_by_action: dict[str, int] = {}
+        self.db_path = self.root / "governed_counters.db"
+        self._init_db()
 
-    def _counter_path(self, resource: str) -> Path:
-        validate_resource(resource)
-        path = (self.root / f"counter_{resource}.json").resolve()
-        if path.parent != self.root:
-            raise ValueError("invalid_target_resource")
-        return path
-
-    @staticmethod
-    def _initial_state() -> dict[str, int]:
-        return {"value": 0, "version": 0}
-
-    def _read_state(self, path: Path) -> dict[str, int]:
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return self._initial_state()
-
-    @staticmethod
-    def _write_state(path: Path, state: dict[str, int]) -> None:
-        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-        try:
-            temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
-            os.replace(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
+    def _init_db(self) -> None:
+        with sqlite3.connect(self.db_path, timeout=15.0, isolation_level=None) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS counters (
+                    workspace TEXT NOT NULL,
+                    resource TEXT NOT NULL,
+                    value INTEGER NOT NULL DEFAULT 0,
+                    version INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (workspace, resource)
+                )
+            """)
 
     def dispatch(self, context: ConsequenceContext) -> object:
         self.invocation_count += 1
         self.invocations_by_action[context.action] = (
             self.invocations_by_action.get(context.action, 0) + 1
         )
-        path = self._counter_path(context.resource)
-        state = self._read_state(path)
+        
+        validate_resource(context.resource)
+        
+        if not context.workspace:
+            raise ValueError("missing_workspace_identity")
 
-        if context.action == "counter.read":
-            return {
-                "resource": context.resource,
-                "value": state["value"],
-                "version": state["version"],
-            }
-        if context.action == "counter.increment":
-            previous_value = state["value"]
-            next_state = {
-                "value": previous_value + 1,
-                "version": state["version"] + 1,
-            }
-            self._write_state(path, next_state)
-            return {
-                "resource": context.resource,
-                "previous_value": previous_value,
-                "value": next_state["value"],
-                "version": next_state["version"],
-            }
-        if context.action == "counter.reset":
-            next_state = {"value": 0, "version": state["version"] + 1}
-            self._write_state(path, next_state)
-            return {
-                "resource": context.resource,
-                "value": next_state["value"],
-                "version": next_state["version"],
-            }
+        with sqlite3.connect(self.db_path, timeout=15.0, isolation_level="IMMEDIATE") as conn:
+            cursor = conn.cursor()
+            
+            # Ensure row exists
+            cursor.execute("""
+                INSERT OR IGNORE INTO counters (workspace, resource, value, version)
+                VALUES (?, ?, 0, 0)
+            """, (context.workspace, context.resource))
+            
+            if context.action == "counter.read":
+                cursor.execute('SELECT value, version FROM counters WHERE workspace = ? AND resource = ?', 
+                               (context.workspace, context.resource))
+                row = cursor.fetchone()
+                return {
+                    "resource": context.resource,
+                    "value": row[0],
+                    "version": row[1],
+                }
+
+            if context.action == "counter.increment":
+                cursor.execute('SELECT value, version FROM counters WHERE workspace = ? AND resource = ?', 
+                               (context.workspace, context.resource))
+                row = cursor.fetchone()
+                previous_value = row[0]
+                
+                cursor.execute("""
+                    UPDATE counters 
+                    SET value = value + 1, version = version + 1 
+                    WHERE workspace = ? AND resource = ?
+                    RETURNING value, version
+                """, (context.workspace, context.resource))
+                row = cursor.fetchone()
+                value = row[0]
+                version = row[1]
+                return {
+                    "resource": context.resource,
+                    "previous_value": previous_value,
+                    "value": value,
+                    "version": version,
+                }
+
+            if context.action == "counter.reset":
+                cursor.execute("""
+                    UPDATE counters 
+                    SET value = 0, version = version + 1 
+                    WHERE workspace = ? AND resource = ?
+                    RETURNING value, version
+                """, (context.workspace, context.resource))
+                row = cursor.fetchone()
+                return {
+                    "resource": context.resource,
+                    "value": 0,
+                    "version": row[1],
+                }
+
         raise ValueError("target_not_mapped")
 
 

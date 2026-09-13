@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sqlite3
+import threading
+import concurrent.futures
+
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,12 +37,14 @@ def counter_context(
     *,
     resource: str = "demo-1",
     arguments: dict[str, object] | None = None,
+    workspace: str | None = "w1"
 ) -> ConsequenceContext:
     return ConsequenceContext(
         action=action,
         resource=resource,
         arguments=arguments or {},
         operation_id=None,
+        workspace=workspace,
     )
 
 
@@ -49,6 +55,7 @@ def configure_counter(client: TestClient, root: Path) -> GovernedCounterAdapter:
     adapter = GovernedCounterAdapter(root)
     registry.target_adapters = TargetAdapterRegistry()
     registry.target_adapters.register(GovernedCounterAdapter.ref, adapter)
+    client.headers["X-Workspace-ID"] = "w1"
     client.headers["X-Workspace-ID"] = "w1"
     return adapter
 
@@ -118,7 +125,7 @@ def test_fresh_read_and_exactly_one_increment_per_invocation(tmp_path: Path) -> 
         "value": 2,
         "version": 2,
     }
-    assert json.loads((tmp_path / "counter_demo-1.json").read_text()) == {
+    assert _get_db_state(adapter.db_path, "w1", "demo-1") == {
         "value": 2,
         "version": 2,
     }
@@ -200,7 +207,7 @@ def test_governed_counter_route_flow(
     assert replay_body["decision"] == "deny"
     assert replay_body["reason"].startswith("idempotency_replay:")
     assert adapter.invocation_count == 1
-    assert json.loads((tmp_path / "counter_demo-1.json").read_text())["value"] == 1
+    assert _get_db_state(adapter.db_path, "w1", "demo-1")["value"] == 1
 
     terminated_mount = mount_counter(client)
     terminated_id = terminated_mount["mount"]["id"]
@@ -217,3 +224,51 @@ def test_governed_counter_route_flow(
     assert terminated_body["decision"] == "deny"
     assert terminated_body["reason"] == "execution is terminated"
     assert adapter.invocation_count == 1
+
+
+def _get_db_state(db_path, workspace: str, resource: str):
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT value, version FROM counters WHERE workspace=? AND resource=?", (workspace, resource)).fetchone()
+        if not row:
+            return None
+        return {"value": row[0], "version": row[1]}
+
+def test_missing_workspace_fails(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    with pytest.raises(ValueError, match="missing_workspace_identity"):
+        adapter.dispatch(counter_context("counter.read", workspace=None))
+
+def test_workspace_isolation(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    
+    # w1 increments demo-1
+    w1_inc = adapter.dispatch(counter_context("counter.increment", workspace="w1", resource="demo-1"))
+    assert w1_inc["value"] == 1
+    
+    # w2 reads demo-1, gets 0
+    w2_read = adapter.dispatch(counter_context("counter.read", workspace="w2", resource="demo-1"))
+    assert w2_read["value"] == 0
+    
+    # w2 increments demo-1, gets 1
+    w2_inc = adapter.dispatch(counter_context("counter.increment", workspace="w2", resource="demo-1"))
+    assert w2_inc["value"] == 1
+    
+    # Ensure physical state matches
+    assert _get_db_state(adapter.db_path, "w1", "demo-1")["value"] == 1
+    assert _get_db_state(adapter.db_path, "w2", "demo-1")["value"] == 1
+
+def test_concurrent_increments_not_lost(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    adapter.dispatch(counter_context("counter.read", workspace="w1", resource="demo-1"))
+    
+    def inc():
+        return adapter.dispatch(counter_context("counter.increment", workspace="w1", resource="demo-1"))
+        
+    iterations = 100
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(inc) for _ in range(iterations)]
+        concurrent.futures.wait(futures)
+        
+    state = _get_db_state(adapter.db_path, "w1", "demo-1")
+    assert state["value"] == iterations
+    assert state["version"] == iterations
