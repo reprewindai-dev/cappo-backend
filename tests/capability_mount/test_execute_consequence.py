@@ -281,8 +281,6 @@ def test_failure_before_write_is_failed(client: TestClient, tmp_path: Path) -> N
             json=execute_payload(mount),
         )
     # The HTTP call failed, but the consequence should be marked as failed.
-    # We can check the DB directly, but here we can just verify the adapter was invoked
-    # and the file doesn't exist.
     assert not (tmp_path / "activation-1.json").exists()
     assert adapter.invocation_count == 1
 
@@ -299,6 +297,7 @@ def test_uncertain_after_write_is_unknown_and_file_exists(
             json=execute_payload(mount),
         )
     assert (tmp_path / "activation-1.json").exists()
+    assert adapter.invocation_count == 1
     assert adapter.invocation_count == 1
 
 

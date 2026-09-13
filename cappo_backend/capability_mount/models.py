@@ -158,6 +158,7 @@ class Mount(ContractModel):
     substrate_id: str | None = None
     boot_instance_id: str | None = None
     runtime_key_thumbprint: str | None = None
+    state_root: str | None = None
 
 
 class EphemeralScopedToken(ContractModel):
@@ -170,6 +171,7 @@ class EphemeralScopedToken(ContractModel):
     substrate_id: str | None = None
     boot_instance_id: str | None = None
     runtime_key_thumbprint: str | None = None
+    state_root: str | None = None
     scope: TokenDescriptorScope
     grants: Grants
     policy: MountPolicy

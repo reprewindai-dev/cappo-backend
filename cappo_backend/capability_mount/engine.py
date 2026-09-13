@@ -132,6 +132,10 @@ class Mounter:
         *,
         role: str = "ephemeral_executor",
         execution_id: str | None = None,
+        substrate_id: str | None = None,
+        boot_instance_id: str | None = None,
+        runtime_key_thumbprint: str | None = None,
+        state_root: str | None = None,
     ) -> tuple[Mount, EphemeralScopedToken]:
         if ttl < 1 or ttl > self.MAX_TTL_SECONDS:
             raise MountError(f"ttl must be between 1 and {self.MAX_TTL_SECONDS} seconds")
@@ -163,6 +167,10 @@ class Mounter:
             mount_id=mount_id,
             execution_id=resolved_execution_id,
             package_ref=package.id,
+            substrate_id=substrate_id,
+            boot_instance_id=boot_instance_id,
+            runtime_key_thumbprint=runtime_key_thumbprint,
+            state_root=state_root,
             scope=TokenDescriptorScope(workspace=scope.workspace, project=scope.project),
             grants=grants,
             policy=selected_policy,
@@ -180,6 +188,10 @@ class Mounter:
             grants=grants,
             policy=selected_policy,
             lifecycle=Lifecycle(),
+            substrate_id=substrate_id,
+            boot_instance_id=boot_instance_id,
+            runtime_key_thumbprint=runtime_key_thumbprint,
+            state_root=state_root,
         )
         return mount, token
 

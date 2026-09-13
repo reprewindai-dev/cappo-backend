@@ -124,7 +124,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mount_registry.register_package(package)
     app.state.mount_registry = mount_registry
 
-    from cappo_backend.services.x402_payment import X402FreemiumASGI, get_x402_manager
+    from x402.http.middleware.fastapi import PaymentMiddlewareASGI
+    from cappo_backend.services.x402_payment import get_x402_manager
 
     x402_manager = get_x402_manager(settings)
     if x402_manager.is_enabled:
@@ -136,10 +137,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if route != "POST /v1/exec"
             }
         app.add_middleware(
-            X402FreemiumASGI,
+            PaymentMiddlewareASGI,
             server=x402_manager.server,
             routes=x402_routes,
-            settings=settings,
         )
 
     app.add_middleware(OllamaBleedSanitizerMiddleware)

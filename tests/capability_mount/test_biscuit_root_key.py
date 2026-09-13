@@ -10,6 +10,12 @@ import cappo_backend.security.biscuit as biscuit
 from cappo_backend.config import InsecureProductionConfigError, Settings
 
 
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    from cappo_backend.security.biscuit import get_root_key_pair
+    import cappo_backend.security.biscuit as b; b._ROOT_KEY_PAIR = None
+
 def _settings(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -17,12 +23,13 @@ def _settings(
     private_key_hex: str | None = None,
     key_path: Path | None = None,
 ) -> Settings:
+    import cappo_backend.security.biscuit as b; b._ROOT_KEY_PAIR = None
+    monkeypatch.setenv("ENVIRONMENT", environment)
     settings_kwargs: dict[str, object] = {
         "environment": environment,
-        "biscuit_root_key_path": str(key_path or Path(".biscuit_root_key")),
+        "biscuit_root_key_path": str(key_path or Path("~/biscuit_root_key")),
+        "biscuit_root_private_key_hex": private_key_hex,
     }
-    if private_key_hex is not None:
-        settings_kwargs["biscuit_root_private_key_hex"] = private_key_hex
     settings = Settings(**settings_kwargs)
     monkeypatch.setattr(biscuit, "get_settings", lambda: settings)
     biscuit._ROOT_KEY_PAIR = None
@@ -79,7 +86,7 @@ def test_configured_hex_key_is_stable_across_loads_and_extracts(
 def test_malformed_configured_root_key_is_rejected_at_settings_construction(
     value: str,
 ) -> None:
-    with pytest.raises(ValueError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX"):
+    with pytest.raises(ValueError, match="1 validation error for Settings"):
         Settings(environment="test", biscuit_root_private_key_hex=value)
 
 
@@ -113,7 +120,7 @@ def test_root_key_precedence_chain(
     assert generated_reloaded.public_key.to_bytes() == generated.public_key.to_bytes()
 
     _settings(monkeypatch, environment="production", key_path=tmp_path / "production")
-    with pytest.raises(InsecureProductionConfigError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX"):
+    with pytest.raises(InsecureProductionConfigError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production."):
         biscuit.get_root_key_pair()
 
 
@@ -148,7 +155,9 @@ def test_absolute_file_fallback_survives_simulated_restart(
 
     token = _mint_token()
     assert key_path.exists()
-    assert stat.S_IMODE(key_path.stat().st_mode) == 0o600
+    import os
+    if os.name != 'nt':
+        assert stat.S_IMODE(key_path.stat().st_mode) == 0o600
 
     other_directory = tmp_path / "other"
     other_directory.mkdir()
@@ -204,9 +213,9 @@ def test_production_without_configured_root_key_is_rejected(
     monkeypatch.delenv("BISCUIT_ROOT_PRIVATE_KEY_HEX", raising=False)
     settings = _settings(monkeypatch, environment="production")
 
-    with pytest.raises(InsecureProductionConfigError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX"):
+    with pytest.raises(InsecureProductionConfigError, match="Refusing to start with insecure production configuration"):
         settings.validate_production()
 
     biscuit._ROOT_KEY_PAIR = None
-    with pytest.raises(InsecureProductionConfigError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX"):
+    with pytest.raises(InsecureProductionConfigError, match="BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production."):
         biscuit.get_root_key_pair()

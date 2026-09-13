@@ -20,12 +20,16 @@ async def get_well_known_x402() -> JSONResponse:
     """
     manager = get_x402_manager()
     # If disabled (e.g. during tests without a configured wallet), return fallback
-    wallet = manager._config.evm_address if manager.is_enabled else "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    if not manager.is_enabled:
+        return JSONResponse(content={
+            "enabled": False,
+            "reason": "payment_recipient_not_configured"
+        })
     
     return JSONResponse(content={
-        "name": "Sovereign AI Hub",
+        "name": "Veklom",
         "contact": "anthony@veklom.com",
-        "wallet": wallet,
+        "wallet": manager._config.evm_address,
         "payment_methods": ["x402"],
         "pricing": "/api/v1/pricing",
         "x402": {

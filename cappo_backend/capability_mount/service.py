@@ -532,6 +532,10 @@ class MountRegistry:
         caller_spiffe_id: str | None = None,
         executor_spiffe_id: str | None = None,
         authority_evaluation: "CandidateEvaluationResult" | None = None,
+        substrate_id: str | None = None,
+        boot_instance_id: str | None = None,
+        runtime_key_thumbprint: str | None = None,
+        state_root: str | None = None,
     ) -> tuple[MountRecord | None, AnchorResult, str]:
         from .models import Decision
         db = self._db()
@@ -582,6 +586,10 @@ class MountRegistry:
                 ttl=ttl_seconds,
                 role=role,
                 execution_id=execution_id,
+                substrate_id=substrate_id,
+                boot_instance_id=boot_instance_id,
+                runtime_key_thumbprint=runtime_key_thumbprint,
+                state_root=state_root,
             )
             
             from cappo_backend.security.biscuit import mint_biscuit_capability
@@ -789,7 +797,7 @@ class MountRegistry:
         # Check budget before continuing
         if not reason:
             from cappo_backend.models.capability_lease import CapabilityLease
-            lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
+            lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc())).scalars().first()
             if lease and lease.offline_enabled and lease.offline_budget is not None and lease.offline_budget <= 0:
                 reason = "offline_budget_exhausted"
 
@@ -816,7 +824,7 @@ class MountRegistry:
             ConnectivityState,
             InvariantViolationError,
         )
-        lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
+        lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc())).scalars().first()
         if lease:
             try:
                 # --- Real Biscuit authority extraction ---
@@ -950,7 +958,7 @@ class MountRegistry:
 
         # Find the active lease, if any
         from cappo_backend.models.capability_lease import CapabilityLease
-        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).first()
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
         if lease:
             # Check expiry
             if lease.expires_at and _utc(lease.expires_at) < utc_now():
@@ -1110,6 +1118,11 @@ class MountRegistry:
         arguments: dict[str, Any],
         operation_id: str | None = None,
         spiffe_fields: dict[str, Any] | None = None,
+        substrate_id: str | None = None,
+        boot_instance_id: str | None = None,
+        runtime_key_thumbprint: str | None = None,
+        state_root: str | None = None,
+        authority_epoch: int | None = None,
     ) -> tuple[Decision, str, str | None, dict[str, Any]]:
         """Authorize and execute one registered capability consequence."""
         db = self._db()
@@ -1190,6 +1203,24 @@ class MountRegistry:
             return preflight_deny("owner_mismatch", None)
 
         record = self._record(row)
+        
+        if record.mount.substrate_id is not None:
+            if substrate_id != record.mount.substrate_id:
+                return preflight_deny("substrate_id_mismatch", record)
+            if boot_instance_id != record.mount.boot_instance_id:
+                return preflight_deny("boot_instance_id_mismatch", record)
+            if runtime_key_thumbprint != record.mount.runtime_key_thumbprint:
+                return preflight_deny("runtime_key_thumbprint_mismatch", record)
+        
+        if record.mount.state_root is not None and state_root != record.mount.state_root:
+            return preflight_deny("state_root_mismatch", record)
+            
+        if authority_epoch is not None:
+            from cappo_backend.models.capability_lease import CapabilityLease
+            lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
+            if lease and authority_epoch < lease.authority_epoch:
+                return preflight_deny("stale_authority_epoch", record)
+
         if (
             not row.terminated
             and _utc(row.expires_at) > utc_now()
@@ -1289,8 +1320,6 @@ class MountRegistry:
             decision = Decision.DENY
             reason = str(exc)
         except Exception:
-            # Re-raise internal errors. The durable consequence event (e.g. STARTED)
-            # is already committed and will be picked up by the reconciliation loop.
             raise
 
         latest = db.execute(
@@ -1392,7 +1421,7 @@ class MountRegistry:
         mark_mount_revoked(mount_id)
         
         from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
-        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).first()
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
         if lease and lease.lease_state in (LeaseState.ISSUED.value, LeaseState.ACTIVE.value):
             current_epoch = lease.revocation_epoch + 1
             # "terminate" explicitly means stopping it before natural expiration, 
