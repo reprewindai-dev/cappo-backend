@@ -47,8 +47,16 @@ from cappo_backend.api.routers.status_observation_router import router as status
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
-from cappo_backend.capability_mount.effects import TargetAdapterRegistry, LocalRecordAdapter
-from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
+from cappo_backend.capability_mount.effects import (
+    GovernedCounterAdapter,
+    LocalRecordAdapter,
+    TargetAdapterRegistry,
+)
+from cappo_backend.capability_mount.service import (
+    GOVERNED_COUNTER_PACKAGE,
+    MountRegistry,
+    load_packages_from_json,
+)
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
 from cappo_backend.observability.logging import configure_logging
@@ -104,8 +112,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             LocalRecordAdapter.ref,
             LocalRecordAdapter(settings.capability_effect_record_root),
         )
+        target_adapters.register(
+            GovernedCounterAdapter.ref,
+            GovernedCounterAdapter(settings.capability_effect_record_root),
+        )
 
     mount_registry = MountRegistry(target_adapters=target_adapters)
+    if settings.capability_effect_record_root:
+        mount_registry.register_package(GOVERNED_COUNTER_PACKAGE)
     for package in load_packages_from_json(settings.capability_packages_json):
         mount_registry.register_package(package)
     app.state.mount_registry = mount_registry

@@ -27,19 +27,33 @@ from cappo_backend.services.mount_evidence import (
     VerifiedMountEvidence,
 )
 
-from .effects import TargetAdapterRegistry, ConsequenceContext, validate_resource
+from .effects import ConsequenceContext, TargetAdapterRegistry, validate_resource
 from .engine import AuditSink, ExecutionBinding, Mounter
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
     CapabilityPackage,
     Decision,
     EphemeralScopedToken,
-    PersistentServiceToken,
     ExecutionAuditEvent,
     Mount,
     MountPolicy,
     MountScope,
+    PersistentServiceToken,
     UnmountReason,
+)
+
+GOVERNED_COUNTER_PACKAGE = CapabilityPackage(
+    id="veklom.governed-counter@v1",
+    family="sandbox",
+    title="Governed Counter",
+    purpose=(
+        "Increment a per-workspace counter by exactly one under bounded CAPPO "
+        "authority; reset is blocked."
+    ),
+    reads=["counter.read"],
+    writes=["counter.increment"],
+    blocked=["counter.reset"],
+    outputs=["counter.state"],
 )
 
 
@@ -147,7 +161,8 @@ class MountRegistry:
         context: dict[str, Any]
     ) -> "CandidateEvaluationResult":
         import hashlib
-        from .models import Decision, CandidateEvaluationResult
+
+        from .models import CandidateEvaluationResult, Decision
         
         permitted = []
         rejected = {}

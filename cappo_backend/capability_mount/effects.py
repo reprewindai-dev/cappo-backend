@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol
+from uuid import uuid4
 
 _RESOURCE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
@@ -13,8 +16,6 @@ _RESOURCE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 class CappoUncertainError(Exception):
     """Raised when an effect may have landed but its outcome cannot be determined."""
 
-
-from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ConsequenceContext:
@@ -47,6 +48,7 @@ class LocalRecordAdapter(TargetAdapter):
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.invocation_count = 0
+        self.invocations_by_action: dict[str, int] = {}
 
     def _record_path(self, resource: str) -> Path:
         validate_resource(resource)
@@ -57,6 +59,9 @@ class LocalRecordAdapter(TargetAdapter):
 
     def dispatch(self, context: ConsequenceContext) -> object:
         self.invocation_count += 1
+        self.invocations_by_action[context.action] = (
+            self.invocations_by_action.get(context.action, 0) + 1
+        )
         path = self._record_path(context.resource)
         if context.action == "record.create":
             document = dict(context.arguments)
@@ -73,6 +78,82 @@ class LocalRecordAdapter(TargetAdapter):
             except FileNotFoundError as exc:
                 raise KeyError(context.resource) from exc
             return {"deleted": context.resource}
+        raise ValueError("target_not_mapped")
+
+
+class GovernedCounterAdapter(TargetAdapter):
+    """Sandbox reference capability for one-step governed counter mutations."""
+
+    ref = "activation.governed-counter"
+    actions = frozenset({"counter.read", "counter.increment", "counter.reset"})
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).expanduser().resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.invocation_count = 0
+        self.invocations_by_action: dict[str, int] = {}
+
+    def _counter_path(self, resource: str) -> Path:
+        validate_resource(resource)
+        path = (self.root / f"counter_{resource}.json").resolve()
+        if path.parent != self.root:
+            raise ValueError("invalid_target_resource")
+        return path
+
+    @staticmethod
+    def _initial_state() -> dict[str, int]:
+        return {"value": 0, "version": 0}
+
+    def _read_state(self, path: Path) -> dict[str, int]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return self._initial_state()
+
+    @staticmethod
+    def _write_state(path: Path, state: dict[str, int]) -> None:
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+        try:
+            temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def dispatch(self, context: ConsequenceContext) -> object:
+        self.invocation_count += 1
+        self.invocations_by_action[context.action] = (
+            self.invocations_by_action.get(context.action, 0) + 1
+        )
+        path = self._counter_path(context.resource)
+        state = self._read_state(path)
+
+        if context.action == "counter.read":
+            return {
+                "resource": context.resource,
+                "value": state["value"],
+                "version": state["version"],
+            }
+        if context.action == "counter.increment":
+            previous_value = state["value"]
+            next_state = {
+                "value": previous_value + 1,
+                "version": state["version"] + 1,
+            }
+            self._write_state(path, next_state)
+            return {
+                "resource": context.resource,
+                "previous_value": previous_value,
+                "value": next_state["value"],
+                "version": next_state["version"],
+            }
+        if context.action == "counter.reset":
+            next_state = {"value": 0, "version": state["version"] + 1}
+            self._write_state(path, next_state)
+            return {
+                "resource": context.resource,
+                "value": next_state["value"],
+                "version": next_state["version"],
+            }
         raise ValueError("target_not_mapped")
 
 

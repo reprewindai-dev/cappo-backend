@@ -26,3 +26,19 @@ Tokens are short-lived and single-use by contract. Executors must not persist
 memory or authority beyond the mount lifecycle. Audit sinks are append-only and
 may be implemented by an in-memory sink for local use or an external ledger
 adapter such as PGL.
+
+## Sandbox reference capability: Governed Counter
+
+When the local capability effect root is configured, CAPPO registers the
+`veklom.governed-counter@v1` package and its server-owned
+`activation.governed-counter` target. The package exposes `counter.read` and
+`counter.increment`; `counter.reset` is explicitly blocked. The increment action
+advances a per-resource counter by exactly one, regardless of caller arguments.
+
+The target resource is supplied in the execute request and must pass CAPPO's
+resource validation. State is stored in the sandbox effect root as
+`counter_<resource>.json`, with `value` and `version` fields. A missing state
+file starts at zero. `POST /v1/capability/mounts/{id}/execute` resolves the
+server-owned target from `target_ref: "activation.governed-counter"`; callers
+cannot select an arbitrary implementation. This is the sandbox reference
+capability for a bounded, file-backed governed consequence.
