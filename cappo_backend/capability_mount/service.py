@@ -265,6 +265,7 @@ class MountRegistry:
                 approval_token=str(kwargs.get("approval_token")) if "approval_token" in kwargs else None,
                 suppression_evidence=str(kwargs.get("suppression_evidence")) if "suppression_evidence" in kwargs else None,
                 suppression_confirmed=bool(kwargs.get("suppression_confirmed")),
+                spiffe_fields=spiffe_fields,
             )
             receipt_id = (detail or {}).get("receipt_id")
 
@@ -1108,6 +1109,7 @@ class MountRegistry:
         resource: str,
         arguments: dict[str, Any],
         operation_id: str | None = None,
+        spiffe_fields: dict[str, Any] | None = None,
     ) -> tuple[Decision, str, str | None, dict[str, Any]]:
         """Authorize and execute one registered capability consequence."""
         db = self._db()

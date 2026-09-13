@@ -318,6 +318,17 @@ def execute_consequence(
     registry: MountRegistry = Depends(get_registry),
 ) -> ExecuteResponse:
     principal, workspace = _caller(request)
+    spiffe_fields = {
+        "caller_spiffe_id": request.scope.get("caller_spiffe_id"),
+        "trust_domain": request.scope.get("trust_domain"),
+        "caller_cert_sha256": request.scope.get("caller_cert_sha256"),
+        "svid_not_before": request.scope.get("svid_not_before"),
+        "svid_not_after": request.scope.get("svid_not_after"),
+        "eei_id": request.headers.get("x-veklom-eei-id"),
+        "profile_id": request.headers.get("x-veklom-profile-id"),
+        "lease_id": request.headers.get("x-veklom-lease-id"),
+        "operator_id": request.headers.get("x-veklom-operator-id"),
+    }
     decision, reason, consequence_state, payload = registry.execute_consequence(
         mount_id,
         body.action,
@@ -332,6 +343,7 @@ def execute_consequence(
         resource=body.resource,
         arguments=body.arguments,
         operation_id=body.operation_id,
+        spiffe_fields=spiffe_fields,
     )
     return ExecuteResponse(
         decision=decision,
