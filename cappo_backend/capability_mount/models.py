@@ -154,6 +154,10 @@ class Mount(ContractModel):
     grants: Grants
     policy: MountPolicy
     lifecycle: Lifecycle = Field(default_factory=Lifecycle)
+    # --- Substrate Bindings ---
+    substrate_id: str | None = None
+    boot_instance_id: str | None = None
+    runtime_key_thumbprint: str | None = None
 
 
 class EphemeralScopedToken(ContractModel):
@@ -162,6 +166,10 @@ class EphemeralScopedToken(ContractModel):
     mount_id: str = Field(min_length=1)
     execution_id: str = Field(min_length=1)
     package_ref: str = Field(min_length=1)
+    # --- Substrate Bindings ---
+    substrate_id: str | None = None
+    boot_instance_id: str | None = None
+    runtime_key_thumbprint: str | None = None
     scope: TokenDescriptorScope
     grants: Grants
     policy: MountPolicy
