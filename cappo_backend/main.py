@@ -205,11 +205,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
+        import logging
+        logging.error(f"Global exception on {request.url}: {exc}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
                 "error": "INTERNAL_SERVER_ERROR",
-                "detail": "An unexpected error occurred. Stack trace is hidden for security.",
+                "detail": f"An unexpected error occurred: {exc}",
             },
         )
 

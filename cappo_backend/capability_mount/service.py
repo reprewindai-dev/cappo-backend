@@ -265,7 +265,7 @@ class MountRegistry:
                 approval_token=str(kwargs.get("approval_token")) if "approval_token" in kwargs else None,
                 suppression_evidence=str(kwargs.get("suppression_evidence")) if "suppression_evidence" in kwargs else None,
                 suppression_confirmed=bool(kwargs.get("suppression_confirmed")),
-                spiffe_fields=spiffe_fields,
+                spiffe_fields=kwargs.get("spiffe_fields"),
             )
             receipt_id = (detail or {}).get("receipt_id")
 
@@ -1217,7 +1217,7 @@ class MountRegistry:
                     "target_ref": target_ref,
                     "approval_token": approval_token,
                     "suppression_evidence": suppression_evidence,
-                    "suppression_confirmed": suppression_confirmed,
+                    "suppression_confirmed": suppression_confirmed, "spiffe_fields": spiffe_fields,
                 }.items()
                 if key not in ("approval_token", "suppression_evidence", "suppression_confirmed")
             }
@@ -1263,7 +1263,7 @@ class MountRegistry:
             "target_ref": target_ref,
             "approval_token": approval_token,
             "suppression_evidence": suppression_evidence,
-            "suppression_confirmed": suppression_confirmed,
+            "suppression_confirmed": suppression_confirmed, "spiffe_fields": spiffe_fields,
         }
 
         context = ConsequenceContext(
@@ -1421,3 +1421,5 @@ def utc_now() -> datetime:
 
 def _utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
