@@ -217,6 +217,11 @@ def verify_biscuit_capability(
 
         # Build the authorizer
         auth = auth_builder.build(token)
+        try:
+            from biscuit_auth import AuthorizerLimits
+            auth.set_limits(AuthorizerLimits(max_facts=5000, max_iterations=1000, max_time_micro=100_000))
+        except Exception:
+            pass
         auth.authorize()
 
         import biscuit_auth
@@ -278,6 +283,12 @@ def extract_authority_context(token_b64: str):
         auth = auth_builder.build(token)
         
         import biscuit_auth
+        try:
+            from biscuit_auth import AuthorizerLimits
+            auth.set_limits(AuthorizerLimits(max_facts=5000, max_iterations=1000, max_time_micro=100_000))
+        except Exception:
+            pass
+
         actions = set()
         action_facts = auth.query(biscuit_auth.Rule('rule($act) <- allowed_action($act)'))
         for fact in action_facts:
@@ -331,3 +342,4 @@ def extract_authority_context(token_b64: str):
         import logging
         logging.getLogger("cappo.security").error(f"AUTHORITY_EXTRACTION_FAILED: {type(e).__name__}: {str(e)}")
         return None
+
