@@ -220,8 +220,9 @@ def verify_biscuit_capability(
         try:
             from biscuit_auth import AuthorizerLimits
             auth.set_limits(AuthorizerLimits(max_facts=5000, max_iterations=1000, max_time_micro=100_000))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger("cappo.security").warning(f"Failed to set AuthorizerLimits: {e}")
         auth.authorize()
 
         import biscuit_auth
@@ -286,8 +287,9 @@ def extract_authority_context(token_b64: str):
         try:
             from biscuit_auth import AuthorizerLimits
             auth.set_limits(AuthorizerLimits(max_facts=5000, max_iterations=1000, max_time_micro=100_000))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger("cappo.security").warning(f"Failed to set AuthorizerLimits: {e}")
 
         actions = set()
         action_facts = auth.query(biscuit_auth.Rule('rule($act) <- allowed_action($act)'))
