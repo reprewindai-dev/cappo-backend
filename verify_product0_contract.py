@@ -7,8 +7,8 @@ validates x-veklom-invariants, dynamically maps test results, requires exact 11/
 and exports machine-readable JSON results.
 """
 
-import json
 import sys
+import json
 import unittest
 from pathlib import Path
 
@@ -61,10 +61,10 @@ def run_contract_conformance_gate():
             invariants_validated = True
 
     # E. Import and execute the 11 contract tests
-    from tests.contract.test_authority_custody_contract import TestAuthorityCustodyContract
     from tests.contract.test_dispatch_contract import TestDispatchContract
-    from tests.contract.test_event_contract import TestEventContract
     from tests.contract.test_reconciliation_contract import TestReconciliationContract
+    from tests.contract.test_authority_custody_contract import TestAuthorityCustodyContract
+    from tests.contract.test_event_contract import TestEventContract
 
     suite = unittest.TestSuite()
     suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestDispatchContract))

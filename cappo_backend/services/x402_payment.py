@@ -9,13 +9,14 @@ Omnipresent X402 Monetization:
 
   Pricing tiers (all USD, paid in USDC on Base):
 
-    Tier 1 — MICRO    $0.25   Operational status signals for production agents.
-    Tier 2 — READ     $0.75   Governed audit, ledger, license, benchmark reads.
+    Tier 1 — MICRO    $0.001  Discovery & status reads. Targets M2M polling agents.
+    Tier 2 — READ     $0.005  Governed audit, ledger, license, benchmark reads.
                               Consumers pay for integrity-proven responses.
-    Tier 3 — ACTION   $2.50   State mutations: kill-switch, budget, revoke,
+    Tier 3 — ACTION   $0.05   State mutations: kill-switch, budget, revoke,
                               governance approve/deny, license lifecycle ops.
-    Tier 4 — COMPUTE  $5.00   Agent execution, compile, assess, identity mint.
-                              Full CAPPO authority decision and PGL evidence.
+    Tier 4 — COMPUTE  $0.50   Agent execution, compile, assess, identity mint.
+                              Market reference: $0.50 is the floor for a fully
+                              governed, PGL-evidenced execution receipt.
 
   All prices flow to `veklom_evm_address` (treasury) on Base Mainnet + Sepolia.
   Multi-chain: zkSync, Unichain, Monad gated by x402_networks env var.
@@ -100,11 +101,11 @@ FREE_PATHS: frozenset[str] = frozenset({
 # Only /health is free.
 # ---------------------------------------------------------------------------
 BILLABLE_ROUTES: list[tuple[str, str]] = [
-    # ---- Tier 1: MICRO $0.25 — Operational status signals ----
+    # ---- Tier 1: MICRO $0.001 — Discovery & status reads ----
     ("GET /legacy/status",                          "micro"),
     ("GET /api/v1/platform/pulse",                   "micro"),
 
-    # ---- Tier 2: READ $0.75 — Governed data reads ----
+    # ---- Tier 2: READ $0.005 — Governed data reads ----
     ("GET /v1/audit-logs",                           "read"),
     ("GET /v1/runs",                                 "read"),
     ("GET /v1/audit/verify",                         "read"),
@@ -126,7 +127,7 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
     ("GET /v1/genomes/:genome_hash/lineage",         "read"),
     ("GET /v1/genomes/:genome_hash/birth-certificate", "read"),
 
-    # ---- Tier 3: ACTION $2.50 — State mutations ----
+    # ---- Tier 3: ACTION $0.05 — State mutations ----
     ("PUT /v1/kill-switch/:workspace_id",                        "action"),
     ("PUT /v1/budget/:workspace_id",                             "action"),
     ("POST /v1/identities/:execution_id/revoke",                 "action"),
@@ -139,7 +140,7 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
     ("POST /legacy/simulate",                                    "action"),
     ("POST /v1/genomes",                                         "action"),
 
-    # ---- Tier 4: COMPUTE $5.00 — Agent execution & premium ops ----
+    # ---- Tier 4: COMPUTE $0.50 — Agent execution & premium ops ----
     ("POST /v1/exec",                       "compute"),
     ("POST /api/v1/x402/exec/run",           "compute"),
     ("POST /v1/governance/v2/assess",        "compute"),
@@ -155,10 +156,10 @@ BILLABLE_ROUTES: list[tuple[str, str]] = [
 # Prices per tier (USD string format consumed by PaymentOption)
 # Approved billing surface — see implementation_plan_phase2.md
 TIER_PRICES: dict[str, str] = {
-    "micro":   "$0.25",
-    "read":    "$0.75",
-    "action":  "$2.50",
-    "compute": "$5.00",
+    "micro":   "$0.001",
+    "read":    "$0.005",
+    "action":  "$0.05",
+    "compute": "$0.50",
 }
 
 # Human-readable descriptions for each tier (used in RouteConfig.description)
@@ -327,28 +328,6 @@ class X402PaymentManager:
                 "mpp": "Machine Payments Protocol — Cloudflare/Stripe/Tempo; stablecoins, cards, Lightning",
             },
             "settlement_chain": "Base (eip155:8453)",
-            "payment_receiver": {
-                "capability": "cap:org:veklom:base:receive-usdc",
-                "mode": "receive_only",
-                "basename": "veklom.base.eth",
-                "pay_to": self._config.evm_address,
-                "asset": "USDC",
-                "asset_contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-            },
-            "rate_limits": {
-                "public_execution_proxy": {
-                    "requests": 60,
-                    "window_seconds": 60,
-                    "scope": "ip",
-                },
-                "workspace": {
-                    "runs_per_hour": self._settings.max_runs_per_hour,
-                    "tokens_per_hour": self._settings.max_tokens_per_hour,
-                },
-                "node": {
-                    "concurrent_executions": self._settings.max_node_concurrent_runs,
-                },
-            },
             "free_discovery_surface": sorted(FREE_PATHS),
         }
 

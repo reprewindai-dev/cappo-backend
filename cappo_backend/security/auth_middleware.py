@@ -40,7 +40,6 @@ PUBLIC_PATHS = frozenset(
         "/.well-known/capability-beacon-keys.json",
         "/x402/bazaar",
         "/api/v1/pricing",
-        "/v1/capability/packages",
     }
 )
 

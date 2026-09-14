@@ -1,12 +1,10 @@
-import json
 import os
-import signal
-import sqlite3
 import sys
 import time
-
+import json
+import sqlite3
+import signal
 import target_db
-
 
 def worker_main(execution_id, crash_point):
     """

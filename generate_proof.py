@@ -1,12 +1,10 @@
 import asyncio
-import json
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
 from cappo_backend.db.base import Base
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from tests.test_execution_evidence_lifecycle import _orchestrator
+import json
 
 engine = create_engine("sqlite:///:memory:")
 Base.metadata.create_all(engine)

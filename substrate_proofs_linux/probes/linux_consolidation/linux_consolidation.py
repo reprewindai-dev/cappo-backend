@@ -1,11 +1,9 @@
-import ctypes
-import json
-import os
 import sys
+import os
 import time
-
+import json
+import ctypes
 from bcc import BPF
-
 
 def setup_cgroup(name):
     cg_path = f"/sys/fs/cgroup/{name}"

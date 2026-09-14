@@ -1,6 +1,5 @@
+from wasmtime import Linker, FuncType, Engine, Config, ValType, Store, Module, Instance
 import time
-
-from wasmtime import Config, Engine, FuncType, Instance, Linker, Module, Store, ValType
 
 cfg = Config()
 cfg.consume_fuel = True

@@ -5,23 +5,18 @@ Adversarial tests for the unified physical substrate authority path.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
 
-from cappo_backend.capability_mount.effects import GovernedCounterAdapter, TargetAdapterRegistry
 from cappo_backend.capability_mount.engine import Decision
-from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, MountScope
-from cappo_backend.capability_mount.service import (
-    GOVERNED_COUNTER_PACKAGE,
-    AnchorResult,
-    MountRegistry,
-)
-from cappo_backend.db.session import SessionLocal
+from cappo_backend.capability_mount.models import MountPolicy, MountScope, CapabilityPackage
+from cappo_backend.capability_mount.service import MountRegistry, GOVERNED_COUNTER_PACKAGE, AnchorResult
 from cappo_backend.models.capability_lease import CapabilityLease
-
+from cappo_backend.capability_mount.effects import TargetAdapterRegistry, GovernedCounterAdapter
+from cappo_backend.db.session import SessionLocal
 
 @pytest.fixture
 def db_session() -> Session:
@@ -243,9 +238,8 @@ def test_altered_state_root(registry: MountRegistry, db_session: Session):
 
 def test_evidence_falsifier_signature():
     # Executor signs CONSEQUENCE_OBSERVED using its own runtime key -> PGL verifier rejects it.
+    from cappo_backend.models.substrate import PGLUnifiedLifecycleEvent, PGLProducer, PGLSubject
     from pydantic import ValidationError
-
-    from cappo_backend.models.substrate import PGLProducer, PGLSubject, PGLUnifiedLifecycleEvent
     
     with pytest.raises(ValidationError):
         PGLUnifiedLifecycleEvent(

@@ -574,7 +574,7 @@ def print_matrix(receipts: list[TransitionReceipt]) -> bool:
             f"{'Y' if r.binding_verified else 'N':<6} {str(oom_d):<8} {verdict}"
         )
 
-    print("\n  DISCRIMINATORS (raw classification fields):")
+    print(f"\n  DISCRIMINATORS (raw classification fields):")
     for r in receipts:
         ev = r.evidence
         extras = getattr(r, "_extras", {})

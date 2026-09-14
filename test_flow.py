@@ -1,6 +1,4 @@
-﻿import time
-
-import requests
+﻿import time, requests
 
 time.sleep(4)
 CAPPO_URL = 'http://127.0.0.1:8002'

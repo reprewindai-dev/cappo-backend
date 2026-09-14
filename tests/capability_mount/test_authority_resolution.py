@@ -1,14 +1,9 @@
 import pytest
 from sqlalchemy.orm import Session
-
+from cappo_backend.capability_mount.service import MountRegistry, LocalConfirmedAnchor
 from cappo_backend.capability_mount.models import (
-    CapabilityPackage,
-    Decision,
-    MountPolicy,
-    MountScope,
+    CapabilityPackage, MountScope, MountPolicy, Decision
 )
-from cappo_backend.capability_mount.service import LocalConfirmedAnchor, MountRegistry
-
 
 def _build_registry(db: Session) -> MountRegistry:
     reg = MountRegistry(db=db, anchor=LocalConfirmedAnchor())

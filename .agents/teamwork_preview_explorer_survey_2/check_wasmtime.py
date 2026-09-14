@@ -1,5 +1,5 @@
-import json
 import urllib.request
+import json
 
 url = "https://pypi.org/pypi/wasmtime/json"
 req = urllib.request.urlopen(url)

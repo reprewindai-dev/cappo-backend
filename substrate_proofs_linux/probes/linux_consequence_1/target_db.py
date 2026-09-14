@@ -1,5 +1,5 @@
-import os
 import sqlite3
+import os
 import time
 
 DB_PATH = "target_state.db"

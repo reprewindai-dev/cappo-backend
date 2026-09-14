@@ -1,5 +1,5 @@
-﻿import json
-import re
+﻿import re
+import json
 
 with open("cappo_backend/capability_mount/effects.py", "r", encoding="utf-8") as f:
     content = f.read()

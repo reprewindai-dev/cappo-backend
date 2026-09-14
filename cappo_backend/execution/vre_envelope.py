@@ -3,7 +3,6 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
-
 @dataclass(frozen=True)
 class VREEnvelopeSpec:
     """Canonical VRE Envelope specification for exact commitment."""

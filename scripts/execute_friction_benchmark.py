@@ -1,11 +1,10 @@
-import json
 import os
 import subprocess
+import time
+import json
+from pathlib import Path
 import sys
 import threading
-import time
-from pathlib import Path
-
 
 def run_server():
     os.environ["DATABASE_URL"] = "sqlite:///./battery.db"

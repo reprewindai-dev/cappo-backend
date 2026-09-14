@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import pathlib
 import sys
 import time
-
-from wasmtime import Config, Engine, FuncType, Instance, Linker, Module, Store
-
+import pathlib
+from wasmtime import Config, Engine, Store, Module, Instance, Linker, FuncType
 
 def run():
     scenario = sys.argv[1]

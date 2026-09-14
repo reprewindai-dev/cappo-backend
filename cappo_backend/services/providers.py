@@ -504,12 +504,6 @@ def build_executor(settings: Settings, db: Session = None, workspace_id: str = N
     if settings.executor_mode.lower() == "echo":
         return _maybe_wrap_cache(EchoExecutor(), settings, app=app)
 
-    if settings.executor_mode.lower() == "abide":
-        from cappo_backend.services.executor import AbideExecutor
-        abide_url = getattr(settings, 'abide_url', 'http://host.docker.internal:3009')
-        return _maybe_wrap_cache(AbideExecutor(api_url=abide_url), settings, app=app)
-
-
     providers: list[Provider] = []
     
     # 1. Check Tenant Vault if DB is provided

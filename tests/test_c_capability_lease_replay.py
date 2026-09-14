@@ -3,20 +3,20 @@
 Test C — Canonical CapabilityLease replay denial at the CapabilityHandler consequence boundary.
 """
 
-import time
 import unittest
-import uuid
 from unittest.mock import MagicMock
+import uuid
+import time
 
-from cappo_backend.execution.vre_envelope import VREEnvelopeSpec
-from cappo_backend.identity.replay_cache import RedisReplayCache, ReplayCache
 from cappo_backend.services.capability_handler import (
-    CapabilityHandler,
+    CapabilityHandler, 
+    VerifiedExecutionContext, 
     ConsequenceDominanceViolation,
-    MaterializationPolicy,
     ReplayDeniedError,
-    VerifiedExecutionContext,
+    MaterializationPolicy
 )
+from cappo_backend.execution.vre_envelope import VREEnvelopeSpec
+from cappo_backend.identity.replay_cache import ReplayCache, RedisReplayCache
 
 # Shared global state to simulate an external durable backend (like Redis) that survives process crash
 SHARED_DURABLE_STORE = {}

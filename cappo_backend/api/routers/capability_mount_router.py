@@ -181,8 +181,8 @@ def _caller(request: Request, *, requested_workspace: str | None = None) -> tupl
 
 
 @router.get("/packages", response_model=list[CapabilityPackage])
-def list_packages(request: Request) -> list[CapabilityPackage]:
-    return request.app.state.mount_registry.list_packages()
+def list_packages(registry: MountRegistry = Depends(get_registry)) -> list[CapabilityPackage]:
+    return registry.list_packages()
 
 
 @router.post("/mounts", response_model=MountResponse)

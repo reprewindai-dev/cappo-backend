@@ -125,7 +125,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.mount_registry = mount_registry
 
     from x402.http.middleware.fastapi import PaymentMiddlewareASGI
-
     from cappo_backend.services.x402_payment import get_x402_manager
 
     x402_manager = get_x402_manager(settings)

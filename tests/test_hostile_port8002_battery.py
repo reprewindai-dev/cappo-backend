@@ -74,7 +74,6 @@ def _session(_engine) -> Iterator[Session]:
 @pytest.fixture(scope="module")
 def _client(_session: Session) -> TestClient:
     from starlette.middleware.base import BaseHTTPMiddleware
-
     from cappo_backend.config import Settings, get_settings
     from cappo_backend.db.session import get_session
     from cappo_backend.main import create_app

@@ -1,5 +1,4 @@
 import pathlib
-
 path = pathlib.Path('cappo_backend/capability_mount/effects.py')
 text = path.read_text()
 text = text.replace('EffectAdapter', 'TargetAdapter')

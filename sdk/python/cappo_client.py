@@ -10,7 +10,6 @@ For server/M2M use, pass a scoped bearer token issued through the canonical auth
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-
 import requests
 
 

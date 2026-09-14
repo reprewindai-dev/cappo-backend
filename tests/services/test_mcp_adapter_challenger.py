@@ -12,8 +12,8 @@ Executes empirical attacks on Track B:
 from __future__ import annotations
 
 import concurrent.futures
-import json
 from datetime import datetime, timedelta, timezone
+import json
 from typing import Any, Dict
 from unittest.mock import MagicMock
 

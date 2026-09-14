@@ -1,7 +1,6 @@
 import uuid
 from typing import Any, Protocol
 
-
 class ComputeSubstrate(Protocol):
     """Interface for materializing and executing governed compute."""
     
