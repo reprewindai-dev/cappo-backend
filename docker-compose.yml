@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   cappo-backend:
     build:
@@ -9,7 +7,7 @@ services:
     container_name: cappo-backend-node
     restart: unless-stopped
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     env_file:
       - .env
     environment:
@@ -20,16 +18,6 @@ services:
       BISCUIT_ROOT_KEY_PATH: /var/lib/cappo/.biscuit_root_key
     volumes:
       - cappo-biscuit-key:/var/lib/cappo
-    networks:
-      - coolify
-      - byos
-
-networks:
-  coolify:
-    external: true
-  byos:
-    external: true
-    name: veklom-byos-backend-2_default
 
 volumes:
   cappo-biscuit-key:
