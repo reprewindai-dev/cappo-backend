@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
+import ctypes
+import json
 import os
 import sys
 import time
-import json
-import ctypes
-from pathlib import Path
 from multiprocessing import Process
+from pathlib import Path
 
 try:
     from bcc import BPF

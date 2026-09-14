@@ -10,11 +10,11 @@ import cappo_backend.security.biscuit as biscuit
 from cappo_backend.config import InsecureProductionConfigError, Settings
 
 
-
 @pytest.fixture(autouse=True)
 def _clear_cache():
+    import cappo_backend.security.biscuit as b
     from cappo_backend.security.biscuit import get_root_key_pair
-    import cappo_backend.security.biscuit as b; b._ROOT_KEY_PAIR = None
+    b._ROOT_KEY_PAIR = None
 
 def _settings(
     monkeypatch: pytest.MonkeyPatch,
@@ -23,7 +23,8 @@ def _settings(
     private_key_hex: str | None = None,
     key_path: Path | None = None,
 ) -> Settings:
-    import cappo_backend.security.biscuit as b; b._ROOT_KEY_PAIR = None
+    import cappo_backend.security.biscuit as b
+    b._ROOT_KEY_PAIR = None
     monkeypatch.setenv("ENVIRONMENT", environment)
     settings_kwargs: dict[str, object] = {
         "environment": environment,

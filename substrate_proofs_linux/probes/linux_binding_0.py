@@ -145,8 +145,8 @@ def prove_b0_l1(pid: int) -> dict:
     pidns     = ns_identity(pid, "pid")
     starttime = read_starttime(pid)
     exe       = os.readlink(f"/proc/{pid}/exe")
-    uid_line  = [l for l in Path(f"/proc/{pid}/status").read_text().splitlines()
-                 if l.startswith("Uid:")][0]
+    uid_line  = [line for line in Path(f"/proc/{pid}/status").read_text().splitlines()
+                 if line.startswith("Uid:")][0]
     uid = uid_line.split()[1]
 
     identity_tuple = {
@@ -442,7 +442,7 @@ def main():
 
     # Cleanup
     try: destroy_veklom_cgroup()
-    except: pass
+    except Exception: pass
 
     all_valid = all(r["verdict"] == "VALID" for r in results.values())
     any_invalid = any(r["verdict"] == "INVALID" for r in results.values())

@@ -252,11 +252,11 @@ class Settings(BaseSettings):
     veklom_evm_address: str = ""
     # x402 facilitator URL (default is Coinbase public facilitator).
     x402_facilitator_url: str = "https://x402.org/facilitator"
-    # Pricing in USD (string format, e.g. "$0.001").
-    x402_exec_price: str = "$0.001"
-    x402_mint_price: str = "$0.005"
+    # Premium governed-execution pricing in USD.
+    x402_exec_price: str = "$5.00"
+    x402_mint_price: str = "$5.00"
     # Comma-separated list of enabled EVM networks.
-    x402_networks: str = "base,base-sepolia"
+    x402_networks: str = "base"
 
     @property
     def is_production(self) -> bool:

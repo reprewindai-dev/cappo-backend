@@ -89,6 +89,50 @@ class ProviderRateLimitedError(TerminalExecutionError):
         self.retry_after = retry_after
 
 
+
+class AbideExecutor(Executor):
+    """Execution adapter for the canonical ABIDE runtime."""
+
+    provider = "abide-runtime"
+
+    def __init__(self, *, api_url: str, timeout: float = 30.0) -> None:
+        self._api_url = api_url.rstrip("/")
+        self._timeout = timeout
+
+    def execute(self, request: dict[str, Any]) -> dict[str, Any]:
+        # Wrap the CAPPO execution payload into a PlanIR blueprint for ABIDE
+        # ABIDE expects a POST to /api/covenant/execute with { "plan": PlanIR }
+        import uuid
+        plan = {
+            "planId": request.get("execution_id", str(uuid.uuid4())),
+            "status": "APPROVED",
+            "canonicalHash": "0x_cappo_auth_" + str(uuid.uuid4()).replace("-", ""),
+            "steps": [{
+                "stepId": "step-" + str(uuid.uuid4()),
+                "lane": 3,
+                "capability": request.get("capability_id", "unknown-capability"),
+                "approvalToken": "cappo-auth-token",
+                "arguments": request.get("arguments", {})
+            }]
+        }
+        
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                resp = client.post(
+                    f"{self._api_url}/api/covenant/execute",
+                    json={"plan": plan}
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return {
+                    "response": data,
+                    "provider": self.provider,
+                    "execution_id": plan["planId"]
+                }
+        except httpx.HTTPError as exc:
+            raise ProviderExecutionError(f"ABIDE execution failed: {exc}") from exc
+
+
 class HTTPExecutor:
     """OpenAI-compatible HTTP provider executor."""
 

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import concurrent.futures
 import json
-from pathlib import Path
 import sqlite3
 import threading
-import concurrent.futures
-
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient

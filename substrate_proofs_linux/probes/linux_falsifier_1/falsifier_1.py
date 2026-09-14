@@ -1,11 +1,11 @@
-import os
-import sys
-import time
-import json
-import uuid
 import ctypes
 import hashlib
+import json
+import os
 import sqlite3
+import sys
+import time
+import uuid
 
 # C syscall constants
 SYS_pidfd_open = 434
@@ -89,7 +89,7 @@ def run_falsifier():
     db_path = init_db()
     
     lease_id = f"lease-{uuid.uuid4().hex[:8]}"
-    cg_name = f"cappo_falsifier_test"
+    cg_name = "cappo_falsifier_test"
     
     print("[1] Creating Execution A...")
     cg_path_a, cg_id_a = setup_cgroup(cg_name)

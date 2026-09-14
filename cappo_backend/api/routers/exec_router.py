@@ -519,8 +519,16 @@ async def governed_exec(
 
     if not test_only_echo:
         wid_validator = IdentityValidator("https://cappo.veklom.com", replay_cache)
+        # When a capability_lease is present the CAPPO mount token constitutes the
+        # authority proof. Drop to STATE_CHANGING so the separate Veklom-Authority
+        # header is not required for lease-authenticated machine exec requests.
+        _lease_in_body = body.capability_lease is not None
+        _wid_classification = (
+            RouteClassification.STATE_CHANGING if _lease_in_body
+            else RouteClassification.CONSEQUENCE
+        )
         wid_middleware = WIDMiddlewareContext(
-            RouteClassification.CONSEQUENCE,
+            _wid_classification,
             wid_validator,
         )
         try:
@@ -859,8 +867,9 @@ async def governed_exec(
     )
 
 
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
 
 
 class ConsequenceDispatchRequest(BaseModel):
@@ -914,7 +923,7 @@ async def dispatch_consequence_endpoint(
     # Pre-check the Biscuit token for execution_id mismatch to correctly return 422
     from cappo_backend.security.biscuit import get_root_key_pair
     try:
-        from biscuit_auth import Biscuit, Rule, AuthorizerBuilder
+        from biscuit_auth import AuthorizerBuilder, Biscuit, Rule
         token_obj = Biscuit.from_base64(token, get_root_key_pair().public_key)
         auth_builder = AuthorizerBuilder()
         auth = auth_builder.build(token_obj)

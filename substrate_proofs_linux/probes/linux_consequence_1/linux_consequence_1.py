@@ -1,11 +1,12 @@
-import sys
-import os
-import time
-import json
-import uuid
 import ctypes
 import hashlib
+import json
+import os
+import sys
+import time
+import uuid
 from datetime import datetime, timezone
+
 from bcc import BPF
 
 BPF_CODE = """

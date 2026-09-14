@@ -1,10 +1,11 @@
-import sys
-import os
-import time
-import json
-import uuid
 import ctypes
+import json
+import os
+import sys
+import time
 import traceback
+import uuid
+
 from bcc import BPF
 
 BPF_CODE_PATH = os.path.join(os.path.dirname(__file__), "linux_evidence_lifecycle.bpf.c")

@@ -79,6 +79,7 @@ class MaterializationPolicy(str, Enum):
 
 from cappo_backend.execution.vre_envelope import VREEnvelopeSpec
 
+
 @dataclass(frozen=True)
 class VerifiedExecutionContext:
     """The transport-normalized, authority-bound execution contract.
@@ -258,8 +259,7 @@ class CapabilityHandler:
                 "Execution rejected: no handler-bound biscuit_token."
             )
 
-        from cappo_backend.security.biscuit import verify_biscuit_capability
-        from cappo_backend.security.biscuit import TrustedRevocationState
+        from cappo_backend.security.biscuit import TrustedRevocationState, verify_biscuit_capability
         
         # In a real environment, revocation state would be fetched from the DB/Redis.
         trusted_state = TrustedRevocationState()

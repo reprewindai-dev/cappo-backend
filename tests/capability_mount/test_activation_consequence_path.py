@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 import cappo_backend.security.biscuit as biscuit
-from cappo_backend.capability_mount.effects import TargetAdapterRegistry, LocalRecordAdapter
+from cappo_backend.capability_mount.effects import LocalRecordAdapter, TargetAdapterRegistry
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
 from tests.capability_mount.test_execute_consequence import (
