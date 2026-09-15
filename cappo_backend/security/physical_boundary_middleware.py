@@ -1,8 +1,10 @@
 """Middleware to extract physical connection info from trusted transport boundaries (e.g. UDS/VSOCK)."""
 
+import os
+import re
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 
 from cappo_backend.services.active_verification import _trusted_connection_info
 
@@ -11,14 +13,18 @@ class PhysicalBoundaryMiddleware(BaseHTTPMiddleware):
         client = request.scope.get("client")
         info = {}
         
+        is_tcp = False
+        is_uds = False
+        is_guid = False
+        is_vsock_cid = False
+        
         if client:
             # client is typically (host, port)
             # For AF_HYPERV, host is a GUID (VM ID).
             # For VSOCK, host is an integer CID.
             host, port = client
             
-            import re
-            is_guid = isinstance(host, str) and re.match(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', host)
+            is_guid = isinstance(host, str) and bool(re.match(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', host))
             is_vsock_cid = isinstance(host, int) or (isinstance(host, str) and host.isdigit())
 
             if is_guid:
@@ -28,12 +34,43 @@ class PhysicalBoundaryMiddleware(BaseHTTPMiddleware):
                 info = {"substrate_hint": "vsock", "instance_hint": str(host)}
             elif host == "unix" or str(host).startswith("/"):
                 info = {"substrate_hint": "uds", "instance_hint": str(host)}
+                is_uds = True
             else:
                 info = {"substrate_hint": "tcp", "instance_hint": f"{host}:{port}"}
+                is_tcp = True
                 
+        execution_mode = os.getenv("CAPPO_EXECUTION_MODE", "live")
+        
+        if execution_mode == "live":
+            if is_tcp:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Physical boundary constraint: TCP connections are forbidden in live mode."}
+                )
+            if not is_uds and not is_guid and not is_vsock_cid:
+                # Fail closed on completely unknown transports in live mode
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Physical boundary constraint: Trusted physical transport required in live mode."}
+                )
+            
+        hcs_header = request.headers.get("hcs-compute-system-id")
+        if hcs_header:
+            if not is_uds:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Physical boundary constraint: hcs-compute-system-id header requires UDS socket."}
+                )
+            info["compute_system_id"] = hcs_header
+            
         # To prevent application override, we strictly read from ASGI scope/socket layer,
         # never from user-supplied HTTP headers (which could be spoofed unless stripped by trusted proxy).
         if "hcs_compute_system_id" in request.scope:
+            if execution_mode == "live" and not is_uds:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Physical boundary constraint: hcs_compute_system_id in scope requires trusted socket."}
+                )
             info["compute_system_id"] = request.scope["hcs_compute_system_id"]
                 
         # Set it directly using contextvars token.
