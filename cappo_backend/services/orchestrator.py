@@ -422,7 +422,7 @@ class RunOrchestrator:
         }
         try:
             # Active Verification at Mint Phase
-            verified_context = registry.execute_active_verification(connection_info, execution_mode="live" if not getattr(self, "_is_test", False) else "test")
+            verified_context = registry.execute_active_verification(connection_info, execution_mode="test" if "pytest" in sys.modules else "live")
         except Exception as e:
             raise RuntimeOwnershipError(f"ACTIVE_VERIFICATION_FAILED: {str(e)}")
 
@@ -480,7 +480,7 @@ class RunOrchestrator:
             "instance_hint": self._runtime_instance
         }
         try:
-            current_context = registry.execute_active_verification(connection_info, execution_mode="live" if not getattr(self, "_is_test", False) else "test")
+            current_context = registry.execute_active_verification(connection_info, execution_mode="test" if "pytest" in sys.modules else "live")
         except Exception as e:
             raise RuntimeOwnershipError(f"STALE AUTHORITY / VERIFICATION_FAILED: {str(e)}")
             

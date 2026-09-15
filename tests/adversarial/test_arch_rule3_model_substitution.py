@@ -43,9 +43,10 @@ def test_arch_rule_3_model_substitution_invariance(db):
             ),
             ttl_seconds=600,
             execution_id=f"exec_{model_id}",
-            executor_spiffe_id=f"spiffe://example.org/model/{model_id}"
+            executor_spiffe_id=f"spiffe://example.org/model/{model_id}",
+            caller_spiffe_id="spiffe://example.org/caller"
         )
-        assert mount_record is not None, f"Failed to get mount for {model_id}"
+        assert mount_record is not None, f"Failed to get mount for {model_id}: {error}"
         
         handle = mount_record.binding
         

@@ -1,6 +1,8 @@
 """Shared test fixtures — in-memory SQLite, settings override, client."""
 
 from __future__ import annotations
+import os
+os.environ["CAPPO_EXECUTION_MODE"] = "test"
 
 from collections.abc import Iterator
 
@@ -136,3 +138,41 @@ def client(db: Session, settings: Settings) -> TestClient:
     yield test_client
     test_app.dependency_overrides.clear()
 
+
+
+from cappo_backend.services.active_verification import registry, VerifierModule, VerifiedRuntimeContext
+import time
+
+class UniversalMockVerifier(VerifierModule):
+    is_mock = True
+    def discover(self, connection_info: dict) -> bool:
+        return True
+    def challenge(self, connection_info: dict) -> str:
+        return 'mock_nonce'
+    def measure(self, connection_info: dict, challenge_nonce: str) -> dict:
+        connection_info['nonce'] = challenge_nonce
+        return connection_info
+    def verify(self, measurement: dict, challenge_nonce: str) -> bool:
+        return measurement.get('nonce') == challenge_nonce
+    def attest(self, measurement: dict) -> VerifiedRuntimeContext:
+        return VerifiedRuntimeContext(
+            substrate_kind=measurement.get('substrate_hint', 'test_kind'),
+            substrate_instance_id=measurement.get('instance_hint', 'test_instance'),
+            boot_instance_id='test_boot_id',
+            runtime_identity='test_identity',
+            verifier_method='universal_mock',
+            verifier_identity='test_verifier',
+            authority_epoch=1,
+            package_digest='test_digest',
+            state_root='test_root',
+            challenge_nonce=measurement.get('nonce', 'mock_nonce'),
+            observed_at=str(int(time.time())),
+            expires_at=str(int(time.time()) + 1000),
+            measurement_digest='test_measurement',
+            evidence_level='L0_MOCK'
+        )
+
+try:
+    registry.register('universal_mock', UniversalMockVerifier())
+except RuntimeError:
+    pass

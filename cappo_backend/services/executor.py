@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from cappo_backend.services.active_verification import registry, get_trusted_physical_connection_info
 from cappo_backend.services.active_verification import registry
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -224,7 +225,10 @@ class ResilientExecutor:
         api_key: str = "",
         model: str = "gpt-3.5-turbo",
         timeout: float = 30.0,
+        execution_mode: str | None = None,
     ) -> None:
+        import os
+        self.execution_mode = execution_mode or os.getenv("CAPPO_EXECUTION_MODE", "live")
         if providers is None and api_url is None:
             raise ValueError(
                 "ResilientExecutor requires either providers list or api_url"
@@ -251,23 +255,27 @@ class ResilientExecutor:
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         # -- ACTIVE VERIFICATION CONSEQUENCE FENCE --
         envelope = request.get("authority_envelope")
-        if isinstance(envelope, dict):
+        
+        # Strict fail-closed for missing bindings in live execution
+        if getattr(self, "execution_mode", "live") == "live":
+            if not isinstance(envelope, dict):
+                raise ExecutorUnavailableError("DENY BEFORE EFFECT: Missing authority envelope")
             signed_hash = envelope.get("runtime_incarnation_binding_hash")
-            if signed_hash:
-                # The Sink independently verifies the physical caller
-                # connection_info simulates extraction from the physical UDS/VSOCK context at the Sink
-                connection_info = request.get("_physical_connection_info", {})
-                
-                try:
-                    import sys as _sys
-                    mode = "test" if "pytest" in _sys.modules else "live"
-                    current_context = registry.execute_active_verification(connection_info, execution_mode=mode)
-                    if current_context.get_runtime_incarnation_binding_hash() != signed_hash:
-                        raise ExecutorUnavailableError("DENY BEFORE EFFECT: STALE AUTHORITY / HOSTILE IDENTITY TRANSITION")
-                except ExecutorUnavailableError:
-                    raise
-                except Exception as e:
-                    raise ExecutorUnavailableError(f"DENY BEFORE EFFECT: ACTIVE_VERIFICATION_FAILED: {str(e)}")
+            if not signed_hash:
+                raise ExecutorUnavailableError("DENY BEFORE EFFECT: Missing runtime_incarnation_binding_hash in envelope")
+        
+        # Perform physical verification if binding is present (or required by live mode)
+        signed_hash = envelope.get("runtime_incarnation_binding_hash") if isinstance(envelope, dict) else None
+        if signed_hash:
+            connection_info = get_trusted_physical_connection_info()
+            try:
+                current_context = registry.execute_active_verification(connection_info, execution_mode=getattr(self, "execution_mode", "live"))
+                if current_context.get_runtime_incarnation_binding_hash() != signed_hash:
+                    raise ExecutorUnavailableError("DENY BEFORE EFFECT: STALE AUTHORITY / HOSTILE IDENTITY TRANSITION")
+            except ExecutorUnavailableError:
+                raise
+            except Exception as e:
+                raise ExecutorUnavailableError(f"DENY BEFORE EFFECT: ACTIVE_VERIFICATION_FAILED: {str(e)}")
         # -- END CONSEQUENCE FENCE --
         
         last_error: Exception | None = None

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import time
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional
 
@@ -36,6 +37,8 @@ class VerifiedRuntimeContext:
             "boot_instance_id": self.boot_instance_id,
             "runtime_identity": self.runtime_identity,
             "verifier_identity": self.verifier_identity,
+            "verifier_method": self.verifier_method,
+            "measurement_digest": self.measurement_digest,
             "package_digest": self.package_digest,
             "state_root": self.state_root,
             "authority_epoch": self.authority_epoch,
@@ -54,10 +57,10 @@ class VerifierModule:
     def challenge(self, connection_info: Dict[str, Any]) -> str:
         raise NotImplementedError
         
-    def measure(self, connection_info: Dict[str, Any]) -> Dict[str, Any]:
+    def measure(self, connection_info: Dict[str, Any], challenge_nonce: str) -> Dict[str, Any]:
         raise NotImplementedError
         
-    def verify(self, measurement: Dict[str, Any]) -> bool:
+    def verify(self, measurement: Dict[str, Any], challenge_nonce: str) -> bool:
         raise NotImplementedError
         
     def attest(self, measurement: Dict[str, Any]) -> VerifiedRuntimeContext:
@@ -66,11 +69,18 @@ class VerifierModule:
 class ActiveVerifierRegistry:
     def __init__(self):
         self._modules: Dict[str, VerifierModule] = {}
+        self._frozen: bool = False
 
     def register(self, name: str, module: VerifierModule):
+        if self._frozen:
+            raise RuntimeError(f"Registry is frozen, cannot register {name}")
         if name in self._modules:
             raise RuntimeError(f"Duplicate verifier name registration: {name}")
         self._modules[name] = module
+
+    def freeze(self):
+        """Freezes the registry preventing further registrations."""
+        self._frozen = True
 
     def execute_active_verification(self, connection_info: Dict[str, Any], execution_mode: str = "live") -> VerifiedRuntimeContext:
         target_module = None
@@ -85,13 +95,15 @@ class ActiveVerifierRegistry:
         if execution_mode == "live" and target_module.is_mock:
             raise RuntimeError("FATAL/DENY: Mock verifier forbidden in live execution mode")
             
-        target_module.challenge(connection_info)
-        measurement = target_module.measure(connection_info)
-        if not target_module.verify(measurement):
+        nonce = target_module.challenge(connection_info)
+        measurement = target_module.measure(connection_info, nonce)
+        if not target_module.verify(measurement, nonce):
             raise ValueError("Active Verification failed: physical measurement rejected")
             
         context = target_module.attest(measurement)
-        import time
+        if context.challenge_nonce != nonce:
+            raise ValueError("Active Verification failed: returned challenge nonce mismatch (replay protection fault)")
+            
         if float(context.expires_at) < time.time():
             raise ValueError("Active Verification failed: Context expired")
             
@@ -99,38 +111,15 @@ class ActiveVerifierRegistry:
 
 registry = ActiveVerifierRegistry()
 
-class HyperVVerifier(VerifierModule):
-    is_mock = True
-    
-    def discover(self, connection_info: Dict[str, Any]) -> bool:
-        return connection_info.get("substrate_hint") == "hyper-v"
-        
-    def challenge(self, connection_info: Dict[str, Any]) -> str:
-        return "mock_nonce"
-        
-    def measure(self, connection_info: Dict[str, Any]) -> Dict[str, Any]:
-        return {"hyperv_vm_id": connection_info.get("instance_hint", "VM-12345"), "epoch": 1}
-        
-    def verify(self, measurement: Dict[str, Any]) -> bool:
-        return bool(measurement.get("hyperv_vm_id"))
-        
-    def attest(self, measurement: Dict[str, Any]) -> VerifiedRuntimeContext:
-        import time
-        return VerifiedRuntimeContext(
-            substrate_kind="hyper-v",
-            substrate_instance_id=measurement["hyperv_vm_id"],
-            boot_instance_id="boot_hash_abc123",
-            runtime_identity="hyperv-guest-identity",
-            verifier_method="HOST_HYPERVISOR_API",
-            verifier_identity="cappo-hyperv-host",
-            authority_epoch=measurement["epoch"],
-            package_digest="pkg-hash",
-            state_root="state-root",
-            challenge_nonce="mock_nonce",
-            observed_at=str(time.time()),
-            expires_at=str(time.time() + 3600),
-            measurement_digest="measure-hash",
-            evidence_level="HIGH_ASSURANCE"
-        )
+# Note: No global mock verifiers are registered in production.
+# Tests should register their own mocks and then optionally freeze the registry.
 
-registry.register("hyper-v-mock", HyperVVerifier())
+
+import contextvars
+_trusted_connection_info = contextvars.ContextVar('_trusted_connection_info', default={})
+
+def get_trusted_physical_connection_info() -> Dict[str, Any]:
+    return _trusted_connection_info.get()
+
+def set_trusted_physical_connection_info(info: Dict[str, Any]):
+    _trusted_connection_info.set(info)

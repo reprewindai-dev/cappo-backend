@@ -15,6 +15,13 @@ def test_registry_substitution_deny():
     with pytest.raises(RuntimeError, match="Duplicate verifier name"):
         test_reg.register("dummy", Dummy())
 
+def test_registry_freeze_prevents_registration():
+    test_reg = ActiveVerifierRegistry()
+    test_reg.freeze()
+    class Dummy(VerifierModule): pass
+    with pytest.raises(RuntimeError, match="Registry is frozen"):
+        test_reg.register("dummy", Dummy())
+
 def test_missing_verifier_deny():
     test_reg = ActiveVerifierRegistry()
     with pytest.raises(RuntimeError, match="No registered VerifierModule could establish"):
@@ -42,9 +49,9 @@ def test_expired_context_deny():
     test_reg = ActiveVerifierRegistry()
     class ExpiredV(VerifierModule):
         def discover(self, c): return True
-        def challenge(self, c): pass
-        def measure(self, c): return {}
-        def verify(self, m): return True
+        def challenge(self, c): return "c"
+        def measure(self, c, n): return {}
+        def verify(self, m, n): return True
         def attest(self, m):
             return VerifiedRuntimeContext(
                 substrate_kind="test", substrate_instance_id="1", boot_instance_id="boot",
@@ -54,7 +61,26 @@ def test_expired_context_deny():
             ) # expired! time.time() > 100
     test_reg.register("exp", ExpiredV())
     with pytest.raises(ValueError, match="Context expired"):
-        test_reg.execute_active_verification({})
+        test_reg.execute_active_verification({}, execution_mode="test")
+
+def test_challenge_nonce_binding():
+    test_reg = ActiveVerifierRegistry()
+    class ReplayV(VerifierModule):
+        def discover(self, c): return True
+        def challenge(self, c): return "new_nonce"
+        def measure(self, c, n): return {}
+        def verify(self, m, n): return True
+        def attest(self, m):
+            return VerifiedRuntimeContext(
+                substrate_kind="test", substrate_instance_id="1", boot_instance_id="boot",
+                runtime_identity="id", verifier_method="meth", verifier_identity="v_id",
+                authority_epoch=1, package_digest="d", state_root="s", 
+                challenge_nonce="old_nonce_from_replay", # MISMATCH!
+                observed_at="100", expires_at="9999999999", measurement_digest="m", evidence_level="E"
+            )
+    test_reg.register("replay", ReplayV())
+    with pytest.raises(ValueError, match="replay protection fault"):
+        test_reg.execute_active_verification({}, execution_mode="test")
 
 def test_context_hash_immutability():
     ctx1 = VerifiedRuntimeContext(
@@ -72,19 +98,23 @@ def test_context_hash_immutability():
         observed_at="200", expires_at="9999999999", measurement_digest="m", evidence_level="E"
     )
     
-    # Full evidence hash MUST differ (TOCTOU protection against stale observation replay)
     assert ctx1.get_full_evidence_hash() != ctx2.get_full_evidence_hash()
-    
-    # Stable execution binding MUST match (Valid execution)
     assert ctx1.get_runtime_incarnation_binding_hash() == ctx2.get_runtime_incarnation_binding_hash()
     
-    # Now simulate hijacked boot (PID recycled)
+    # Hijacked boot (PID recycled)
     ctx3 = VerifiedRuntimeContext(
         substrate_kind="test", substrate_instance_id="1", boot_instance_id="hijacked_boot",
         runtime_identity="id", verifier_method="meth", verifier_identity="v_id",
         authority_epoch=1, package_digest="d", state_root="s", challenge_nonce="c_new2",
         observed_at="300", expires_at="9999999999", measurement_digest="m", evidence_level="E"
     )
-    
-    # Stable execution binding MUST differ (DENY BEFORE EFFECT)
     assert ctx1.get_runtime_incarnation_binding_hash() != ctx3.get_runtime_incarnation_binding_hash()
+    
+    # Changed measurement digest
+    ctx4 = VerifiedRuntimeContext(
+        substrate_kind="test", substrate_instance_id="1", boot_instance_id="boot",
+        runtime_identity="id", verifier_method="meth", verifier_identity="v_id",
+        authority_epoch=1, package_digest="d", state_root="s", challenge_nonce="c_new2",
+        observed_at="300", expires_at="9999999999", measurement_digest="m_altered", evidence_level="E"
+    )
+    assert ctx1.get_runtime_incarnation_binding_hash() != ctx4.get_runtime_incarnation_binding_hash()
