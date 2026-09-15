@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from cappo_backend.state.virtual_db import VeklomVirtualDatabase, AuthorizationError
 from cappo_backend.models.execution_identity import ExecutionIdentity
+from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
 
 @pytest.fixture
 def temp_db_path(tmp_path):
@@ -63,3 +64,20 @@ def test_veklom_virtual_db_invalid_authority(temp_db_path):
     
     with pytest.raises(AuthorizationError, match="ExecutionIdentity is expired"):
         vdb.connect(expired_ei)
+        
+    # Invalid CapabilityLease
+    revoked_lease = CapabilityLease(
+        lease_id="test_lease",
+        lease_state=LeaseState.REVOKED.value,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
+    )
+    with pytest.raises(AuthorizationError, match="CapabilityLease is revoked"):
+        vdb.connect(revoked_lease)
+        
+    expired_lease = CapabilityLease(
+        lease_id="test_lease_2",
+        lease_state=LeaseState.ACTIVE.value,
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=10)
+    )
+    with pytest.raises(AuthorizationError, match="CapabilityLease is expired"):
+        vdb.connect(expired_lease)
