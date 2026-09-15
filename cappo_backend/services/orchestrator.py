@@ -89,6 +89,7 @@ class RunOrchestrator:
         gateway: Any | None = None,
         runtime_kind: str = "",
         runtime_instance: str = "",
+        execution_mode: str | None = None,
     ) -> None:
         self._db = db
         self._pgl = pgl
@@ -101,6 +102,8 @@ class RunOrchestrator:
         self._gateway = gateway
         self._runtime_kind = runtime_kind.strip()
         self._runtime_instance = runtime_instance.strip()
+        import os
+        self._execution_mode = execution_mode or os.getenv("CAPPO_EXECUTION_MODE", "live")
         self._last_run: GovernedRun | None = None
 
     @property
@@ -204,7 +207,7 @@ class RunOrchestrator:
             },
             scope=request.get("scope") or {"tools": ["llm.exec"]},
             approved_budget_cents=int(request.get("budget_approved_cents", 0)),
-            execution_mode=request.get("execution_mode", "live"),
+            execution_mode=self._execution_mode,
         )
         self._db.add(run)
         self._db.flush()
@@ -422,8 +425,7 @@ class RunOrchestrator:
         }
         try:
             # Active Verification at Mint Phase
-            execution_mode = run.execution_mode if hasattr(run, "execution_mode") and run.execution_mode else "live"
-            verified_context = registry.execute_active_verification(connection_info, execution_mode=execution_mode)
+            verified_context = registry.execute_active_verification(connection_info, execution_mode=self._execution_mode)
         except Exception as e:
             raise RuntimeOwnershipError(f"ACTIVE_VERIFICATION_FAILED: {str(e)}")
 
@@ -481,8 +483,7 @@ class RunOrchestrator:
             "instance_hint": self._runtime_instance
         }
         try:
-            execution_mode = run.execution_mode if hasattr(run, "execution_mode") and run.execution_mode else "live"
-            current_context = registry.execute_active_verification(connection_info, execution_mode=execution_mode)
+            current_context = registry.execute_active_verification(connection_info, execution_mode=self._execution_mode)
         except Exception as e:
             raise RuntimeOwnershipError(f"STALE AUTHORITY / VERIFICATION_FAILED: {str(e)}")
             

@@ -74,7 +74,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     from cappo_backend.services.capi_registration import maintain_capi_registration
     from cappo_backend.services.active_verification import registry
+    from cappo_backend.services.hyperv_verifier import HyperVVerifier
     
+    # Register approved production verifier modules before freeze
+    registry.register("hyperv", HyperVVerifier())
+
     # Freeze the verifier registry at production bootstrap
     registry.freeze()
 
