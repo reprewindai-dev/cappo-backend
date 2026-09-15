@@ -18,6 +18,8 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
+from cappo_backend.services.active_verification import registry
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -414,8 +416,15 @@ class RunOrchestrator:
         )
 
     def _claim_runtime_ownership(self, run: GovernedRun) -> dict[str, Any]:
-        if not self._runtime_kind or not self._runtime_instance:
-            raise RuntimeOwnershipError("RUNTIME_IDENTITY_UNAVAILABLE")
+        connection_info = {
+            "substrate_hint": self._runtime_kind,
+            "instance_hint": self._runtime_instance
+        }
+        try:
+            # Active Verification at Mint Phase
+            verified_context = registry.execute_active_verification(connection_info, execution_mode="live" if not getattr(self, "_is_test", False) else "test")
+        except Exception as e:
+            raise RuntimeOwnershipError(f"ACTIVE_VERIFICATION_FAILED: {str(e)}")
 
         existing = self._db.scalar(
             select(RuntimePathAssignment)
@@ -426,56 +435,64 @@ class RunOrchestrator:
         if existing is not None:
             raise RuntimeOwnershipError("PATH_ALREADY_ASSIGNED")
 
-        ownership = {
+        # Database persistence strictly separated from EI material
+        db_assignment = {
             "path_id": run.run_id,
             "assignment_id": str(uuid.uuid4()),
-            "authority_epoch": 1,
-            "runtime_kind": self._runtime_kind,
-            "runtime_instance": self._runtime_instance,
+            "authority_epoch": verified_context.authority_epoch,
+            "runtime_kind": verified_context.substrate_kind,
+            "runtime_instance": verified_context.substrate_instance_id,
         }
         try:
             with self._db.begin_nested():
-                self._db.add(RuntimePathAssignment(**ownership))
+                self._db.add(RuntimePathAssignment(**db_assignment))
                 self._db.flush()
         except IntegrityError as exc:
             raise RuntimeOwnershipError("PATH_ALREADY_ASSIGNED") from exc
-        return ownership
+            
+        # Returning the canonical ownership dictionary for the ExecutionIdentityV1
+        return {
+            **db_assignment,
+            "boot_instance_id": verified_context.boot_instance_id,
+            "measurement_digest": verified_context.measurement_digest,
+            "evidence_level": verified_context.evidence_level,
+            "verifier_identity": verified_context.verifier_identity,
+            "verified_runtime_context_hash": verified_context.get_full_evidence_hash(),
+            "runtime_incarnation_binding_hash": verified_context.get_runtime_incarnation_binding_hash()
+        }
 
     def _enforce_runtime_ownership(self, run: GovernedRun) -> None:
         identity = run.execution_identity or {}
         ownership = identity.get("runtime_ownership")
         if not isinstance(ownership, dict):
-            raise RuntimeOwnershipError("RUNTIME_OWNERSHIP_REQUIRED")
+            raise RuntimeOwnershipError("MALFORMED_OWNERSHIP_CLAIM")
 
-        required = {
-            "path_id",
-            "assignment_id",
-            "authority_epoch",
-            "runtime_kind",
-            "runtime_instance",
-        }
-        if required.difference(ownership):
-            raise RuntimeOwnershipError("RUNTIME_OWNERSHIP_INCOMPLETE")
-        if ownership["path_id"] != run.run_id:
-            raise RuntimeOwnershipError("PATH_ID_MISMATCH")
-        if ownership["runtime_kind"] != self._runtime_kind or ownership[
-            "runtime_instance"
-        ] != self._runtime_instance:
-            previous = ownership.get("previous_assignment_id")
-            if previous and ownership["authority_epoch"] <= 1:
-                raise RuntimeOwnershipError("AUTHORITY_EPOCH_NOT_ADVANCED")
-            raise RuntimeOwnershipError("RUNTIME_OWNER_MISMATCH")
-
-        assignment = self._db.get(RuntimePathAssignment, ownership["assignment_id"])
+        assignment = self._db.scalar(
+            select(RuntimePathAssignment)
+            .where(RuntimePathAssignment.assignment_id == ownership.get("assignment_id"))
+        )
         if assignment is None:
-            raise RuntimeOwnershipError("PATH_ASSIGNMENT_NOT_PERSISTED")
+            raise RuntimeOwnershipError("ORPHANED_OWNERSHIP_CLAIM")
+            
+        # Execute Active Verification AGAIN at consequence fence
+        connection_info = {
+            "substrate_hint": self._runtime_kind,
+            "instance_hint": self._runtime_instance
+        }
+        try:
+            current_context = registry.execute_active_verification(connection_info, execution_mode="live" if not getattr(self, "_is_test", False) else "test")
+        except Exception as e:
+            raise RuntimeOwnershipError(f"STALE AUTHORITY / VERIFICATION_FAILED: {str(e)}")
+            
+        # Compare STABLE incarnation fields, NOT the full attestation which has fresh nonces
+        if current_context.get_runtime_incarnation_binding_hash() != ownership.get("runtime_incarnation_binding_hash"):
+            raise RuntimeOwnershipError("STALE AUTHORITY / HOSTILE IDENTITY TRANSITION")
+
         if assignment.path_id != ownership["path_id"]:
             raise RuntimeOwnershipError("PERSISTED_PATH_ID_MISMATCH")
         if assignment.authority_epoch != ownership["authority_epoch"]:
             raise RuntimeOwnershipError("AUTHORITY_EPOCH_MISMATCH")
-        if assignment.runtime_kind != ownership["runtime_kind"] or assignment.runtime_instance != ownership[
-            "runtime_instance"
-        ]:
+        if assignment.runtime_kind != ownership["runtime_kind"] or assignment.runtime_instance != ownership["runtime_instance"]:
             raise RuntimeOwnershipError("PERSISTED_OWNER_MISMATCH")
 
     def attest_run(self, run: GovernedRun) -> None:
@@ -613,12 +630,21 @@ def _execution_request(request: dict[str, Any], identity: dict[str, Any]) -> dic
     allowed_provider_set = scope.get("allowed_provider_set") if isinstance(scope, dict) else None
     ownership = identity.get("runtime_ownership")
     authority_epoch = ownership.get("authority_epoch") if isinstance(ownership, dict) else None
+    
     return {
         **request,
+        "_physical_connection_info": {
+            "substrate_hint": ownership.get("runtime_kind") if isinstance(ownership, dict) else None,
+            "instance_hint": ownership.get("runtime_instance") if isinstance(ownership, dict) else None,
+        },
         "authority_envelope": {
             "execution_id": identity.get("execution_id"),
             "authority_epoch": authority_epoch,
             "allowed_provider_set": allowed_provider_set,
+            "verified_runtime_context_hash": ownership.get("verified_runtime_context_hash") if isinstance(ownership, dict) else None,
+            "runtime_incarnation_binding_hash": ownership.get("runtime_incarnation_binding_hash") if isinstance(ownership, dict) else None,
+            "boot_instance_id": ownership.get("boot_instance_id") if isinstance(ownership, dict) else None,
+            "measurement_digest": ownership.get("measurement_digest") if isinstance(ownership, dict) else None,
         },
     }
 

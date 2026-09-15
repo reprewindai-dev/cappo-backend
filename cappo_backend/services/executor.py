@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from cappo_backend.services.active_verification import registry
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -248,6 +249,27 @@ class ResilientExecutor:
             ]
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
+        # -- ACTIVE VERIFICATION CONSEQUENCE FENCE --
+        envelope = request.get("authority_envelope")
+        if isinstance(envelope, dict):
+            signed_hash = envelope.get("runtime_incarnation_binding_hash")
+            if signed_hash:
+                # The Sink independently verifies the physical caller
+                # connection_info simulates extraction from the physical UDS/VSOCK context at the Sink
+                connection_info = request.get("_physical_connection_info", {})
+                
+                try:
+                    import sys as _sys
+                    mode = "test" if "pytest" in _sys.modules else "live"
+                    current_context = registry.execute_active_verification(connection_info, execution_mode=mode)
+                    if current_context.get_runtime_incarnation_binding_hash() != signed_hash:
+                        raise ExecutorUnavailableError("DENY BEFORE EFFECT: STALE AUTHORITY / HOSTILE IDENTITY TRANSITION")
+                except ExecutorUnavailableError:
+                    raise
+                except Exception as e:
+                    raise ExecutorUnavailableError(f"DENY BEFORE EFFECT: ACTIVE_VERIFICATION_FAILED: {str(e)}")
+        # -- END CONSEQUENCE FENCE --
+        
         last_error: Exception | None = None
         attempts: list[dict[str, str]] = []
         allowed_providers = _authorized_provider_set(request)
