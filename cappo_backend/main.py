@@ -73,6 +73,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.validate_production()
 
     from cappo_backend.services.capi_registration import maintain_capi_registration
+    from cappo_backend.services.active_verification import registry
+    
+    # Freeze the verifier registry at production bootstrap
+    registry.freeze()
 
     capi_stop = asyncio.Event()
     capi_task = asyncio.create_task(maintain_capi_registration(settings, capi_stop))
@@ -163,6 +167,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "X-402-App-Id",
         ],
     )
+    from cappo_backend.security.physical_boundary_middleware import PhysicalBoundaryMiddleware
+    app.add_middleware(PhysicalBoundaryMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
     from cappo_backend.adapters.legacy.router import router as legacy_adapter_router

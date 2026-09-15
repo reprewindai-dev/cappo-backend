@@ -1,6 +1,6 @@
 import pytest
 from cappo_backend.services.executor import ResilientExecutor, Provider, EchoExecutor, ExecutorUnavailableError
-from cappo_backend.services.active_verification import registry, VerifierModule, VerifiedRuntimeContext, set_trusted_physical_connection_info
+from cappo_backend.services.active_verification import registry, VerifierModule, VerifiedRuntimeContext, _trusted_connection_info
 import time
 
 class MockHyperVVerifier(VerifierModule):
@@ -77,12 +77,12 @@ def test_executor_denies_stale_caller_at_consequence_boundary():
         }
         
         # 1. Good Execution (Sink observes physical caller perfectly matches EI binding)
-        set_trusted_physical_connection_info({"substrate_hint": "hyper-v", "instance_hint": "VM-12345"})
+        _trusted_connection_info.set({"substrate_hint": "hyper-v", "instance_hint": "VM-12345"})
         res = executor.execute(good_request)
         assert res["response"] == "echo: hello"
         
         # 2. Hostile Sink Replay (Physical Connection Info changed!)
-        set_trusted_physical_connection_info({"substrate_hint": "hyper-v", "instance_hint": "VM-HOSTILE"})
+        _trusted_connection_info.set({"substrate_hint": "hyper-v", "instance_hint": "VM-HOSTILE"})
         with pytest.raises(ExecutorUnavailableError, match="DENY BEFORE EFFECT: STALE AUTHORITY / HOSTILE IDENTITY TRANSITION"):
             executor.execute(good_request)
             

@@ -121,5 +121,6 @@ _trusted_connection_info = contextvars.ContextVar('_trusted_connection_info', de
 def get_trusted_physical_connection_info() -> Dict[str, Any]:
     return _trusted_connection_info.get()
 
-def set_trusted_physical_connection_info(info: Dict[str, Any]):
-    _trusted_connection_info.set(info)
+# set_trusted_physical_connection_info is intentionally removed.
+# Only trusted host middleware (e.g., PhysicalBoundaryMiddleware) may
+# manipulate the underlying contextvar.
