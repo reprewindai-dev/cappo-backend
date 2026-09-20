@@ -169,7 +169,11 @@ def get_registry(request: Request, db: Session = Depends(get_session)) -> MountR
 
 def anchor_payload(status: Any) -> dict[str, Any]:
     # Never expose exception/debug detail from the evidence boundary.
-    return {"status": status.status, "anchor_id": status.anchor_id}
+    return {
+        "status": status.status,
+        "anchor_id": status.anchor_id,
+        "pgl_event_hash": status.external_ref,
+    }
 
 
 def _caller(request: Request, *, requested_workspace: str | None = None) -> tuple[str, str | None]:
