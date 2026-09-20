@@ -139,11 +139,11 @@ def test_activation_target_state_missing_record_returns_not_found(
     client,
     tmp_path: Path,
 ) -> None:
-    prepare(client, tmp_path)
+    mount, _adapter = prepare(client, tmp_path)
 
     response = client.get(
         f"/v1/capability/targets/{LocalRecordAdapter.ref}/state",
-        params={"resource": "missing-record", "project": "p1"},
+        params={"resource": "missing-record", "mount_id": mount["mount"]["id"]},
     )
 
     assert response.status_code == 404
