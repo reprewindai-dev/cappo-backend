@@ -79,6 +79,7 @@ class AnchorResult:
     status: str
     anchor_id: str | None = None
     detail: str | None = None
+    external_ref: str | None = None
 
 
 class EventAnchor(Protocol):
@@ -1065,6 +1066,7 @@ class MountRegistry:
                 content_hash=sha256_json(_receipt_canonical),
                 pgl_anchor_id=anchor.anchor_id,
                 pgl_anchor_status=anchor.status,
+                pgl_event_hash=anchor.external_ref,
                 caller_spiffe_id=sp.get("caller_spiffe_id"),
                 executor_spiffe_id=sp.get("executor_spiffe_id"),
                 eei_id=sp.get("eei_id"),
@@ -1343,6 +1345,7 @@ class MountRegistry:
             "status": "not_applicable",
             "anchor_id": None,
             "content_hash": None,
+            "pgl_event_hash": None,
         }
         if receipt_id is not None:
             receipt = db.get(CapabilityActionReceipt, receipt_id)
@@ -1351,6 +1354,7 @@ class MountRegistry:
                     "status": receipt.pgl_anchor_status or "unconfirmed",
                     "anchor_id": receipt.pgl_anchor_id,
                     "content_hash": receipt.content_hash,
+                    "pgl_event_hash": receipt.pgl_event_hash,
                 }
         after_count = adapter.invocation_count
         target_invoked = after_count > before_count

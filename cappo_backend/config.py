@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # When PGL_LEDGER_URL is set, every governance event is mirrored into
     # gnomledger's append-only, hash-chained ledger.
     pgl_ledger_url: str | None = None
+    pgl_ledger_agent_id: str | None = None
     pgl_ledger_api_key: str | None = None
     pgl_ledger_timeout_ms: int = 8000
 
