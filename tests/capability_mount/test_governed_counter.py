@@ -255,6 +255,9 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
     tmp_path: Path,
 ) -> None:
     adapter = configure_counter(client, tmp_path)
+    client.app.state.settings.auth_enabled = True
+    client.app.state.settings.api_keys = "owner-key"
+    client.headers["X-API-Key"] = "owner-key"
     resource = "readback-1"
 
     first_mount = mount_counter(client)
@@ -264,10 +267,15 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
     )
     assert first.json()["consequence"]["resulting_state"]["value"] == 1
     invocation_count = adapter.invocation_count
+    database_before_read = Path(adapter.db_path).read_bytes()
 
     first_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource, "project": "p1"},
+        params={
+            "resource": resource,
+            "mount_id": first_mount["mount"]["id"],
+            "project": "client-selected-project",
+        },
     )
     assert first_read.status_code == 200
     assert first_read.json() == {
@@ -275,9 +283,11 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
         "resource": resource,
         "workspace": "w1",
         "project": "p1",
+        "mount_id": first_mount["mount"]["id"],
         "state": {"resource": resource, "value": 1, "version": 1},
     }
     assert adapter.invocation_count == invocation_count
+    assert Path(adapter.db_path).read_bytes() == database_before_read
 
     second_mount = mount_counter(client)
     second = client.post(
@@ -289,22 +299,19 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
 
     second_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource, "project": "p1"},
+        params={"resource": resource, "mount_id": second_mount["mount"]["id"]},
     )
     assert second_read.json()["state"]["value"] == 2
     assert adapter.invocation_count == invocation_count
 
     client.headers["X-Workspace-ID"] = "w2"
-    database_before_read = Path(adapter.db_path).read_bytes()
     other_workspace_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource, "project": "p1"},
+        params={"resource": resource, "mount_id": second_mount["mount"]["id"]},
     )
-    assert other_workspace_read.status_code == 200
-    assert other_workspace_read.json()["workspace"] == "w2"
-    assert other_workspace_read.json()["state"]["value"] == 0
+    assert other_workspace_read.status_code == 403
+    assert other_workspace_read.json()["detail"] == "owner_mismatch"
     assert adapter.invocation_count == invocation_count
-    assert Path(adapter.db_path).read_bytes() == database_before_read
 
 
 def _get_db_state(db_path, workspace: str, resource: str, project: str = "p1"):
@@ -330,13 +337,52 @@ def test_missing_project_fails(tmp_path) -> None:
         adapter.dispatch(counter_context("counter.read", project=None))
 
 
-def test_readback_requires_project(client: TestClient, tmp_path: Path) -> None:
+def test_readback_requires_mount_id(client: TestClient, tmp_path: Path) -> None:
     configure_counter(client, tmp_path)
     response = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": "missing-project"},
+        params={"resource": "missing-mount", "project": "p1"},
     )
     assert response.status_code == 422
+
+
+def test_readback_unknown_mount_is_not_found(client: TestClient, tmp_path: Path) -> None:
+    configure_counter(client, tmp_path)
+    response = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": "unknown-mount", "mount_id": "missing-mount"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "unknown_mount"
+
+
+def test_readback_after_termination_remains_available(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    configure_counter(client, tmp_path)
+    mount = mount_counter(client, project="production")
+    mount_id = mount["mount"]["id"]
+
+    terminated = client.post(
+        f"/v1/capability/mounts/{mount_id}/terminate",
+        json={"reason": "explicit_terminate"},
+    )
+    assert terminated.status_code == 200
+    assert terminated.json()["decision"] == "allow"
+
+    response = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": "terminated-read", "mount_id": mount_id},
+    )
+    assert response.status_code == 200
+    assert response.json()["mount_id"] == mount_id
+    assert response.json()["project"] == "production"
+    assert response.json()["state"] == {
+        "resource": "terminated-read",
+        "value": 0,
+        "version": 0,
+    }
 
 
 def test_project_isolation(client: TestClient, tmp_path: Path) -> None:
@@ -355,9 +401,10 @@ def test_project_isolation(client: TestClient, tmp_path: Path) -> None:
 
     production_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource, "project": "production"},
+        params={"resource": resource, "mount_id": production_mount["mount"]["id"]},
     )
     assert production_read.status_code == 200
+    assert production_read.json()["project"] == "production"
     assert production_read.json()["state"] == {
         "resource": resource,
         "value": 0,
@@ -366,9 +413,10 @@ def test_project_isolation(client: TestClient, tmp_path: Path) -> None:
 
     sandbox_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource, "project": "sandbox"},
+        params={"resource": resource, "mount_id": sandbox_mount["mount"]["id"]},
     )
     assert sandbox_read.status_code == 200
+    assert sandbox_read.json()["project"] == "sandbox"
     assert sandbox_read.json()["state"] == {
         "resource": resource,
         "value": 1,

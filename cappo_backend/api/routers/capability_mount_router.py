@@ -129,6 +129,7 @@ class TargetStateResponse(BaseModel):
     resource: str
     workspace: str
     project: str
+    mount_id: str
     state: Any
 
 
@@ -202,12 +203,25 @@ def read_target_state(
     target_ref: str,
     request: Request,
     resource: str = Query(..., min_length=1),
-    project: str = Query(..., min_length=1),
+    mount_id: str = Query(..., min_length=1),
     registry: MountRegistry = Depends(get_registry),
 ) -> TargetStateResponse:
-    _, workspace = _caller(request)
+    principal, workspace = _caller(request)
     if workspace is None:
         raise HTTPException(status_code=403, detail="WORKSPACE_IDENTITY_REQUIRED")
+
+    record, state = registry.status(
+        mount_id,
+        owner_principal=principal,
+        owner_workspace=workspace,
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=404 if state == "unknown_mount" else 403,
+            detail=state,
+        )
+
+    project = record.mount.scope.project
 
     adapter = registry.target_adapters.resolve(target_ref)
     if adapter is None:
@@ -247,6 +261,7 @@ def read_target_state(
         resource=resource,
         workspace=workspace,
         project=project,
+        mount_id=mount_id,
         state=state,
     )
 
