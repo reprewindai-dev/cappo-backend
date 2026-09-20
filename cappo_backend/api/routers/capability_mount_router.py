@@ -128,6 +128,7 @@ class TargetStateResponse(BaseModel):
     target_ref: str
     resource: str
     workspace: str
+    project: str
     state: Any
 
 
@@ -201,6 +202,7 @@ def read_target_state(
     target_ref: str,
     request: Request,
     resource: str = Query(..., min_length=1),
+    project: str = Query(..., min_length=1),
     registry: MountRegistry = Depends(get_registry),
 ) -> TargetStateResponse:
     _, workspace = _caller(request)
@@ -229,6 +231,7 @@ def read_target_state(
         arguments={},
         operation_id=f"read_{uuid4()}",
         workspace=workspace,
+        project=project,
     )
     try:
         state = adapter.read_state(context)
@@ -243,6 +246,7 @@ def read_target_state(
         target_ref=target_ref,
         resource=resource,
         workspace=workspace,
+        project=project,
         state=state,
     )
 

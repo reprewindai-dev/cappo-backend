@@ -25,7 +25,7 @@ class ConsequenceContext:
     arguments: Mapping[str, object]
     operation_id: str | None
     workspace: str | None = None
-    workspace: str | None = None
+    project: str | None = None
 
 
 class TargetAdapter(Protocol):
@@ -112,12 +112,41 @@ class GovernedCounterAdapter(TargetAdapter):
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS counters (
                     workspace TEXT NOT NULL,
+                    project TEXT NOT NULL,
                     resource TEXT NOT NULL,
                     value INTEGER NOT NULL DEFAULT 0,
                     version INTEGER NOT NULL DEFAULT 0,
-                    PRIMARY KEY (workspace, resource)
+                    PRIMARY KEY (workspace, project, resource)
                 )
             """)
+            columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(counters)").fetchall()
+            }
+            if "project" not in columns:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    conn.execute("DROP TABLE IF EXISTS counters_v2")
+                    conn.execute("""
+                        CREATE TABLE counters_v2 (
+                            workspace TEXT NOT NULL,
+                            project TEXT NOT NULL,
+                            resource TEXT NOT NULL,
+                            value INTEGER NOT NULL DEFAULT 0,
+                            version INTEGER NOT NULL DEFAULT 0,
+                            PRIMARY KEY (workspace, project, resource)
+                        )
+                    """)
+                    conn.execute("""
+                        INSERT INTO counters_v2 (workspace, project, resource, value, version)
+                        SELECT workspace, 'legacy-unbound', resource, value, version
+                        FROM counters
+                    """)
+                    conn.execute("DROP TABLE counters")
+                    conn.execute("ALTER TABLE counters_v2 RENAME TO counters")
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
 
     def dispatch(self, context: ConsequenceContext) -> object:
         self.invocation_count += 1
@@ -129,6 +158,8 @@ class GovernedCounterAdapter(TargetAdapter):
         
         if not context.workspace:
             raise ValueError("missing_workspace_identity")
+        if not context.project:
+            raise ValueError("missing_project_scope")
 
         if context.action == "counter.read":
             return self.read_state(context)
@@ -138,22 +169,25 @@ class GovernedCounterAdapter(TargetAdapter):
             
             # Ensure row exists
             cursor.execute("""
-                INSERT OR IGNORE INTO counters (workspace, resource, value, version)
-                VALUES (?, ?, 0, 0)
-            """, (context.workspace, context.resource))
+                INSERT OR IGNORE INTO counters (workspace, project, resource, value, version)
+                VALUES (?, ?, ?, 0, 0)
+            """, (context.workspace, context.project, context.resource))
             
             if context.action == "counter.increment":
-                cursor.execute('SELECT value, version FROM counters WHERE workspace = ? AND resource = ?', 
-                               (context.workspace, context.resource))
+                cursor.execute(
+                    "SELECT value, version FROM counters "
+                    "WHERE workspace = ? AND project = ? AND resource = ?",
+                    (context.workspace, context.project, context.resource),
+                )
                 row = cursor.fetchone()
                 previous_value = row[0]
                 
                 cursor.execute("""
                     UPDATE counters 
                     SET value = value + 1, version = version + 1 
-                    WHERE workspace = ? AND resource = ?
+                    WHERE workspace = ? AND project = ? AND resource = ?
                     RETURNING value, version
-                """, (context.workspace, context.resource))
+                """, (context.workspace, context.project, context.resource))
                 row = cursor.fetchone()
                 value = row[0]
                 version = row[1]
@@ -168,9 +202,9 @@ class GovernedCounterAdapter(TargetAdapter):
                 cursor.execute("""
                     UPDATE counters 
                     SET value = 0, version = version + 1 
-                    WHERE workspace = ? AND resource = ?
+                    WHERE workspace = ? AND project = ? AND resource = ?
                     RETURNING value, version
-                """, (context.workspace, context.resource))
+                """, (context.workspace, context.project, context.resource))
                 row = cursor.fetchone()
                 return {
                     "resource": context.resource,
@@ -184,11 +218,14 @@ class GovernedCounterAdapter(TargetAdapter):
         validate_resource(context.resource)
         if not context.workspace:
             raise ValueError("missing_workspace_identity")
+        if not context.project:
+            raise ValueError("missing_project_scope")
         with sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT value, version FROM counters WHERE workspace = ? AND resource = ?",
-                (context.workspace, context.resource),
+                "SELECT value, version FROM counters "
+                "WHERE workspace = ? AND project = ? AND resource = ?",
+                (context.workspace, context.project, context.resource),
             )
             row = cursor.fetchone()
         return {

@@ -38,7 +38,8 @@ def counter_context(
     *,
     resource: str = "demo-1",
     arguments: dict[str, object] | None = None,
-    workspace: str | None = "w1"
+    workspace: str | None = "w1",
+    project: str | None = "p1",
 ) -> ConsequenceContext:
     return ConsequenceContext(
         action=action,
@@ -46,6 +47,7 @@ def counter_context(
         arguments=arguments or {},
         operation_id=None,
         workspace=workspace,
+        project=project,
     )
 
 
@@ -61,12 +63,12 @@ def configure_counter(client: TestClient, root: Path) -> GovernedCounterAdapter:
     return adapter
 
 
-def mount_counter(client: TestClient) -> dict[str, object]:
+def mount_counter(client: TestClient, *, project: str = "p1") -> dict[str, object]:
     response = client.post(
         "/v1/capability/mounts",
         json={
             "package_ref": GOVERNED_COUNTER_PACKAGE.id,
-            "execution_scope": {"workspace": "w1", "project": "p1"},
+            "execution_scope": {"workspace": "w1", "project": project},
             "requested_action_scope": {
                 "reads": ["counter.read"],
                 "writes": ["counter.increment"],
@@ -265,13 +267,14 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
 
     first_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource},
+        params={"resource": resource, "project": "p1"},
     )
     assert first_read.status_code == 200
     assert first_read.json() == {
         "target_ref": GovernedCounterAdapter.ref,
         "resource": resource,
         "workspace": "w1",
+        "project": "p1",
         "state": {"resource": resource, "value": 1, "version": 1},
     }
     assert adapter.invocation_count == invocation_count
@@ -286,7 +289,7 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
 
     second_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource},
+        params={"resource": resource, "project": "p1"},
     )
     assert second_read.json()["state"]["value"] == 2
     assert adapter.invocation_count == invocation_count
@@ -295,7 +298,7 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
     database_before_read = Path(adapter.db_path).read_bytes()
     other_workspace_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
-        params={"resource": resource},
+        params={"resource": resource, "project": "p1"},
     )
     assert other_workspace_read.status_code == 200
     assert other_workspace_read.json()["workspace"] == "w2"
@@ -304,9 +307,13 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
     assert Path(adapter.db_path).read_bytes() == database_before_read
 
 
-def _get_db_state(db_path, workspace: str, resource: str):
+def _get_db_state(db_path, workspace: str, resource: str, project: str = "p1"):
     with sqlite3.connect(db_path) as conn:
-        row = conn.execute("SELECT value, version FROM counters WHERE workspace=? AND resource=?", (workspace, resource)).fetchone()
+        row = conn.execute(
+            "SELECT value, version FROM counters "
+            "WHERE workspace=? AND project=? AND resource=?",
+            (workspace, project, resource),
+        ).fetchone()
         if not row:
             return None
         return {"value": row[0], "version": row[1]}
@@ -315,6 +322,94 @@ def test_missing_workspace_fails(tmp_path) -> None:
     adapter = GovernedCounterAdapter(tmp_path)
     with pytest.raises(ValueError, match="missing_workspace_identity"):
         adapter.dispatch(counter_context("counter.read", workspace=None))
+
+
+def test_missing_project_fails(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    with pytest.raises(ValueError, match="missing_project_scope"):
+        adapter.dispatch(counter_context("counter.read", project=None))
+
+
+def test_readback_requires_project(client: TestClient, tmp_path: Path) -> None:
+    configure_counter(client, tmp_path)
+    response = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": "missing-project"},
+    )
+    assert response.status_code == 422
+
+
+def test_project_isolation(client: TestClient, tmp_path: Path) -> None:
+    configure_counter(client, tmp_path)
+    resource = "project-isolation"
+
+    sandbox_mount = mount_counter(client, project="sandbox")
+    sandbox_execute = client.post(
+        f"/v1/capability/mounts/{sandbox_mount['mount']['id']}/execute",
+        json=execute_payload(sandbox_mount, resource=resource, operation_id="sandbox-1"),
+    )
+    assert sandbox_execute.json()["consequence"]["resulting_state"]["value"] == 1
+
+    production_mount = mount_counter(client, project="production")
+    assert production_mount["mount"]["scope"]["project"] == "production"
+
+    production_read = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "project": "production"},
+    )
+    assert production_read.status_code == 200
+    assert production_read.json()["state"] == {
+        "resource": resource,
+        "value": 0,
+        "version": 0,
+    }
+
+    sandbox_read = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "project": "sandbox"},
+    )
+    assert sandbox_read.status_code == 200
+    assert sandbox_read.json()["state"] == {
+        "resource": resource,
+        "value": 1,
+        "version": 1,
+    }
+
+
+def test_legacy_counters_table_migrates(tmp_path: Path) -> None:
+    db_path = tmp_path / "governed_counters.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE counters (
+                workspace TEXT NOT NULL,
+                resource TEXT NOT NULL,
+                value INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (workspace, resource)
+            )
+        """)
+        conn.execute(
+            "INSERT INTO counters (workspace, resource, value, version) VALUES (?, ?, ?, ?)",
+            ("w1", "legacy-resource", 4, 7),
+        )
+        conn.commit()
+
+    adapter = GovernedCounterAdapter(tmp_path)
+    assert adapter.read_state(
+        counter_context(
+            "counter.read",
+            resource="legacy-resource",
+            project="legacy-unbound",
+        )
+    ) == {
+        "resource": "legacy-resource",
+        "value": 4,
+        "version": 7,
+    }
+    with sqlite3.connect(adapter.db_path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(counters)")}
+    assert "project" in columns
+
 
 def test_workspace_isolation(tmp_path) -> None:
     adapter = GovernedCounterAdapter(tmp_path)

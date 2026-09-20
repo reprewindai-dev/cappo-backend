@@ -1311,6 +1311,7 @@ class MountRegistry:
             arguments=arguments,
             operation_id=op_id,
             workspace=row.owner_workspace,
+            project=record.mount.scope.project,
         )
 
         def invoke_effect(**_: object) -> object:
@@ -1472,6 +1473,5 @@ def utc_now() -> datetime:
 
 def _utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
 
 
