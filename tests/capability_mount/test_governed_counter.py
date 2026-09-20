@@ -292,6 +292,7 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
     assert adapter.invocation_count == invocation_count
 
     client.headers["X-Workspace-ID"] = "w2"
+    database_before_read = Path(adapter.db_path).read_bytes()
     other_workspace_read = client.get(
         f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
         params={"resource": resource},
@@ -300,6 +301,7 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
     assert other_workspace_read.json()["workspace"] == "w2"
     assert other_workspace_read.json()["state"]["value"] == 0
     assert adapter.invocation_count == invocation_count
+    assert Path(adapter.db_path).read_bytes() == database_before_read
 
 
 def _get_db_state(db_path, workspace: str, resource: str):

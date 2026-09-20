@@ -220,8 +220,7 @@ def read_target_state(
         (candidate for candidate in sorted(adapter.actions) if candidate.endswith(".read")),
         None,
     )
-    read_state = getattr(adapter, "read_state", None)
-    if read_action is None or not callable(read_state):
+    if read_action is None:
         raise HTTPException(status_code=400, detail="target_not_readable")
 
     context = ConsequenceContext(
@@ -232,7 +231,9 @@ def read_target_state(
         workspace=workspace,
     )
     try:
-        state = read_state(context)
+        state = adapter.read_state(context)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="resource_not_found") from exc
     except ValueError as exc:
         if str(exc) == "invalid_target_resource":
             raise HTTPException(status_code=400, detail="invalid_target_resource") from exc

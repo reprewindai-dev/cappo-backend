@@ -184,15 +184,8 @@ class GovernedCounterAdapter(TargetAdapter):
         validate_resource(context.resource)
         if not context.workspace:
             raise ValueError("missing_workspace_identity")
-        with sqlite3.connect(self.db_path, timeout=15.0, isolation_level="IMMEDIATE") as conn:
+        with sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT OR IGNORE INTO counters (workspace, resource, value, version)
-                VALUES (?, ?, 0, 0)
-                """,
-                (context.workspace, context.resource),
-            )
             cursor.execute(
                 "SELECT value, version FROM counters WHERE workspace = ? AND resource = ?",
                 (context.workspace, context.resource),
@@ -200,8 +193,8 @@ class GovernedCounterAdapter(TargetAdapter):
             row = cursor.fetchone()
         return {
             "resource": context.resource,
-            "value": row[0],
-            "version": row[1],
+            "value": row[0] if row is not None else 0,
+            "version": row[1] if row is not None else 0,
         }
 
 
