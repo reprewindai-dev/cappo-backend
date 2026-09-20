@@ -1064,6 +1064,7 @@ class MountRegistry:
                 actioned_at=_actioned_at,
                 content_hash=sha256_json(_receipt_canonical),
                 pgl_anchor_id=anchor.anchor_id,
+                pgl_anchor_status=anchor.status,
                 caller_spiffe_id=sp.get("caller_spiffe_id"),
                 executor_spiffe_id=sp.get("executor_spiffe_id"),
                 eei_id=sp.get("eei_id"),
@@ -1138,6 +1139,7 @@ class MountRegistry:
             resulting_state: object | None = None,
             receipt_id: str | None = None,
             terminated: bool = False,
+            anchoring: dict[str, Any] | None = None,
         ) -> dict[str, Any]:
             return {
                 "mount_id": mount_id,
@@ -1154,6 +1156,12 @@ class MountRegistry:
                 "receipt_id": receipt_id,
                 "nonce_consumed": bool(row.nonce_consumed) if record else None,
                 "terminated": terminated,
+                "anchoring": anchoring
+                or {
+                    "status": "not_applicable",
+                    "anchor_id": None,
+                    "content_hash": None,
+                },
             }
 
         def terminal_deny(
@@ -1330,6 +1338,19 @@ class MountRegistry:
         ).scalar_one_or_none()
         consequence_state = latest.state if latest is not None else None
         receipt_id = latest.receipt_id if latest is not None else None
+        anchoring = {
+            "status": "not_applicable",
+            "anchor_id": None,
+            "content_hash": None,
+        }
+        if receipt_id is not None:
+            receipt = db.get(CapabilityActionReceipt, receipt_id)
+            if receipt is not None:
+                anchoring = {
+                    "status": receipt.pgl_anchor_status or "unconfirmed",
+                    "anchor_id": receipt.pgl_anchor_id,
+                    "content_hash": receipt.content_hash,
+                }
         after_count = adapter.invocation_count
         target_invoked = after_count > before_count
 
@@ -1360,6 +1381,7 @@ class MountRegistry:
                 resulting_state=result,
                 receipt_id=receipt_id,
                 terminated=terminated,
+                anchoring=anchoring,
             ),
         )
 

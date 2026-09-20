@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from cappo_backend.capability_mount.effects import ConsequenceContext, validate_resource
 from cappo_backend.capability_mount.models import (
     CapabilityPackage,
     Decision,
@@ -120,6 +122,15 @@ class ExecuteResponse(BaseModel):
     authority: dict[str, Any]
 
 
+class TargetStateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_ref: str
+    resource: str
+    workspace: str
+    state: Any
+
+
 class TerminateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -183,6 +194,56 @@ def _caller(request: Request, *, requested_workspace: str | None = None) -> tupl
 @router.get("/packages", response_model=list[CapabilityPackage])
 def list_packages(registry: MountRegistry = Depends(get_registry)) -> list[CapabilityPackage]:
     return registry.list_packages()
+
+
+@router.get("/targets/{target_ref}/state", response_model=TargetStateResponse)
+def read_target_state(
+    target_ref: str,
+    request: Request,
+    resource: str = Query(..., min_length=1),
+    registry: MountRegistry = Depends(get_registry),
+) -> TargetStateResponse:
+    _, workspace = _caller(request)
+    if workspace is None:
+        raise HTTPException(status_code=403, detail="WORKSPACE_IDENTITY_REQUIRED")
+
+    adapter = registry.target_adapters.resolve(target_ref)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail="unknown_target")
+
+    try:
+        validate_resource(resource)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_target_resource") from exc
+
+    read_action = next(
+        (candidate for candidate in sorted(adapter.actions) if candidate.endswith(".read")),
+        None,
+    )
+    read_state = getattr(adapter, "read_state", None)
+    if read_action is None or not callable(read_state):
+        raise HTTPException(status_code=400, detail="target_not_readable")
+
+    context = ConsequenceContext(
+        action=read_action,
+        resource=resource,
+        arguments={},
+        operation_id=f"read_{uuid4()}",
+        workspace=workspace,
+    )
+    try:
+        state = read_state(context)
+    except ValueError as exc:
+        if str(exc) == "invalid_target_resource":
+            raise HTTPException(status_code=400, detail="invalid_target_resource") from exc
+        raise
+
+    return TargetStateResponse(
+        target_ref=target_ref,
+        resource=resource,
+        workspace=workspace,
+        state=state,
+    )
 
 
 @router.post("/mounts", response_model=MountResponse)
@@ -348,7 +409,7 @@ def execute_consequence(
     return ExecuteResponse(
         decision=decision,
         reason=reason,
-        anchoring={"status": "not_applicable", "anchor_id": None},
+        anchoring=payload["anchoring"],
         mount_id=mount_id,
         action=body.action,
         resource=body.resource,

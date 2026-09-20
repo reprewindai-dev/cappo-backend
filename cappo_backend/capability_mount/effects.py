@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import os
 import re
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol
@@ -34,6 +34,9 @@ class TargetAdapter(Protocol):
 
     def dispatch(self, context: ConsequenceContext) -> object:
         """Invoke one registered, capability-owned effect."""
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        """Read target state without recording a consequence invocation."""
 
 
 def validate_resource(resource: str) -> None:
@@ -71,10 +74,7 @@ class LocalRecordAdapter(TargetAdapter):
             path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
             return document
         if context.action == "record.read":
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except FileNotFoundError as exc:
-                raise KeyError(context.resource) from exc
+            return self.read_state(context)
         if context.action == "record.delete":
             try:
                 path.unlink()
@@ -82,6 +82,13 @@ class LocalRecordAdapter(TargetAdapter):
                 raise KeyError(context.resource) from exc
             return {"deleted": context.resource}
         raise ValueError("target_not_mapped")
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        path = self._record_path(context.resource)
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise KeyError(context.resource) from exc
 
 
 class GovernedCounterAdapter(TargetAdapter):
@@ -123,6 +130,9 @@ class GovernedCounterAdapter(TargetAdapter):
         if not context.workspace:
             raise ValueError("missing_workspace_identity")
 
+        if context.action == "counter.read":
+            return self.read_state(context)
+
         with sqlite3.connect(self.db_path, timeout=15.0, isolation_level="IMMEDIATE") as conn:
             cursor = conn.cursor()
             
@@ -132,16 +142,6 @@ class GovernedCounterAdapter(TargetAdapter):
                 VALUES (?, ?, 0, 0)
             """, (context.workspace, context.resource))
             
-            if context.action == "counter.read":
-                cursor.execute('SELECT value, version FROM counters WHERE workspace = ? AND resource = ?', 
-                               (context.workspace, context.resource))
-                row = cursor.fetchone()
-                return {
-                    "resource": context.resource,
-                    "value": row[0],
-                    "version": row[1],
-                }
-
             if context.action == "counter.increment":
                 cursor.execute('SELECT value, version FROM counters WHERE workspace = ? AND resource = ?', 
                                (context.workspace, context.resource))
@@ -179,6 +179,30 @@ class GovernedCounterAdapter(TargetAdapter):
                 }
 
         raise ValueError("target_not_mapped")
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        validate_resource(context.resource)
+        if not context.workspace:
+            raise ValueError("missing_workspace_identity")
+        with sqlite3.connect(self.db_path, timeout=15.0, isolation_level="IMMEDIATE") as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO counters (workspace, resource, value, version)
+                VALUES (?, ?, 0, 0)
+                """,
+                (context.workspace, context.resource),
+            )
+            cursor.execute(
+                "SELECT value, version FROM counters WHERE workspace = ? AND resource = ?",
+                (context.workspace, context.resource),
+            )
+            row = cursor.fetchone()
+        return {
+            "resource": context.resource,
+            "value": row[0],
+            "version": row[1],
+        }
 
 
 class TargetAdapterRegistry:
