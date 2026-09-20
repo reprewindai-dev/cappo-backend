@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 import cappo_backend.security.biscuit as biscuit
-from cappo_backend.capability_mount.effects import TargetAdapterRegistry, LocalRecordAdapter
+from cappo_backend.capability_mount.effects import LocalRecordAdapter, TargetAdapterRegistry
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import ConsequenceExecutionEvent
 from tests.capability_mount.test_execute_consequence import (
@@ -133,6 +133,21 @@ def test_activation_blocked_delete_preserves_target(
     assert body["consequence"]["terminated"] is True
     assert adapter.invocation_count == 0
     assert record.read_bytes() == before
+
+
+def test_activation_target_state_missing_record_returns_not_found(
+    client,
+    tmp_path: Path,
+) -> None:
+    prepare(client, tmp_path)
+
+    response = client.get(
+        f"/v1/capability/targets/{LocalRecordAdapter.ref}/state",
+        params={"resource": "missing-record", "project": "p1"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "resource_not_found"
 
 
 def test_activation_verified_biscuit_scope_denial(

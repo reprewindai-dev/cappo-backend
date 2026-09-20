@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import os
 import re
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol
@@ -25,7 +25,7 @@ class ConsequenceContext:
     arguments: Mapping[str, object]
     operation_id: str | None
     workspace: str | None = None
-    workspace: str | None = None
+    project: str | None = None
 
 
 class TargetAdapter(Protocol):
@@ -34,6 +34,9 @@ class TargetAdapter(Protocol):
 
     def dispatch(self, context: ConsequenceContext) -> object:
         """Invoke one registered, capability-owned effect."""
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        """Read target state without recording a consequence invocation."""
 
 
 def validate_resource(resource: str) -> None:
@@ -71,10 +74,7 @@ class LocalRecordAdapter(TargetAdapter):
             path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
             return document
         if context.action == "record.read":
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except FileNotFoundError as exc:
-                raise KeyError(context.resource) from exc
+            return self.read_state(context)
         if context.action == "record.delete":
             try:
                 path.unlink()
@@ -82,6 +82,13 @@ class LocalRecordAdapter(TargetAdapter):
                 raise KeyError(context.resource) from exc
             return {"deleted": context.resource}
         raise ValueError("target_not_mapped")
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        path = self._record_path(context.resource)
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise KeyError(context.resource) from exc
 
 
 class GovernedCounterAdapter(TargetAdapter):
@@ -105,12 +112,41 @@ class GovernedCounterAdapter(TargetAdapter):
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS counters (
                     workspace TEXT NOT NULL,
+                    project TEXT NOT NULL,
                     resource TEXT NOT NULL,
                     value INTEGER NOT NULL DEFAULT 0,
                     version INTEGER NOT NULL DEFAULT 0,
-                    PRIMARY KEY (workspace, resource)
+                    PRIMARY KEY (workspace, project, resource)
                 )
             """)
+            columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(counters)").fetchall()
+            }
+            if "project" not in columns:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    conn.execute("DROP TABLE IF EXISTS counters_v2")
+                    conn.execute("""
+                        CREATE TABLE counters_v2 (
+                            workspace TEXT NOT NULL,
+                            project TEXT NOT NULL,
+                            resource TEXT NOT NULL,
+                            value INTEGER NOT NULL DEFAULT 0,
+                            version INTEGER NOT NULL DEFAULT 0,
+                            PRIMARY KEY (workspace, project, resource)
+                        )
+                    """)
+                    conn.execute("""
+                        INSERT INTO counters_v2 (workspace, project, resource, value, version)
+                        SELECT workspace, 'legacy-unbound', resource, value, version
+                        FROM counters
+                    """)
+                    conn.execute("DROP TABLE counters")
+                    conn.execute("ALTER TABLE counters_v2 RENAME TO counters")
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
 
     def dispatch(self, context: ConsequenceContext) -> object:
         self.invocation_count += 1
@@ -122,38 +158,36 @@ class GovernedCounterAdapter(TargetAdapter):
         
         if not context.workspace:
             raise ValueError("missing_workspace_identity")
+        if not context.project:
+            raise ValueError("missing_project_scope")
+
+        if context.action == "counter.read":
+            return self.read_state(context)
 
         with sqlite3.connect(self.db_path, timeout=15.0, isolation_level="IMMEDIATE") as conn:
             cursor = conn.cursor()
             
             # Ensure row exists
             cursor.execute("""
-                INSERT OR IGNORE INTO counters (workspace, resource, value, version)
-                VALUES (?, ?, 0, 0)
-            """, (context.workspace, context.resource))
+                INSERT OR IGNORE INTO counters (workspace, project, resource, value, version)
+                VALUES (?, ?, ?, 0, 0)
+            """, (context.workspace, context.project, context.resource))
             
-            if context.action == "counter.read":
-                cursor.execute('SELECT value, version FROM counters WHERE workspace = ? AND resource = ?', 
-                               (context.workspace, context.resource))
-                row = cursor.fetchone()
-                return {
-                    "resource": context.resource,
-                    "value": row[0],
-                    "version": row[1],
-                }
-
             if context.action == "counter.increment":
-                cursor.execute('SELECT value, version FROM counters WHERE workspace = ? AND resource = ?', 
-                               (context.workspace, context.resource))
+                cursor.execute(
+                    "SELECT value, version FROM counters "
+                    "WHERE workspace = ? AND project = ? AND resource = ?",
+                    (context.workspace, context.project, context.resource),
+                )
                 row = cursor.fetchone()
                 previous_value = row[0]
                 
                 cursor.execute("""
                     UPDATE counters 
                     SET value = value + 1, version = version + 1 
-                    WHERE workspace = ? AND resource = ?
+                    WHERE workspace = ? AND project = ? AND resource = ?
                     RETURNING value, version
-                """, (context.workspace, context.resource))
+                """, (context.workspace, context.project, context.resource))
                 row = cursor.fetchone()
                 value = row[0]
                 version = row[1]
@@ -168,9 +202,9 @@ class GovernedCounterAdapter(TargetAdapter):
                 cursor.execute("""
                     UPDATE counters 
                     SET value = 0, version = version + 1 
-                    WHERE workspace = ? AND resource = ?
+                    WHERE workspace = ? AND project = ? AND resource = ?
                     RETURNING value, version
-                """, (context.workspace, context.resource))
+                """, (context.workspace, context.project, context.resource))
                 row = cursor.fetchone()
                 return {
                     "resource": context.resource,
@@ -179,6 +213,26 @@ class GovernedCounterAdapter(TargetAdapter):
                 }
 
         raise ValueError("target_not_mapped")
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        validate_resource(context.resource)
+        if not context.workspace:
+            raise ValueError("missing_workspace_identity")
+        if not context.project:
+            raise ValueError("missing_project_scope")
+        with sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT value, version FROM counters "
+                "WHERE workspace = ? AND project = ? AND resource = ?",
+                (context.workspace, context.project, context.resource),
+            )
+            row = cursor.fetchone()
+        return {
+            "resource": context.resource,
+            "value": row[0] if row is not None else 0,
+            "version": row[1] if row is not None else 0,
+        }
 
 
 class TargetAdapterRegistry:

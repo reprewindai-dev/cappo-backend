@@ -81,6 +81,7 @@ class CapabilityActionReceipt(Base):
 
     # PGL chain binding.
     pgl_anchor_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    pgl_anchor_status: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

@@ -33,12 +33,18 @@ When the local capability effect root is configured, CAPPO registers the
 `veklom.governed-counter@v1` package and its server-owned
 `activation.governed-counter` target. The package exposes `counter.read` and
 `counter.increment`; `counter.reset` is explicitly blocked. The increment action
-advances a per-resource counter by exactly one, regardless of caller arguments.
+advances a per-project counter by exactly one, regardless of caller arguments.
 
 The target resource is supplied in the execute request and must pass CAPPO's
-resource validation. State is stored in the sandbox effect root as
-`counter_<resource>.json`, with `value` and `version` fields. A missing state
-file starts at zero. `POST /v1/capability/mounts/{id}/execute` resolves the
-server-owned target from `target_ref: "activation.governed-counter"`; callers
-cannot select an arbitrary implementation. This is the sandbox reference
-capability for a bounded, file-backed governed consequence.
+resource validation. State is stored in the sandbox effect root in SQLite,
+keyed by workspace, project, and resource, with `value` and `version` fields.
+A missing state row reads as zero. `POST /v1/capability/mounts/{id}/execute`
+resolves the server-owned target from `target_ref: "activation.governed-counter"`;
+callers cannot select an arbitrary
+implementation. This is the sandbox reference capability for a bounded,
+SQLite-backed governed consequence.
+
+Independent target state readback uses:
+`GET /v1/capability/targets/{target_ref}/state?resource=<r>&project=<p>`.
+The `project` query parameter is required and is part of the governed counter
+state key; workspace is derived from the authenticated caller.
