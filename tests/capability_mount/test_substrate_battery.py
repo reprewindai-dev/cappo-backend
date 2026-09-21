@@ -5,18 +5,25 @@ Adversarial tests for the unified physical substrate authority path.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-from datetime import datetime, timezone, timedelta
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from cappo_backend.capability_mount.effects import GovernedCounterAdapter, TargetAdapterRegistry
 from cappo_backend.capability_mount.engine import Decision
-from cappo_backend.capability_mount.models import MountPolicy, MountScope, CapabilityPackage
-from cappo_backend.capability_mount.service import MountRegistry, GOVERNED_COUNTER_PACKAGE, AnchorResult
-from cappo_backend.models.capability_lease import CapabilityLease
-from cappo_backend.capability_mount.effects import TargetAdapterRegistry, GovernedCounterAdapter
+from cappo_backend.capability_mount.models import CapabilityPackage, MountPolicy, MountScope
+from cappo_backend.capability_mount.service import (
+    GOVERNED_COUNTER_PACKAGE,
+    AnchorResult,
+    MountRegistry,
+)
 from cappo_backend.db.session import SessionLocal
+from cappo_backend.models.capability_lease import CapabilityLease
+from cappo_backend.models.substrate import PGLProducer, PGLSubject, PGLUnifiedLifecycleEvent
+
 
 @pytest.fixture
 def db_session() -> Session:
@@ -57,7 +64,7 @@ def create_mount(registry: MountRegistry, db: Session, **kwargs):
     )
 
 def test_valid_mount_wrong_boot_instance(registry: MountRegistry, db_session: Session):
-    record, anchor, msg = create_mount(
+    record, anchor, msg, _holder_credential = create_mount(
         registry, db_session,
         substrate_id="host_a",
         boot_instance_id="boot_1",
@@ -85,7 +92,7 @@ def test_valid_mount_wrong_boot_instance(registry: MountRegistry, db_session: Se
     assert reason == "boot_instance_id_mismatch"
 
 def test_valid_mount_wrong_runtime_key(registry: MountRegistry, db_session: Session):
-    record, anchor, msg = create_mount(
+    record, anchor, msg, _holder_credential = create_mount(
         registry, db_session,
         substrate_id="host_a",
         boot_instance_id="boot_1",
@@ -111,7 +118,7 @@ def test_valid_mount_wrong_runtime_key(registry: MountRegistry, db_session: Sess
     assert reason == "runtime_key_thumbprint_mismatch"
 
 def test_host_a_mount_replayed_by_host_b(registry: MountRegistry, db_session: Session):
-    record, anchor, msg = create_mount(
+    record, anchor, msg, _holder_credential = create_mount(
         registry, db_session,
         substrate_id="host_a",
         boot_instance_id="boot_1",
@@ -139,7 +146,7 @@ def test_host_a_mount_replayed_by_host_b(registry: MountRegistry, db_session: Se
 
 def test_reboot_old_mount_reused(registry: MountRegistry, db_session: Session):
     # Same physical host rebooted -> old mount reused -> DENY
-    record, anchor, msg = create_mount(
+    record, anchor, msg, _holder_credential = create_mount(
         registry, db_session,
         substrate_id="host_a",
         boot_instance_id="boot_1",
@@ -165,7 +172,7 @@ def test_reboot_old_mount_reused(registry: MountRegistry, db_session: Session):
     assert reason == "boot_instance_id_mismatch"
 
 def test_stale_epoch_denied(registry: MountRegistry, db_session: Session):
-    record, anchor, msg = create_mount(
+    record, anchor, msg, _holder_credential = create_mount(
         registry, db_session,
         substrate_id="host_a",
         boot_instance_id="boot_1",
@@ -208,7 +215,7 @@ def test_stale_epoch_denied(registry: MountRegistry, db_session: Session):
     assert reason == "stale_authority_epoch"
 
 def test_altered_state_root(registry: MountRegistry, db_session: Session):
-    record, anchor, msg = create_mount(
+    record, anchor, msg, _holder_credential = create_mount(
         registry, db_session,
         substrate_id="host_a",
         boot_instance_id="boot_1",
@@ -238,9 +245,6 @@ def test_altered_state_root(registry: MountRegistry, db_session: Session):
 
 def test_evidence_falsifier_signature():
     # Executor signs CONSEQUENCE_OBSERVED using its own runtime key -> PGL verifier rejects it.
-    from cappo_backend.models.substrate import PGLUnifiedLifecycleEvent, PGLProducer, PGLSubject
-    from pydantic import ValidationError
-    
     with pytest.raises(ValidationError):
         PGLUnifiedLifecycleEvent(
             schema_version="veklom.pgl.lifecycle.v1",
@@ -252,4 +256,3 @@ def test_evidence_falsifier_signature():
             subject=PGLSubject(type="execution", id="exec_1"),
             details={}
         )
-

@@ -9,6 +9,8 @@ credentials or API keys.
 from __future__ import annotations
 
 import hashlib
+import hmac
+from datetime import datetime, timezone
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -17,6 +19,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from cappo_backend.config import Settings
+from cappo_backend.db.session import SessionLocal
+from cappo_backend.models.capability_mount import CapabilityMount
 
 PUBLIC_PATHS = frozenset(
     {
@@ -82,7 +86,38 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not token:
             return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
 
-        if token.startswith("eyJ"):
+        if token.startswith("vlm_"):
+            mount_id, separator, secret = token[4:].rpartition(".")
+            if not mount_id or not separator or not secret:
+                return JSONResponse({"error": "HOLDER_CREDENTIAL_INVALID"}, status_code=401)
+
+            db = SessionLocal()
+            try:
+                row = db.get(CapabilityMount, mount_id)
+            finally:
+                db.close()
+
+            if (
+                row is None
+                or not row.holder_secret_hash
+                or not hmac.compare_digest(
+                    hashlib.sha256(secret.encode()).hexdigest(),
+                    row.holder_secret_hash,
+                )
+            ):
+                return JSONResponse({"error": "HOLDER_CREDENTIAL_INVALID"}, status_code=401)
+            if row.terminated:
+                return JSONResponse({"error": "HOLDER_CREDENTIAL_REVOKED"}, status_code=401)
+            expires_at = row.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at <= datetime.now(timezone.utc):
+                return JSONResponse({"error": "HOLDER_CREDENTIAL_EXPIRED"}, status_code=401)
+
+            request.scope["auth_principal"] = f"mount-holder:{mount_id}"
+            request.scope["auth_workspace"] = row.owner_workspace
+            request.scope["mount_holder_id"] = mount_id
+        elif token.startswith("eyJ"):
             if not self._jwt_key:
                 return JSONResponse({"error": "JWT_MISCONFIGURED"}, status_code=500)
             try:

@@ -84,7 +84,7 @@ def test_g1_5_wan_on_reconcile(db: Session, monkeypatch):
     )
 
     reg = _build_registry(db)
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent", policy=MountPolicy(), ttl_seconds=TTL,

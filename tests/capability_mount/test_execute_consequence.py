@@ -4,12 +4,13 @@ import json
 import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from cappo_backend.capability_mount.effects import (
     CappoUncertainError,
-    TargetAdapterRegistry,
     LocalRecordAdapter,
+    TargetAdapterRegistry,
 )
 from cappo_backend.capability_mount.models import CapabilityPackage
 from cappo_backend.capability_mount.service import AnchorResult
@@ -289,8 +290,6 @@ def test_uncertain_after_write_is_unknown_and_file_exists(
     client: TestClient, tmp_path: Path
 ) -> None:
     mount, adapter = prepare(client, tmp_path, UncertainAdapter(tmp_path))
-    from cappo_backend.capability_mount.effects import CappoUncertainError
-    import pytest
     with pytest.raises(CappoUncertainError):
         client.post(
             f"/v1/capability/mounts/{mount['mount']['id']}/execute",

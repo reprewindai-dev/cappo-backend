@@ -54,7 +54,7 @@ def test_ec_1_evidence_writer_crash(db: Session):
             writes=[ACTION],
         )
     )
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[], writes=[ACTION]),
         role="agent",

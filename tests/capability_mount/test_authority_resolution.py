@@ -1,9 +1,14 @@
 import pytest
 from sqlalchemy.orm import Session
-from cappo_backend.capability_mount.service import MountRegistry, LocalConfirmedAnchor
+
 from cappo_backend.capability_mount.models import (
-    CapabilityPackage, MountScope, MountPolicy, Decision
+    CapabilityPackage,
+    Decision,
+    MountPolicy,
+    MountScope,
 )
+from cappo_backend.capability_mount.service import LocalConfirmedAnchor, MountRegistry
+
 
 def _build_registry(db: Session) -> MountRegistry:
     reg = MountRegistry(db=db, anchor=LocalConfirmedAnchor())
@@ -41,7 +46,7 @@ def test_resolve_authorized_only(db: Session):
     assert eval_result.rejected_candidates["provider-b@v1"] == "budget_ceiling"
     assert eval_result.rejected_candidates["provider-c@v1"] == "policy_forbidden"
     
-    record, _, reason = reg.request_mount(
+    record, _, reason, _holder_credential = reg.request_mount(
         package_ref="provider-a@v1",
         scope=MountScope(workspace="ws1", project="p1"),
         role="test", policy=MountPolicy(), ttl_seconds=300,
@@ -61,7 +66,7 @@ def test_no_authorized_provider(db: Session):
     assert eval_result.decision == Decision.DENY
     assert eval_result.permitted_candidates == []
     
-    record, _, reason = reg.request_mount(
+    record, _, reason, _holder_credential = reg.request_mount(
         package_ref="provider-b@v1",
         scope=MountScope(workspace="ws1", project="p1"),
         role="test", policy=MountPolicy(), ttl_seconds=300,
@@ -88,7 +93,7 @@ def test_budget_changes_before_binding(db: Session):
     assert new_eval_result.decision == Decision.DENY
     assert new_eval_result.rejected_candidates["provider-a@v1"] == "budget_ceiling"
     
-    record, _, reason = reg.request_mount(
+    record, _, reason, _holder_credential = reg.request_mount(
         package_ref="provider-a@v1",
         scope=MountScope(workspace="ws1", project="p1"),
         role="test", policy=MountPolicy(), ttl_seconds=300,
@@ -108,7 +113,7 @@ def test_resolved_provider_substituted(db: Session):
     eval_result = reg.evaluate_candidates(candidates, context)
     assert eval_result.permitted_candidates == ["provider-a@v1"]
     
-    record, _, reason = reg.request_mount(
+    record, _, reason, _holder_credential = reg.request_mount(
         package_ref="provider-b@v1",
         scope=MountScope(workspace="ws1", project="p1"),
         role="test", policy=MountPolicy(), ttl_seconds=300,
@@ -130,7 +135,7 @@ def test_provider_disappears(db: Session):
     # Provider disappears from registry
     del reg.packages["provider-a@v1"]
     
-    record, _, reason = reg.request_mount(
+    record, _, reason, _holder_credential = reg.request_mount(
         package_ref="provider-a@v1",
         scope=MountScope(workspace="ws1", project="p1"),
         role="test", policy=MountPolicy(), ttl_seconds=300,

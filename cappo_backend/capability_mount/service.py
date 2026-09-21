@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -501,6 +503,8 @@ class MountRegistry:
         owner_principal: str,
         owner_workspace: str | None,
     ) -> bool:
+        if owner_principal == f"mount-holder:{row.mount_id}":
+            return bool(owner_workspace) and row.owner_workspace == owner_workspace
         if row.owner_principal != owner_principal:
             return False
         if owner_principal == "auth-disabled":
@@ -537,7 +541,7 @@ class MountRegistry:
         boot_instance_id: str | None = None,
         runtime_key_thumbprint: str | None = None,
         state_root: str | None = None,
-    ) -> tuple[MountRecord | None, AnchorResult, str]:
+    ) -> tuple[MountRecord | None, AnchorResult, str, str | None]:
         from .models import Decision
         db = self._db()
         
@@ -553,7 +557,7 @@ class MountRegistry:
                     token=None,
                 )
                 db.commit()
-                return None, anchor, "authority_denied"
+                return None, anchor, "authority_denied", None
                 
             if package_ref not in authority_evaluation.permitted_candidates:
                 anchor = self.anchor.anchor(
@@ -565,7 +569,7 @@ class MountRegistry:
                     token=None,
                 )
                 db.commit()
-                return None, anchor, "binding_mismatch"
+                return None, anchor, "binding_mismatch", None
                 
         package = self.packages.get(package_ref)
         if package is None:
@@ -578,7 +582,12 @@ class MountRegistry:
                 token=None,
             )
             db.commit()
-            return None, anchor, "unknown_package" if authority_evaluation is None else "provider_disappeared"
+            return (
+                None,
+                anchor,
+                "unknown_package" if authority_evaluation is None else "provider_disappeared",
+                None,
+            )
         try:
             mount, token = self.mounter.mount(
                 package,
@@ -603,10 +612,20 @@ class MountRegistry:
             
             if not verified_caller or verified_caller in ("auth-disabled", "legacy-unbound", ""):
                 db.rollback()
-                return None, AnchorResult("not_applicable", detail="missing_verified_principal"), "missing_verified_principal"
+                return (
+                    None,
+                    AnchorResult("not_applicable", detail="missing_verified_principal"),
+                    "missing_verified_principal",
+                    None,
+                )
             if not verified_executor or verified_executor in ("auth-disabled", "legacy-unbound", ""):
                 db.rollback()
-                return None, AnchorResult("not_applicable", detail="missing_verified_principal"), "missing_verified_principal"
+                return (
+                    None,
+                    AnchorResult("not_applicable", detail="missing_verified_principal"),
+                    "missing_verified_principal",
+                    None,
+                )
 
             biscuit_token = mint_biscuit_capability(
                 caller_spiffe_id=verified_caller,
@@ -622,7 +641,7 @@ class MountRegistry:
             token = token.model_copy(update={"biscuit_token": biscuit_token})
                 
         except MountError as exc:
-            return None, AnchorResult("not_applicable"), str(exc)
+            return None, AnchorResult("not_applicable"), str(exc), None
 
         anchor = self.anchor.anchor(
             "mount",
@@ -634,12 +653,14 @@ class MountRegistry:
         )
         if anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
-            return None, anchor, "pgl_anchor_unconfirmed"
+            return None, anchor, "pgl_anchor_unconfirmed", None
 
         token_dict = token.model_dump(mode="json")
         if getattr(token, "biscuit_token", None):
             token_dict["biscuit_token"] = token.biscuit_token
 
+        secret = secrets.token_urlsafe(32)
+        holder_credential = f"vlm_{mount.id}.{secret}"
         db.add(
             CapabilityMount(
                 mount_id=mount.id,
@@ -647,6 +668,7 @@ class MountRegistry:
                 token_nonce=token.nonce,
                 owner_principal=owner_principal,
                 owner_workspace=owner_workspace or scope.workspace,
+                holder_secret_hash=hashlib.sha256(secret.encode()).hexdigest(),
                 mount_json=mount.model_dump(mode="json"),
                 token_json=token_dict,
                 issued_at=token.issued_at,
@@ -661,7 +683,6 @@ class MountRegistry:
         
         _biscuit_sha256 = "none"
         if token.biscuit_token:
-            import hashlib
             _biscuit_sha256 = hashlib.sha256(token.biscuit_token.encode()).hexdigest()
             
         lease = CapabilityLease(
@@ -689,6 +710,7 @@ class MountRegistry:
             MountRecord(mount, token, ExecutionBinding(token, DatabaseAuditSink(db, scope.workspace, None))),
             anchor,
             "mounted",
+            holder_credential,
         )
 
     def get(self, mount_id: str) -> MountRecord | None:
@@ -1477,5 +1499,3 @@ def utc_now() -> datetime:
 
 def _utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
-
