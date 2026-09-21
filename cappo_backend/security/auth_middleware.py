@@ -106,17 +106,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
             ):
                 return JSONResponse({"error": "HOLDER_CREDENTIAL_INVALID"}, status_code=401)
-            if row.terminated:
-                return JSONResponse({"error": "HOLDER_CREDENTIAL_REVOKED"}, status_code=401)
-            expires_at = row.expires_at
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
-            if expires_at <= datetime.now(timezone.utc):
-                return JSONResponse({"error": "HOLDER_CREDENTIAL_EXPIRED"}, status_code=401)
 
             request.scope["auth_principal"] = f"mount-holder:{mount_id}"
             request.scope["auth_workspace"] = row.owner_workspace
             request.scope["mount_holder_id"] = mount_id
+            if row.terminated:
+                if request.method != "GET":
+                    return JSONResponse({"error": "HOLDER_CREDENTIAL_REVOKED"}, status_code=401)
+                request.scope["mount_holder_state"] = "terminated"
+                return await call_next(request)
+            expires_at = row.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at <= datetime.now(timezone.utc):
+                if request.method != "GET":
+                    return JSONResponse({"error": "HOLDER_CREDENTIAL_EXPIRED"}, status_code=401)
+                request.scope["mount_holder_state"] = "expired"
+                return await call_next(request)
         elif token.startswith("eyJ"):
             if not self._jwt_key:
                 return JSONResponse({"error": "JWT_MISCONFIGURED"}, status_code=500)

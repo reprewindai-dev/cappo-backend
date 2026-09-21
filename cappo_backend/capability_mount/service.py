@@ -1499,3 +1499,5 @@ def utc_now() -> datetime:
 
 def _utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+

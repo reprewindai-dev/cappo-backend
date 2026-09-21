@@ -125,6 +125,43 @@ def test_holder_can_status_action_execute_and_readback(
     assert executed.status_code == 200
     assert executed.json()["decision"] == "allow"
 
+    post_execute_readback = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": "holder-counter", "mount_id": mount_id},
+    )
+    assert post_execute_readback.status_code == 200
+    assert post_execute_readback.json()["state"]["value"] == 1
+
+    terminated_status = client.get(f"/v1/capability/mounts/{mount_id}")
+    assert terminated_status.status_code == 200
+    assert terminated_status.json()["reason"] == "terminated"
+
+    blocked_after_termination = client.post(
+        f"/v1/capability/mounts/{mount_id}/actions",
+        json={
+            "token_id": token["token_id"],
+            "nonce": token["nonce"],
+            "action": "counter.reset",
+            "resource": "holder-counter",
+        },
+    )
+    assert blocked_after_termination.status_code == 401
+    assert blocked_after_termination.json()["error"] == "HOLDER_CREDENTIAL_REVOKED"
+
+    replay_after_termination = client.post(
+        f"/v1/capability/mounts/{mount_id}/execute",
+        json={
+            "token_id": token["token_id"],
+            "nonce": token["nonce"],
+            "action": "counter.increment",
+            "target_ref": GovernedCounterAdapter.ref,
+            "resource": "holder-counter",
+            "operation_id": "holder-counter-increment",
+        },
+    )
+    assert replay_after_termination.status_code == 401
+    assert replay_after_termination.json()["error"] == "HOLDER_CREDENTIAL_REVOKED"
+
 
 def test_holder_scope_forbidden_on_mount_and_packages(
     client: TestClient,
@@ -204,7 +241,15 @@ def test_holder_credential_revoked_after_owner_termination(
     assert owner_termination.json()["decision"] == "allow"
 
     _holder_headers(client, credential)
-    response = client.get(f"/v1/capability/mounts/{mount_id}")
+    response = client.post(
+        f"/v1/capability/mounts/{mount_id}/actions",
+        json={
+            "token_id": mounted["token"]["token_id"],
+            "nonce": mounted["token"]["nonce"],
+            "action": "counter.reset",
+            "resource": "holder-counter",
+        },
+    )
     assert response.status_code == 401
     assert response.json()["error"] == "HOLDER_CREDENTIAL_REVOKED"
 
@@ -220,6 +265,18 @@ def test_expired_holder_credential_is_rejected(
     _holder_headers(client, mounted["holder_credential"])
     time.sleep(1.1)
 
-    response = client.get(f"/v1/capability/mounts/{mounted['mount']['id']}")
+    status = client.get(f"/v1/capability/mounts/{mounted['mount']['id']}")
+    assert status.status_code == 200
+    assert status.json()["reason"] == "expired"
+
+    response = client.post(
+        f"/v1/capability/mounts/{mounted['mount']['id']}/actions",
+        json={
+            "token_id": mounted["token"]["token_id"],
+            "nonce": mounted["token"]["nonce"],
+            "action": "counter.reset",
+            "resource": "holder-counter",
+        },
+    )
     assert response.status_code == 401
     assert response.json()["error"] == "HOLDER_CREDENTIAL_EXPIRED"
