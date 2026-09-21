@@ -162,18 +162,28 @@ def get_registry(request: Request, db: Session = Depends(get_session)) -> MountR
         approval_key=settings.approval_token_signing_key,
         suppression_key=os.getenv("SUPPRESSION_EVIDENCE_SIGNING_KEY", ""),
     )
-    registry = MountRegistry(db=db, anchor=anchor, evidence_verifier=verifier)
+    registry = MountRegistry(
+        db=db,
+        anchor=anchor,
+        evidence_verifier=verifier,
+        settings=settings,
+    )
     registry.packages.update(shared.packages)
     registry.target_adapters = shared.target_adapters
     return registry
 
 
-def anchor_payload(status: Any) -> dict[str, Any]:
+def anchor_payload(status: Any, settings: Any | None = None) -> dict[str, Any]:
     # Never expose exception/debug detail from the evidence boundary.
     return {
         "status": status.status,
         "anchor_id": status.anchor_id,
         "pgl_event_hash": status.external_ref,
+        "pgl_agent_id": (
+            getattr(settings, "pgl_ledger_agent_id", None)
+            if status.status == "confirmed"
+            else None
+        ),
     }
 
 
@@ -312,13 +322,13 @@ def request_mount(
         return MountResponse(
             decision=Decision.DENY,
             reason=reason,
-            anchoring=anchor_payload(anchor),
+            anchoring=anchor_payload(anchor, request.app.state.settings),
             holder_credential=None,
         )
     return MountResponse(
         decision=Decision.ALLOW,
         reason=reason,
-        anchoring=anchor_payload(anchor),
+        anchoring=anchor_payload(anchor, request.app.state.settings),
         mount=record.mount,
         token=record.token,
         ttl_seconds=record.token.ttl_seconds,
@@ -344,7 +354,10 @@ def mount_status(
         return MountResponse(
             decision=Decision.DENY,
             reason=state,
-            anchoring={"status": "not_applicable", "anchor_id": None},
+            anchoring=anchor_payload(
+                AnchorResult("not_applicable"),
+                request.app.state.settings,
+            ),
         )
     mount = record.mount
     if state != "mounted":
@@ -356,7 +369,10 @@ def mount_status(
     return MountResponse(
         decision=Decision.ALLOW if state == "mounted" else Decision.DENY,
         reason=state,
-        anchoring=anchor_payload(record.anchoring or AnchorResult("not_applicable")),
+        anchoring=anchor_payload(
+            record.anchoring or AnchorResult("not_applicable"),
+            request.app.state.settings,
+        ),
         mount=mount,
         # Status never re-discloses token_id or nonce.
         ttl_seconds=record.token.ttl_seconds,
@@ -401,7 +417,7 @@ def evaluate_action(
     return ActionResponse(
         decision=decision,
         reason=reason,
-        anchoring=anchor_payload(anchor),
+        anchoring=anchor_payload(anchor, request.app.state.settings),
         mount_id=mount_id,
         action=body.action,
         resource=body.resource,
@@ -484,6 +500,6 @@ def terminate_mount(
     return TerminateResponse(
         decision=decision,
         reason=reason,
-        anchoring=anchor_payload(anchor),
+        anchoring=anchor_payload(anchor, request.app.state.settings),
         mount_id=mount_id,
     )

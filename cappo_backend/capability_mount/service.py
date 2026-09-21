@@ -144,13 +144,21 @@ class MountRegistry:
         anchor: EventAnchor | None = None,
         evidence_verifier: BoundMountEvidenceVerifier | None = None,
         target_adapters: TargetAdapterRegistry | None = None,
+        settings: Any | None = None,
     ) -> None:
         self.db = db
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
         self.evidence_verifier = evidence_verifier or BoundMountEvidenceVerifier()
         self.target_adapters = target_adapters or TargetAdapterRegistry()
+        self.settings = settings
         self.mounter = Mounter()
+
+    def _pgl_agent_id(self, status: str) -> str | None:
+        if status != "confirmed":
+            return None
+        settings = self.settings or getattr(self.anchor, "settings", None)
+        return getattr(settings, "pgl_ledger_agent_id", None)
 
     def register_package(self, package: CapabilityPackage) -> None:
         self.packages[package.id] = package
@@ -1185,6 +1193,7 @@ class MountRegistry:
                     "status": "not_applicable",
                     "anchor_id": None,
                     "content_hash": None,
+                    "pgl_agent_id": None,
                 },
             }
 
@@ -1368,6 +1377,7 @@ class MountRegistry:
             "anchor_id": None,
             "content_hash": None,
             "pgl_event_hash": None,
+            "pgl_agent_id": None,
         }
         if receipt_id is not None:
             receipt = db.get(CapabilityActionReceipt, receipt_id)
@@ -1377,6 +1387,7 @@ class MountRegistry:
                     "anchor_id": receipt.pgl_anchor_id,
                     "content_hash": receipt.content_hash,
                     "pgl_event_hash": receipt.pgl_event_hash,
+                    "pgl_agent_id": self._pgl_agent_id(receipt.pgl_anchor_status or "unconfirmed"),
                 }
         after_count = adapter.invocation_count
         target_invoked = after_count > before_count

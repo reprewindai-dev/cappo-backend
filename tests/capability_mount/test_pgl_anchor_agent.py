@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from cappo_backend.api.routers.capability_mount_router import anchor_payload
 from cappo_backend.capability_mount.effects import (
     GovernedCounterAdapter,
     TargetAdapterRegistry,
@@ -18,7 +19,10 @@ from cappo_backend.capability_mount.models import (
     MountPolicy,
     TokenDescriptorScope,
 )
-from cappo_backend.capability_mount.service import GOVERNED_COUNTER_PACKAGE
+from cappo_backend.capability_mount.service import (
+    GOVERNED_COUNTER_PACKAGE,
+    AnchorResult,
+)
 from cappo_backend.config import Settings
 from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
@@ -92,6 +96,7 @@ def test_anchor_uses_registered_agent_and_pgl_event_mapping(
     assert posted["idempotency_key"] == result.anchor_id
     assert posted["details"]["event_type"] == event_type
     assert posted["details"]["execution_id"] == "execution-1"
+    assert anchor_payload(result, Settings(pgl_ledger_agent_id="agent-cappo"))["pgl_agent_id"] == "agent-cappo"
 
 
 def test_pgl_agent_id_reads_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,6 +126,7 @@ def test_anchor_requires_confirmed_persisted_event_hash(
 
     assert result.status == "pending_reconciliation"
     assert result.detail == "external PGL response lacked event_hash"
+    assert anchor_payload(result, Settings(pgl_ledger_agent_id="agent-cappo"))["pgl_agent_id"] is None
 
 
 def test_missing_agent_id_does_not_post(
@@ -143,6 +149,14 @@ def test_missing_agent_id_does_not_post(
 
     assert result.status == "pending_reconciliation"
     assert result.detail == "PGL_LEDGER_AGENT_ID is not configured"
+    assert anchor_payload(result, Settings(pgl_ledger_agent_id=None))["pgl_agent_id"] is None
+
+
+def test_not_applicable_anchor_does_not_expose_agent_id() -> None:
+    assert anchor_payload(
+        AnchorResult("not_applicable"),
+        Settings(pgl_ledger_agent_id="agent-cappo"),
+    )["pgl_agent_id"] is None
 
 
 def test_404_remains_pending_reconciliation(
@@ -189,6 +203,7 @@ def test_execute_persists_and_exposes_external_event_hash(
         pgl_ledger_agent_id="agent-cappo",
         pgl_ledger_timeout_ms=100,
     )
+    client.app.state.settings = settings
     client.app.state.mount_registry.anchor = AuditPGLAnchor(db, settings)
     client.app.state.mount_registry.register_package(GOVERNED_COUNTER_PACKAGE)
     adapter = GovernedCounterAdapter(tmp_path)
@@ -218,6 +233,7 @@ def test_execute_persists_and_exposes_external_event_hash(
     assert mounted.status_code == 200
     mount = mounted.json()
     assert mount["anchoring"]["pgl_event_hash"] == "abc"
+    assert mount["anchoring"]["pgl_agent_id"] == "agent-cappo"
 
     executed = client.post(
         f"/v1/capability/mounts/{mount['mount']['id']}/execute",
@@ -239,6 +255,7 @@ def test_execute_persists_and_exposes_external_event_hash(
     assert receipt is not None
     assert receipt.pgl_event_hash == "abc"
     assert body["anchoring"]["pgl_event_hash"] == "abc"
+    assert body["anchoring"]["pgl_agent_id"] == "agent-cappo"
     assert any(
         event["details"]["event_type"] == "action_decision"
         for event in posted
