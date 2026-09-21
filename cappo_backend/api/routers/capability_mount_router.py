@@ -67,6 +67,7 @@ class MountResponse(BaseModel):
     ttl_seconds: int | None = None
     expires_at: datetime | None = None
     nonce_consumed: bool | None = None
+    holder_credential: str | None = None
 
 
 class ActionRequest(BaseModel):
@@ -207,8 +208,17 @@ def _caller(request: Request, *, requested_workspace: str | None = None) -> tupl
     return principal, workspace
 
 
+def _deny_holder(request: Request) -> None:
+    if request.scope.get("mount_holder_id"):
+        raise HTTPException(status_code=403, detail="HOLDER_SCOPE_FORBIDDEN")
+
+
 @router.get("/packages", response_model=list[CapabilityPackage])
-def list_packages(registry: MountRegistry = Depends(get_registry)) -> list[CapabilityPackage]:
+def list_packages(
+    request: Request,
+    registry: MountRegistry = Depends(get_registry),
+) -> list[CapabilityPackage]:
+    _deny_holder(request)
     return registry.list_packages()
 
 
@@ -286,6 +296,7 @@ def request_mount(
     request: Request,
     registry: MountRegistry = Depends(get_registry),
 ) -> MountResponse:
+    _deny_holder(request)
     principal, workspace = _caller(request, requested_workspace=body.execution_scope.workspace)
     assert workspace is not None
     scope = body.execution_scope.model_copy(
@@ -295,7 +306,7 @@ def request_mount(
             "blocked": body.requested_action_scope.blocked,
         }
     )
-    record, anchor, reason = registry.request_mount(
+    record, anchor, reason, holder_credential = registry.request_mount(
         body.package_ref,
         scope,
         role=body.role,
@@ -312,6 +323,7 @@ def request_mount(
             decision=Decision.DENY,
             reason=reason,
             anchoring=anchor_payload(anchor, request.app.state.settings),
+            holder_credential=None,
         )
     return MountResponse(
         decision=Decision.ALLOW,
@@ -322,6 +334,7 @@ def request_mount(
         ttl_seconds=record.token.ttl_seconds,
         expires_at=record.token.expires_at,
         nonce_consumed=record.token.nonce_consumed,
+        holder_credential=holder_credential,
     )
 
 

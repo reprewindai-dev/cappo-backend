@@ -70,7 +70,7 @@ def test_g1_2_wan_off_expired_authority_fails(db: Session):
     
     reg = _build_registry(db)
     
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent",
@@ -103,4 +103,3 @@ def test_g1_2_wan_off_expired_authority_fails(db: Session):
             },
         )
         assert decision == Decision.DENY
-

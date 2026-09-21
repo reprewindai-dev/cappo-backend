@@ -56,7 +56,7 @@ def _setup_binding(db: Session, rules: list[dict]):
     )
     reg.register_package(pkg)
     
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref="p5.pkg@v1",
         scope=MountScope(workspace="ws", project="proj", reads=[], writes=writes),
         role="agent",
@@ -197,5 +197,4 @@ def test_p5_5_idempotency_mismatch_and_replay(db: Session):
     # Retry with identical intent should be rejected as already complete
     with pytest.raises(PolicyError, match="idempotency_replay:succeeded"):
         binding.consequence("transfer", action1, operation_id=op_id, amount=100)
-
 

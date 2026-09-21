@@ -23,7 +23,7 @@ def test_zra_3_mount_object_handle_survival(db):
     )
     svc.register_package(pkg)
 
-    mount_record, anchor, error = svc.request_mount(
+    mount_record, anchor, error, _holder_credential = svc.request_mount(
         package_ref="pkg_test_zra3_mount@v1",
         scope=MountScope(workspace="ws1", project="proj1"),
         role="tester",
@@ -61,7 +61,7 @@ def test_zra_3_cached_lease_object_survival(db):
     )
     svc.register_package(pkg)
 
-    mount_record, anchor, error = svc.request_mount(
+    mount_record, anchor, error, _holder_credential = svc.request_mount(
         package_ref="pkg_test_zra3_lease@v1",
         scope=MountScope(workspace="ws1", project="proj1"),
         role="tester",

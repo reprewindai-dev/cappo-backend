@@ -122,7 +122,7 @@ def test_am_1_mount_scope_widening(db: Session):
     reg.anchor.anchor = MagicMock(return_value=mock_anchor)
     
     # Try to mount it and maliciously ask for WRITE scope
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref="test.am1.package@v1",
         scope=MountScope(workspace="ws", project="pj", reads=["test.read"], writes=["test.write"]),
         role="agent",
