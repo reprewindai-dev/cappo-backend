@@ -69,7 +69,7 @@ def test_g1_3_wan_off_wrong_scope_fails(db: Session):
     exec_id = f"exec_{uuid.uuid4().hex[:8]}"
 
     reg = _build_registry(db)
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent", policy=MountPolicy(), ttl_seconds=600,
@@ -94,7 +94,7 @@ def test_g1_3_wan_off_replay_fails(db: Session):
     exec_id = f"exec_{uuid.uuid4().hex[:8]}"
 
     reg = _build_registry(db)
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent", policy=MountPolicy(), ttl_seconds=600,

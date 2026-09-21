@@ -50,7 +50,7 @@ def test_zra_2_biscuit_and_eei_replay(db: Session):
     )
 
     # 1. Setup valid mount
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent",
@@ -143,7 +143,7 @@ def test_zra_2_transaction_rollback_partial_transition(db: Session, monkeypatch)
         )
     )
     
-    mount_record, _, _ = reg.request_mount(
+    mount_record, _, _, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent",

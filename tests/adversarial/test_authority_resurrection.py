@@ -80,7 +80,7 @@ def _mount_and_execute(db: Session) -> tuple:
     """Mount and execute one action. Returns (mount_record, registry)."""
     exec_id = f"exec_{uuid.uuid4().hex[:8]}"
     reg = _build_registry(db, package_reads=[PROTECTED_ACTION])
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[PROTECTED_ACTION], writes=[]),
         role="agent",
@@ -400,7 +400,7 @@ def test_t_iso_3_nonce_valid_key_rotated(db):
     with patch("cappo_backend.security.biscuit.get_settings", return_value=settings_k1):
         exec_id = f"exec_{uuid.uuid4().hex[:8]}"
         reg = _build_registry(db, package_reads=[PROTECTED_ACTION])
-        mount_record, _, _ = reg.request_mount(
+        mount_record, _, _, _holder_credential = reg.request_mount(
             package_ref=CAPABILITY_ID,
             scope=MountScope(workspace="ws_1", project="prj_1", reads=[PROTECTED_ACTION], writes=[]),
             role="agent",
@@ -444,7 +444,7 @@ def test_t_iso_4_nonce_key_valid_policy_stale(db):
     with patch("cappo_backend.security.biscuit.get_settings", return_value=settings_k1):
         exec_id = f"exec_{uuid.uuid4().hex[:8]}"
         reg = _build_registry(db, package_reads=[PROTECTED_ACTION])
-        mount_record, _, _ = reg.request_mount(
+        mount_record, _, _, _holder_credential = reg.request_mount(
             package_ref=CAPABILITY_ID,
             scope=MountScope(workspace="ws_1", project="prj_1", reads=[PROTECTED_ACTION], writes=[]),
             role="agent",

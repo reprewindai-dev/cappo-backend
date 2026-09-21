@@ -104,7 +104,7 @@ def _mount_package(db, reads: list[str], writes: list[str], ttl: int = 600):
     mock_anchor = ConfirmedAnchor()
     reg.anchor = mock_anchor
 
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref="am3.pkg@v1",
         scope=MountScope(workspace="ws", project="proj", reads=reads, writes=writes),
         role="agent",

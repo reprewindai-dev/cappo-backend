@@ -48,7 +48,7 @@ def _new_mount(factory) -> tuple[str, str, str]:
     with factory() as session:
         registry = MountRegistry(db=session, anchor=ConfirmedAnchor())
         registry.register_package(package)
-        record, anchor, reason = registry.request_mount(
+        record, anchor, reason, _holder_credential = registry.request_mount(
             package.id,
             MountScope(workspace="row-lock-workspace", project="row-lock-project"),
             role="ephemeral_executor",
