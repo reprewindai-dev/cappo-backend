@@ -54,6 +54,10 @@ class MountRequest(BaseModel):
     ttl_seconds: int = Field(default=300, ge=1)
     execution_id: str | None = None
     executor_spiffe_id: str | None = None
+    substrate_id: str | None = None
+    boot_instance_id: str | None = None
+    runtime_key_thumbprint: str | None = None
+    state_root: str | None = None
 
 
 class MountResponse(BaseModel):
@@ -107,6 +111,11 @@ class ExecuteRequest(BaseModel):
     approval_token: str | None = None
     suppression_evidence: str | None = None
     suppression_confirmed: bool = False
+    substrate_id: str | None = None
+    boot_instance_id: str | None = None
+    runtime_key_thumbprint: str | None = None
+    state_root: str | None = None
+    authority_epoch: int | None = Field(default=None, ge=0)
 
 
 class ExecuteResponse(BaseModel):
@@ -317,6 +326,10 @@ def request_mount(
         execution_id=body.execution_id,
         caller_spiffe_id=request.scope.get("caller_spiffe_id"),
         executor_spiffe_id=request.scope.get("executor_spiffe_id") or request.scope.get("caller_spiffe_id"),
+        substrate_id=body.substrate_id,
+        boot_instance_id=body.boot_instance_id,
+        runtime_key_thumbprint=body.runtime_key_thumbprint,
+        state_root=body.state_root,
     )
     if record is None:
         return MountResponse(
@@ -458,6 +471,11 @@ def execute_consequence(
         arguments=body.arguments,
         operation_id=body.operation_id,
         spiffe_fields=spiffe_fields,
+        substrate_id=body.substrate_id,
+        boot_instance_id=body.boot_instance_id,
+        runtime_key_thumbprint=body.runtime_key_thumbprint,
+        state_root=body.state_root,
+        authority_epoch=body.authority_epoch,
     )
     return ExecuteResponse(
         decision=decision,
