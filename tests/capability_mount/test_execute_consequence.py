@@ -527,7 +527,7 @@ def test_public_bound_mount_rejects_wrong_incarnation_before_target_invocation(
     assert mount["token"]["token_id"] not in response.text
 
 
-def test_public_stale_epoch_denies_then_current_epoch_commits_once(
+def test_public_stale_epoch_denies_without_invoking_target(
     client: TestClient, db: Session, tmp_path: Path,
 ) -> None:
     """Exercise persisted epoch enforcement through HTTP, not a forwarding spy.
@@ -561,15 +561,24 @@ def test_public_stale_epoch_denies_then_current_epoch_commits_once(
     assert mount["token"]["nonce"] not in denied.text
     assert mount["token"]["token_id"] not in denied.text
 
-    # A negative-only test could pass if the service simply denied everything.
-    allowed = client.post(url, json=execute_payload(mount, authority_epoch=2))
+
+
+def test_public_current_epoch_commits_once_and_replay_preserves_bytes(
+    client: TestClient, db: Session, tmp_path: Path,
+) -> None:
+    """Positive control uses the issued lease, not a fabricated replacement."""
+    mount, adapter = prepare(client, tmp_path)
+    lease = db.query(CapabilityLease).filter_by(mount_id=mount["mount"]["id"]).one()
+    url = f"/v1/capability/mounts/{mount['mount']['id']}/execute"
+    payload = execute_payload(mount, authority_epoch=lease.authority_epoch)
+    allowed = client.post(url, json=payload)
     assert allowed.status_code == 200
     assert allowed.json()["decision"] == "allow"
     assert allowed.json()["consequence"]["target_invoked"] is True
     assert adapter.invocation_count == 1
     effect_path = tmp_path / "activation-1.json"
     committed_bytes = effect_path.read_bytes()
-    retried = client.post(url, json=execute_payload(mount, authority_epoch=2))
+    retried = client.post(url, json=payload)
     assert retried.status_code == 200
     assert retried.json()["decision"] == "deny"
     assert retried.json()["consequence"]["target_invoked"] is False
