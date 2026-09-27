@@ -245,6 +245,12 @@ def read_target_state(
             detail=state,
         )
 
+    # Read the same workspace/project tuple that the persisted mount used for
+    # execution. In auth-disabled canary mode the middleware supplies the
+    # deployment default workspace on later requests, while mount creation is
+    # explicitly scoped by the request. Using the caller value here can report
+    # a different counter than the one CAPPO actually mutated.
+    workspace = record.mount.scope.workspace
     project = record.mount.scope.project
 
     adapter = registry.target_adapters.resolve(target_ref)

@@ -314,6 +314,38 @@ def test_counter_target_state_readback_is_independent_and_workspace_scoped(
     assert adapter.invocation_count == invocation_count
 
 
+def test_auth_disabled_readback_uses_persisted_mount_workspace(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    configure_counter(client, tmp_path)
+    client.app.state.settings.auth_enabled = False
+    resource = "auth-disabled-mounted-workspace"
+
+    mount = mount_counter(client, project="sandbox")
+    client.headers["X-Workspace-ID"] = "default-local-workspace"
+
+    executed = client.post(
+        f"/v1/capability/mounts/{mount['mount']['id']}/execute",
+        json=execute_payload(mount, resource=resource, operation_id="auth-disabled-readback"),
+    )
+    assert executed.status_code == 200
+    assert executed.json()["consequence"]["resulting_state"]["value"] == 1
+
+    readback = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "mount_id": mount["mount"]["id"]},
+    )
+    assert readback.status_code == 200
+    assert readback.json()["workspace"] == "w1"
+    assert readback.json()["project"] == "sandbox"
+    assert readback.json()["state"] == {
+        "resource": resource,
+        "value": 1,
+        "version": 1,
+    }
+
+
 def _get_db_state(db_path, workspace: str, resource: str, project: str = "p1"):
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
