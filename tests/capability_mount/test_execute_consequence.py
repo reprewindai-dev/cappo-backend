@@ -404,3 +404,93 @@ def test_traversal_survives(
     ).json()
     assert success_body["decision"] == "allow"
     assert adapter.invocation_count == 1
+
+
+def test_public_execute_forwards_incarnation_and_epoch_fields(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mount, _adapter = prepare(client, tmp_path)
+    captured: dict[str, object] = {}
+
+    from cappo_backend.capability_mount.service import MountRegistry
+    original = MountRegistry.execute_consequence
+
+    def spy(self, *args, **kwargs):
+        captured.update(kwargs)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(MountRegistry, "execute_consequence", spy)
+
+    response = client.post(
+        f"/v1/capability/mounts/{mount['mount']['id']}/execute",
+        json=execute_payload(
+            mount,
+            substrate_id="host-a",
+            boot_instance_id="boot-42",
+            runtime_key_thumbprint="runtime-key-a",
+            state_root="sha256:" + ("a" * 64),
+            authority_epoch=7,
+        ),
+    )
+
+    assert response.status_code == 200
+    assert captured["substrate_id"] == "host-a"
+    assert captured["boot_instance_id"] == "boot-42"
+    assert captured["runtime_key_thumbprint"] == "runtime-key-a"
+    assert captured["state_root"] == "sha256:" + ("a" * 64)
+    assert captured["authority_epoch"] == 7
+
+
+def test_public_bound_mount_rejects_wrong_incarnation_before_target_invocation(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    registry = client.app.state.mount_registry
+    registry.register_package(records_package())
+    registry.anchor = ConfirmedAnchor()
+    adapter = LocalRecordAdapter(tmp_path)
+    registry.target_adapters = TargetAdapterRegistry()
+    registry.target_adapters.register(LocalRecordAdapter.ref, adapter)
+    client.headers["X-Workspace-ID"] = "w1"
+
+    mounted = client.post(
+        "/v1/capability/mounts",
+        json={
+            "package_ref": "records@v1",
+            "execution_scope": {"workspace": "w1", "project": "p1"},
+            "requested_action_scope": {
+                "reads": [],
+                "writes": ["record.create"],
+                "blocked": [],
+            },
+            "ttl_seconds": 300,
+            "substrate_id": "host-a",
+            "boot_instance_id": "boot-1",
+            "runtime_key_thumbprint": "runtime-key-a",
+            "state_root": "sha256:" + ("0" * 64),
+        },
+    )
+    assert mounted.status_code == 200
+    mount = mounted.json()
+    assert mount["decision"] == "allow"
+
+    response = client.post(
+        f"/v1/capability/mounts/{mount['mount']['id']}/execute",
+        json=execute_payload(
+            mount,
+            substrate_id="host-b",
+            boot_instance_id="boot-1",
+            runtime_key_thumbprint="runtime-key-a",
+            state_root="sha256:" + ("0" * 64),
+            authority_epoch=0,
+        ),
+    )
+
+    body = response.json()
+    assert body["decision"] == "deny"
+    assert body["reason"] == "substrate_id_mismatch"
+    assert body["consequence"]["target_invoked"] is False
+    assert adapter.invocation_count == 0
+    assert not (tmp_path / "activation-1.json").exists()
