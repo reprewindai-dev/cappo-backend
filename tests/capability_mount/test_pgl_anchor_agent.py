@@ -59,11 +59,13 @@ def _anchor(db: Session, *, agent_id: str | None = "agent-cappo") -> AuditPGLAnc
 @pytest.mark.parametrize(
     ("event_type", "expected_pgl_type"),
     [
-        ("action_decision", "pre_execution_authorization"),
-        ("execution", "post_execution_attestation"),
+        ("mount", "custom"),
+        ("action_decision", "custom"),
+        ("execution", "custom"),
+        ("terminate", "custom"),
     ],
 )
-def test_anchor_uses_registered_agent_and_pgl_event_mapping(
+def test_anchor_emits_custom_events_with_mount_semantics(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
     event_type: str,
@@ -96,6 +98,7 @@ def test_anchor_uses_registered_agent_and_pgl_event_mapping(
     assert posted["idempotency_key"] == result.anchor_id
     assert posted["details"]["event_type"] == event_type
     assert posted["details"]["execution_id"] == "execution-1"
+    assert posted["details"]["schema_version"] == "cappo.capability_mount.v1"
     assert anchor_payload(result, Settings(pgl_ledger_agent_id="agent-cappo"))["pgl_agent_id"] == "agent-cappo"
 
 
