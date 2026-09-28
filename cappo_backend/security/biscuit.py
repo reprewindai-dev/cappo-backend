@@ -1,6 +1,6 @@
 # ruff: noqa
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import biscuit_auth
@@ -9,6 +9,27 @@ from biscuit_auth import AuthorizerBuilder, Biscuit, KeyPair, PrivateKey
 from cappo_backend.config import InsecureProductionConfigError, get_settings
 
 _ROOT_KEY_PAIR = None
+
+
+# Datalog evaluation budget shared by every authorizer built in this module.
+# biscuit-python's defaults (1 ms / 100 iterations / 1000 facts) are a
+# cumulative wall-clock budget across authorize() and every query() on the
+# same authorizer, which a scheduler stall inside a busy container can exhaust
+# on an otherwise trivial token. Exhaustion still fails closed.
+AUTHORIZER_MAX_TIME = timedelta(milliseconds=100)
+AUTHORIZER_MAX_ITERATIONS = 1000
+AUTHORIZER_MAX_FACTS = 5000
+
+
+def apply_authorizer_limits(builder: AuthorizerBuilder) -> AuthorizerBuilder:
+    """Set bounded Datalog limits on a builder before ``build()``."""
+    limits = builder.limits()
+    limits.max_time = AUTHORIZER_MAX_TIME
+    limits.max_iterations = AUTHORIZER_MAX_ITERATIONS
+    limits.max_facts = AUTHORIZER_MAX_FACTS
+    builder.set_limits(limits)
+    return builder
+
 
 def get_root_key_pair() -> KeyPair:
     global _ROOT_KEY_PAIR
@@ -216,13 +237,8 @@ def verify_biscuit_capability(
         auth_builder.add_code('allow if true;')
 
         # Build the authorizer
+        apply_authorizer_limits(auth_builder)
         auth = auth_builder.build(token)
-        try:
-            from biscuit_auth import AuthorizerLimits
-            auth.set_limits(AuthorizerLimits(max_facts=5000, max_iterations=1000, max_time_micro=100_000))
-        except Exception as e:
-            import logging
-            logging.getLogger("cappo.security").warning(f"Failed to set AuthorizerLimits: {e}")
         auth.authorize()
 
         import biscuit_auth
@@ -281,15 +297,10 @@ def extract_authority_context(token_b64: str):
         
         auth_builder = AuthorizerBuilder()
         auth_builder.add_code('allow if true;')
+        apply_authorizer_limits(auth_builder)
         auth = auth_builder.build(token)
         
         import biscuit_auth
-        try:
-            from biscuit_auth import AuthorizerLimits
-            auth.set_limits(AuthorizerLimits(max_facts=5000, max_iterations=1000, max_time_micro=100_000))
-        except Exception as e:
-            import logging
-            logging.getLogger("cappo.security").warning(f"Failed to set AuthorizerLimits: {e}")
 
         actions = set()
         action_facts = auth.query(biscuit_auth.Rule('rule($act) <- allowed_action($act)'))
