@@ -12,12 +12,7 @@ from cappo_backend.capability_mount.service import AnchorResult
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.services.audit_service import AuditService
 
-_PGL_EVENT_TYPES = {
-    "mount": "pre_execution_authorization",
-    "action_decision": "pre_execution_authorization",
-    "execution": "post_execution_attestation",
-    "terminate": "custom",
-}
+_PGL_EVENT_TYPE = "custom"
 
 
 class AuditPGLAnchor:
@@ -86,10 +81,14 @@ class AuditPGLAnchor:
                 headers=headers,
                 json={
                     "agent_id": self.settings.pgl_ledger_agent_id,
-                    "event_type": _PGL_EVENT_TYPES.get(event_type, "custom"),
+                    "event_type": _PGL_EVENT_TYPE,
                     "actor": "cappo-backend",
                     "summary": f"Capability mount {event_type}",
-                    "details": payload | {"log_hash": event.log_hash},
+                    "details": payload
+                    | {
+                        "log_hash": event.log_hash,
+                        "schema_version": "cappo.capability_mount.v1",
+                    },
                     "idempotency_key": event.log_hash,
                 },
                 timeout=self.settings.pgl_ledger_timeout_ms / 1000,
