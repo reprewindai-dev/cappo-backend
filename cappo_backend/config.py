@@ -259,6 +259,16 @@ class Settings(BaseSettings):
     # Comma-separated list of enabled EVM networks.
     x402_networks: str = "base,base-sepolia"
 
+    # --- Commercial entitlements (credit metering via LockerPhycer) ---
+    # "off" keeps today's behaviour (no metering). "enforce" meters governed
+    # capability-mount calls: paid actions fail closed, reads fail safe.
+    entitlements_metering: str = "off"
+    # LockerPhycer base URL, e.g. http://lockerphycer-api:8092
+    entitlements_url: str = ""
+    # Shared secret matching LockerPhycer ENTITLEMENTS_INTERNAL_TOKEN.
+    entitlements_service_token: str = ""
+    entitlements_timeout_ms: int = 3000
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
