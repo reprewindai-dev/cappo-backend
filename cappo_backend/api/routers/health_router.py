@@ -149,9 +149,9 @@ async def _completed(result: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/health/dependencies")
 async def health_dependencies(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    # BYOS is decommissioned; it is not a dependency of CAPPO.
     configured = [
         ("pgl", settings.pgl_ledger_url),
-        ("byos", settings.veklom_byos_backend_url),
     ]
     if settings.executor_mode.lower() != "echo":
         configured.append(("executor", settings.llm_base_url))
