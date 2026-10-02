@@ -97,9 +97,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         path = request.url.path
+        presented = request.headers.get("Authorization", "")
+        # A mount-holder credential (vlm_) is never anonymous: it must go through the
+        # holder branch below so holder-scope restrictions still apply on public reads.
+        anonymous_public_read = (
+            request.method in ("GET", "HEAD")
+            and path in PUBLIC_GET_PATHS
+            and not presented.removeprefix("Bearer ").strip().startswith("vlm_")
+        )
         if (
             path in PUBLIC_PATHS
-            or (request.method in ("GET", "HEAD") and path in PUBLIC_GET_PATHS)
+            or anonymous_public_read
             or path.startswith("/api/v1/execution/keys/")
             or path.startswith("/api/v1/reconcile/")
             or request.method == "OPTIONS"

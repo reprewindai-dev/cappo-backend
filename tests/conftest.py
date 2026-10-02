@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from cappo_backend.config import Settings
 from cappo_backend.db.base import Base
-from cappo_backend.db.session import get_session
+from cappo_backend.db.session import get_session, get_unscoped_session
 from cappo_backend.main import app
 
 _test_engine = create_engine(
@@ -113,12 +113,14 @@ def client(db: Session, settings: Settings) -> TestClient:
         yield db
 
     app.dependency_overrides[get_session] = _override_session
+    app.dependency_overrides[get_unscoped_session] = _override_session
     from cappo_backend.config import get_settings as _gs
     from cappo_backend.main import create_app
 
     # Create a fresh app instance with test settings so middlewares get the right config
     test_app = create_app(settings)
     test_app.dependency_overrides[get_session] = _override_session
+    test_app.dependency_overrides[get_unscoped_session] = _override_session
     test_app.dependency_overrides[_gs] = lambda: settings
 
     # Add workspace injection outermost so it runs before AuthMiddleware.
