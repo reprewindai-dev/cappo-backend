@@ -124,6 +124,19 @@ class AuditPGLAnchor:
                 anchor_id=event.log_hash,
                 detail="external PGL response lacked event_hash",
             )
+        if event_type == "terminate":
+            # Keep the external reference locally so a repeated terminate can hand
+            # back the same confirmed anchor instead of "not_applicable".
+            try:
+                AuditService(self.db, settings=self.settings).record(
+                    "capability_mount_terminate_anchor",
+                    {"mount_id": payload["mount_id"], "log_hash": event.log_hash, "pgl_event_hash": event_hash},
+                    workspace_id=mount.scope.workspace if mount else None,
+                    run_id=token.execution_id if token else None,
+                    forward_to_gnomledger=False,
+                )
+            except Exception:
+                pass
         return AnchorResult(
             "confirmed",
             anchor_id=event.log_hash,

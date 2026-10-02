@@ -57,12 +57,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._settings = settings
         self._jwt_key = None
-        if settings.jwt_public_verification_key:
+        if settings.jwt_public_verification_key and settings.jwt_algorithm.upper() == "EDDSA":
             try:
                 key_bytes = bytes.fromhex(settings.jwt_public_verification_key)
                 self._jwt_key = Ed25519PublicKey.from_public_bytes(key_bytes)
             except ValueError:
                 self._jwt_key = settings.jwt_public_verification_key
+        elif settings.jwt_public_verification_key:
+            # HMAC algorithms take the shared secret as-is, even when it happens to be hex;
+            # loading it as an Ed25519 key made every signed request fail with a 500.
+            self._jwt_key = settings.jwt_public_verification_key
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self._settings.auth_enabled:
@@ -143,12 +147,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "tenant_id"
                 )
                 if workspace and str(workspace).strip():
+                    # A header that contradicts the token's workspace is refused, not ignored.
+                    header_workspace = request.headers.get("X-Workspace-ID", "").strip()
+                    if header_workspace and header_workspace != str(workspace).strip():
+                        return JSONResponse({"error": "WORKSPACE_SCOPE_MISMATCH"}, status_code=403)
                     request.scope["auth_workspace"] = str(workspace).strip()
                 # If JWT carries no workspace claim, auth_workspace is absent.
                 # Tenant-sensitive routes will fail with WORKSPACE_CONTEXT_MISSING.
             except jwt.ExpiredSignatureError:
                 return JSONResponse({"error": "TOKEN_EXPIRED"}, status_code=401)
             except jwt.InvalidTokenError:
+                return JSONResponse({"error": "INVALID_TOKEN"}, status_code=401)
+            except Exception:
+                # A key/algorithm mismatch fails closed as 401; it must never surface as a 500.
                 return JSONResponse({"error": "INVALID_TOKEN"}, status_code=401)
         else:
             if token not in self._settings.api_key_set:

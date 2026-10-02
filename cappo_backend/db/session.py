@@ -46,8 +46,6 @@ def get_session(request: Request) -> Iterator[Session]:
     For routes that are genuinely workspace-agnostic, use ``get_unscoped_session``.
     """
     workspace_id: str | None = request.scope.get("auth_workspace")
-    import logging
-    logging.warning(f"GET_SESSION: {workspace_id} PRINCIPAL: {request.scope.get('auth_principal')}")
 
     if not workspace_id:
         raise HTTPException(

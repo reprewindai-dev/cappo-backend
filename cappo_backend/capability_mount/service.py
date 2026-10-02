@@ -1325,7 +1325,7 @@ class MountRegistry:
                     ),
                 )
 
-        before_count = adapter.invocation_count
+        invoked_here = False
         result: object | None = None
         decision = Decision.ALLOW
         reason = "allowed"
@@ -1348,6 +1348,8 @@ class MountRegistry:
         )
 
         def invoke_effect(**_: object) -> object:
+            nonlocal invoked_here
+            invoked_here = True
             return adapter.dispatch(context)
 
         try:
@@ -1389,8 +1391,9 @@ class MountRegistry:
                     "pgl_event_hash": receipt.pgl_event_hash,
                     "pgl_agent_id": self._pgl_agent_id(receipt.pgl_anchor_status or "unconfirmed"),
                 }
-        after_count = adapter.invocation_count
-        target_invoked = after_count > before_count
+        # Report this request's own dispatch, not the process-wide counter, so a
+        # concurrent loser never claims the winner's invocation.
+        target_invoked = invoked_here
 
         should_terminate = not (
             reason.startswith("idempotency_replay:")
@@ -1423,6 +1426,44 @@ class MountRegistry:
             ),
         )
 
+
+    def _stored_termination_anchor(self, db: Session, mount_id: str) -> AnchorResult:
+        """Return the local evidence of this mount's earlier termination.
+
+        When the external PGL append was confirmed, its reference was recorded
+        locally as a ``capability_mount_terminate_anchor`` audit event, and the
+        same confirmed anchor is returned. Otherwise the local termination event
+        alone is returned as ``confirmed_prior`` without an external reference.
+        """
+        from cappo_backend.models.audit_event import AuditEvent
+
+        events = (
+            db.execute(
+                select(AuditEvent)
+                .where(AuditEvent.operation_type.in_(["capability_mount_terminate_anchor", "capability_mount_terminate"]))
+                .order_by(AuditEvent.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        for event in events:
+            payload = event.payload or {}
+            if payload.get("mount_id") != mount_id:
+                continue
+            if event.operation_type == "capability_mount_terminate_anchor" and payload.get("pgl_event_hash"):
+                return AnchorResult(
+                    "confirmed",
+                    anchor_id=payload.get("log_hash"),
+                    external_ref=payload["pgl_event_hash"],
+                    detail="terminated earlier; anchor issued at that time",
+                )
+            if event.operation_type == "capability_mount_terminate" and payload.get("decision") == Decision.ALLOW.value:
+                return AnchorResult(
+                    "confirmed_prior",
+                    anchor_id=event.log_hash,
+                    detail=f"terminated earlier ({payload.get('reason')}); anchored at that time",
+                )
+        return AnchorResult("not_applicable", detail="already terminated; no local termination event found")
 
     def terminate(
         self,
@@ -1460,11 +1501,9 @@ class MountRegistry:
         record = self._record(row)
         if row.terminated:
             db.commit()
-            return (
-                Decision.ALLOW,
-                "already_terminated",
-                AnchorResult("not_applicable", detail="already terminated"),
-            )
+            # Idempotent: hand back the anchor issued when the mount was terminated
+            # (execute terminates automatically on TASK_COMPLETE) instead of "not_applicable".
+            return Decision.ALLOW, "already_terminated", self._stored_termination_anchor(db, mount_id)
         anchor = self.anchor.anchor(
             "terminate",
             action="execution",
