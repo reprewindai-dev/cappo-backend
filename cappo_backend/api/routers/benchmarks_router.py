@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import Float, cast, desc, func
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import get_session, get_unscoped_session
@@ -185,36 +185,44 @@ _PROVIDER_SEED = {
 }
 
 
+class _ProviderStat:
+    """One provider's aggregate, computed in Python so it works on SQLite and Postgres alike."""
+
+    def __init__(self, result_payload: dict) -> None:
+        self.result_payload = result_payload
+        self.run_count = 0
+        self._latency_total = 0.0
+        self._latency_n = 0
+
+    @property
+    def avg_latency(self) -> float:
+        return self._latency_total / self._latency_n if self._latency_n else 0.0
+
+
 def _get_provider_stats(db: Session) -> list:
-    return (
-        db.query(
-            GovernedRun.result_payload,
-            func.count(GovernedRun.run_id).label("run_count"),
-            func.avg(
-                cast(
-                    func.json_extract(GovernedRun.result_payload, "$.latency_ms"),
-                    Float
-                )
-            ).label("avg_latency"),
-        )
-        .filter(GovernedRun.result_payload.isnot(None))
-        .group_by(
-            func.json_extract(GovernedRun.result_payload, "$.provider")
-        )
-        .all()
-    )
+    # json_extract() exists only in SQLite; on Postgres it raised and the route returned 500.
+    stats: dict[str, _ProviderStat] = {}
+    rows = db.query(GovernedRun.result_payload).filter(GovernedRun.result_payload.isnot(None)).all()
+    for (payload,) in rows:
+        if not isinstance(payload, dict):
+            continue
+        key = payload.get("provider", "unknown")
+        stat = stats.setdefault(key, _ProviderStat(payload))
+        stat.run_count += 1
+        latency = payload.get("latency_ms")
+        if isinstance(latency, (int, float)):
+            stat._latency_total += float(latency)
+            stat._latency_n += 1
+    return list(stats.values())
 
 
 def _get_error_run_count(db: Session, provider_key: str) -> int:
-    return (
-        db.query(func.count(GovernedRun.run_id))
-        .filter(
-            GovernedRun.state.in_(["failed", "error", "law0_violation"]),
-            func.json_extract(GovernedRun.result_payload, "$.provider") == provider_key
-        )
-        .scalar()
-        or 0
+    rows = (
+        db.query(GovernedRun.result_payload)
+        .filter(GovernedRun.state.in_(["failed", "error", "law0_violation"]))
+        .all()
     )
+    return sum(1 for (payload,) in rows if isinstance(payload, dict) and payload.get("provider") == provider_key)
 
 
 def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, error_run_count: int) -> dict:

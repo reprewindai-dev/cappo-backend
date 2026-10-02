@@ -28,7 +28,7 @@ from cappo_backend.capability_mount.service import (
     MountRegistry,
     UnconfirmedAnchor,
 )
-from cappo_backend.db.session import get_session
+from cappo_backend.db.session import get_session, get_unscoped_session
 from cappo_backend.services.mount_evidence import BoundMountEvidenceVerifier
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
@@ -150,6 +150,15 @@ class TerminateResponse(BaseModel):
 
 
 def get_registry(request: Request, db: Session = Depends(get_session)) -> MountRegistry:
+    return _build_registry(request, db)
+
+
+def get_public_registry(request: Request, db: Session = Depends(get_unscoped_session)) -> MountRegistry:
+    """Registry for the read-only catalog route, which needs no tenant context."""
+    return _build_registry(request, db)
+
+
+def _build_registry(request: Request, db: Session) -> MountRegistry:
     shared: MountRegistry = request.app.state.mount_registry
     settings = request.app.state.settings
     anchor = shared.anchor
@@ -216,7 +225,7 @@ def _deny_holder(request: Request) -> None:
 @router.get("/packages", response_model=list[CapabilityPackage])
 def list_packages(
     request: Request,
-    registry: MountRegistry = Depends(get_registry),
+    registry: MountRegistry = Depends(get_public_registry),
 ) -> list[CapabilityPackage]:
     _deny_holder(request)
     return registry.list_packages()
