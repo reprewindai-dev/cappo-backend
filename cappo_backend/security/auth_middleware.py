@@ -44,6 +44,27 @@ PUBLIC_PATHS = frozenset(
         "/.well-known/capability-beacon-keys.json",
         "/x402/bazaar",
         "/api/v1/pricing",
+        "/api/v1/pricing/",
+        "/healthz",
+        "/readyz",
+        "/protocol.json",
+    }
+)
+
+# Read-only product, catalog and documentation surfaces the public website renders
+# without a credential. GET/HEAD only: every other method on these paths, and every
+# mutation, execution, tenant-specific, raw-log or evidence route, stays authenticated.
+# Approved by the owner on 2026-10-02.
+PUBLIC_GET_PATHS = frozenset(
+    {
+        "/v1/capability/packages",
+        "/v1/vnp/methodology",
+        "/v1/vnp/leaderboard",
+        "/v1/vnp/validators",
+        "/v1/vnp/incidents",
+        "/api/v1/platform/pulse",
+        "/api/v1/benchmarks/leaderboard",
+        "/api/v1/benchmarks/staking/markets",
     }
 )
 
@@ -78,6 +99,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if (
             path in PUBLIC_PATHS
+            or (request.method in ("GET", "HEAD") and path in PUBLIC_GET_PATHS)
             or path.startswith("/api/v1/execution/keys/")
             or path.startswith("/api/v1/reconcile/")
             or request.method == "OPTIONS"

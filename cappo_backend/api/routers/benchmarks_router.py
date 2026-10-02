@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import Float, cast, desc, func
 from sqlalchemy.orm import Session
 
-from cappo_backend.db.session import get_session
+from cappo_backend.db.session import get_session, get_unscoped_session
 from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.models.governed_run import GovernedRun
 
@@ -305,7 +305,7 @@ def _fill_missing_seed_providers(real_providers: dict[str, dict]) -> None:
 
 
 @router.get("/leaderboard")
-async def get_leaderboard(db: Session = Depends(get_session)):
+async def get_leaderboard(db: Session = Depends(get_unscoped_session)):
     """Live API Trust Rankings derived from real GovernedRun execution data.
 
     Returns a flat JSON array of BenchApi objects directly, matching Next.js SWR.
@@ -349,7 +349,7 @@ async def get_leaderboard(db: Session = Depends(get_session)):
 
 
 @router.get("/staking/markets")
-def get_markets(db: Session = Depends(get_session)):
+def get_markets(db: Session = Depends(get_unscoped_session)):
     """SLA Staking Prediction Markets — derived from real execution reliability.
 
     Returns a flat JSON array of StakingMarket objects directly, matching Next.js SWR.

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from cappo_backend.db.session import get_session
+from cappo_backend.db.session import get_session, get_unscoped_session
 from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.models.governed_run import GovernedRun
 from cappo_backend.services.providers import _breaker_registry
@@ -36,7 +36,7 @@ def _fmt_breaker(name: str) -> dict:
 
 
 @router.get("/pulse")
-async def get_pulse(db: Session = Depends(get_session)):
+async def get_pulse(db: Session = Depends(get_unscoped_session)):
     """Live pulse telemetry — real system metrics + real DB statistics."""
     # --- Real system metrics ---
     try:
