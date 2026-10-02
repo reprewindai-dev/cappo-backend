@@ -71,15 +71,13 @@ def get_session(request: Request) -> Iterator[Session]:
         session.close()
 
 
-def get_unscoped_session(request: Request | None = None) -> Iterator[Session]:
+def get_unscoped_session(request: Request) -> Iterator[Session]:
     """FastAPI dependency for workspace-agnostic routes (health checks, public endpoints).
 
     Does NOT enforce auth_workspace. Must not be used on tenant-sensitive routes.
     """
     session = SessionLocal()
-    workspace_id: str | None = None
-    if request is not None:
-        workspace_id = request.scope.get("auth_workspace")
+    workspace_id: str | None = request.scope.get("auth_workspace")
     if workspace_id:
         if session.bind.dialect.name == "postgresql":
             session.execute(
