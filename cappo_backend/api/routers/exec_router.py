@@ -877,7 +877,19 @@ class ReconcileReq(BaseModel):
     simulate_target_503: bool = False
 
 
-@router.post("/consequence/dispatch")
+def _hostile_battery_fixture_only(request: Request) -> None:
+    """The two routes below are hostile-battery test fixtures, not governed paths.
+
+    /consequence/dispatch returns a fixed mock transaction hash, pins the revocation epoch
+    to 0 and keeps its replay guard in process memory; /consequence/reconcile can be told to
+    simulate a target outage. Neither may exist in production. Real consequences go through
+    /v1/capability/mounts/{mount_id}/execute.
+    """
+    if request.app.state.settings.is_production:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+@router.post("/consequence/dispatch", dependencies=[Depends(_hostile_battery_fixture_only)])
 async def dispatch_consequence_endpoint(
     req: ConsequenceDispatchRequest,
     request: Request,
@@ -985,7 +997,7 @@ async def dispatch_consequence_endpoint(
     }
 
 
-@router.post("/consequence/reconcile")
+@router.post("/consequence/reconcile", dependencies=[Depends(_hostile_battery_fixture_only)])
 async def reconcile_consequence_endpoint(
     req: ReconcileReq,
     db: Session = Depends(get_session),
