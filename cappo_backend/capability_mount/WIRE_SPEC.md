@@ -20,7 +20,14 @@ payloads against those schemas before accepting them.
 5. **Receive decision**: an allowed action runs and appends an `allow` event.
    A denied action appends a `deny` event before returning the policy error.
 6. **Terminate**: task completion, token expiry, or explicit termination
-   unmounts the execution. Subsequent calls are denied.
+   unmounts the execution. Subsequent calls are denied. A consequence that
+   passed evaluation but had not started when the fence committed is refused
+   (`failed`, `mount_terminated`) and never dispatched. Terminate then waits up
+   to `CAPPO_TERMINATE_SETTLE_SECONDS` (default 10) for started consequences to
+   settle. `terminated` or `already_terminated` means no consequence on the
+   mount is authorized or started, so no further effect can land.
+   `terminated_in_flight` means some still are; their ids are returned in
+   `in_flight_operation_ids`, and an effect for those may still land.
 
 Tokens are short-lived and single-use by contract. Executors must not persist
 memory or authority beyond the mount lifecycle. Audit sinks are append-only and

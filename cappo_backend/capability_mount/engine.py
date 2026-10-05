@@ -344,6 +344,10 @@ class ExecutionBinding:
         if self._begin_consequence:
             try:
                 owned = self._begin_consequence(op_id)
+            except PolicyError as exc:
+                # Refused at the fence (mount terminated after evaluate): nothing ran.
+                self._append(action, Decision.DENY, str(exc))
+                raise
             except Exception:
                 owned = False  # degraded mode — continue but cannot track state
 

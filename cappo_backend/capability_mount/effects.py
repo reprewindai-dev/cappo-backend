@@ -8,7 +8,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Protocol
+from typing import Callable, Mapping, Protocol
 from uuid import uuid4
 
 _RESOURCE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -26,6 +26,10 @@ class ConsequenceContext:
     operation_id: str | None
     workspace: str | None = None
     project: str | None = None
+    # Set at dispatch when permits are configured: returns the permit for the exact payload
+    # bytes the adapter is about to send. An external target redeems it with CAPPO
+    # (POST /v1/capability/redeem) before committing, so authority is checked at the target.
+    permit_for: Callable[[bytes], str] | None = None
 
 
 class TargetAdapter(Protocol):

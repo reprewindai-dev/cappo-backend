@@ -23,6 +23,10 @@ class ConfirmedAnchor:
         return AnchorResult("confirmed", anchor_id=f"pg-{event_type}-{uuid4().hex}")
 
 
+OWNER = "row-lock:owner"
+WORKSPACE = "row-lock-workspace"
+
+
 def _postgres_session_factory():
     url = os.getenv("DATABASE_URL", "")
     if not url.startswith("postgresql"):
@@ -50,10 +54,12 @@ def _new_mount(factory) -> tuple[str, str, str]:
         registry.register_package(package)
         record, anchor, reason, _holder_credential = registry.request_mount(
             package.id,
-            MountScope(workspace="row-lock-workspace", project="row-lock-project"),
+            MountScope(workspace=WORKSPACE, project="row-lock-project"),
             role="ephemeral_executor",
             policy=MountPolicy(),
             ttl_seconds=300,
+            owner_principal=OWNER,
+            owner_workspace=WORKSPACE,
         )
         assert anchor.status == "confirmed"
         assert reason == "mounted"
@@ -78,6 +84,8 @@ def test_same_nonce_has_one_winner_under_postgres_row_lock() -> None:
                     "contact.read",
                     token_id=token_id,
                     nonce=nonce,
+                    owner_principal=OWNER,
+                    owner_workspace=WORKSPACE,
                 )
                 results.append((decision, reason))
         except BaseException as exc:  # pragma: no cover - surfaced by assertion below
@@ -110,6 +118,8 @@ def test_concurrent_termination_is_idempotent_and_blocks_later_action() -> None:
                 decision, reason, _ = registry.terminate(
                     mount_id,
                     UnmountReason.EXPLICIT_TERMINATE,
+                    owner_principal=OWNER,
+                    owner_workspace=WORKSPACE,
                 )
                 results.append((decision, reason))
         except BaseException as exc:  # pragma: no cover - surfaced by assertion below
@@ -136,6 +146,8 @@ def test_concurrent_termination_is_idempotent_and_blocks_later_action() -> None:
             "contact.read",
             token_id=token_id,
             nonce=nonce,
+            owner_principal=OWNER,
+            owner_workspace=WORKSPACE,
         )
         assert decision is Decision.DENY
         assert reason == "terminated"

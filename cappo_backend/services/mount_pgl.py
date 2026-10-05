@@ -47,6 +47,11 @@ class AuditPGLAnchor:
             "package_ref": mount.package_ref if mount else None,
             "execution_id": token.execution_id if token else None,
         }
+        # Consequence-outcome events carry the operation identity so the ledger can
+        # thread authority (mount, decision, terminate) and outcome for one consequence.
+        for key in ("operation_id", "receipt_id", "consequence_state", "proof_type"):
+            if kwargs.get(key) is not None:
+                payload[key] = kwargs[key]
         try:
             event = AuditService(self.db, settings=self.settings).record(
                 f"capability_mount_{event_type}",

@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # certificate may be accepted. Production must set this to true.
     cappo_require_persistent_pgl: bool = False
 
+    # How long terminate waits for consequences that were already authorized or
+    # started on the mount to settle before answering. A plain "terminated"
+    # means none remain; otherwise terminate answers "terminated_in_flight" and
+    # names them.
+    cappo_terminate_settle_seconds: float = 10.0
+
     # Signing key for ExecutionIdentityV1. Must be overridden in production.
     ei_signing_key: str = INSECURE_EI_SIGNING_KEY
     ei_signing_provider: str = "ed25519"
@@ -186,6 +192,9 @@ class Settings(BaseSettings):
     # HMAC verification key for bound human-approval resume tokens. Production
     # approval-gated execution must never accept placeholder signatures.
     approval_token_signing_key: str = ""
+    # Key for consequence permits (target-side redemption). When empty it is derived from
+    # approval_token_signing_key; with neither set, permits are disabled.
+    consequence_permit_key: str = ""
 
     # --- Execution layer (real provider + circuit breaker) ---
     # "echo" uses the deterministic stub (default; tests/local dev). "openai"

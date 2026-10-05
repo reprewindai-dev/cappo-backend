@@ -110,6 +110,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             or anonymous_public_read
             or path.startswith("/api/v1/execution/keys/")
             or path.startswith("/api/v1/reconcile/")
+            # Target-side redemption: the caller is a target with no user session; the
+            # permit in the body is the credential and is verified by the handler.
+            or (request.method == "POST" and path == "/v1/capability/redeem")
             or request.method == "OPTIONS"
         ):
             return await call_next(request)

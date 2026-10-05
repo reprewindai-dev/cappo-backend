@@ -27,6 +27,7 @@ Proof types:
         "reconciliation_api_query"   — post-restart external API query
         "outcome_uncertain"          — process died; no proof available
         "optimistic_claim"           — local DB row lock acquired
+        "fence_refusal"              — mount terminated before STARTED; never dispatched
 """
 
 from __future__ import annotations

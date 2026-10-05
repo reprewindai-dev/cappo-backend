@@ -315,10 +315,21 @@ class MountRegistry:
             
             Uses database locking to prevent concurrent workers from both moving
             AUTHORIZED -> STARTED. Returns True if claimed, False if another worker won.
+
+            Fence: evaluate() has already committed and released the mount row,
+            so terminate() may have landed since. The mount row is locked again
+            here, before the event row, and a terminated mount is refused: the
+            operation is recorded FAILED (mount_terminated) and nothing is
+            dispatched. terminate() takes the same lock, so every operation is
+            either STARTED before the fence commits (and terminate() sees it as
+            in flight) or refused after it.
             """
             import uuid
             db = self._db()
-            
+
+            # Lock order: mount row, then the operation's latest event.
+            fence_row = self._row(mount.id, lock=True)
+
             # Use FOR UPDATE to serialize access to the latest event for this operation.
             # (In PostgreSQL this blocks concurrent claims; sqlite will lock the DB)
             latest = db.execute(
@@ -336,6 +347,55 @@ class MountRegistry:
             if latest.state != ConsequenceState.AUTHORIZED.value:
                 db.commit()
                 return False  # Already advanced past AUTHORIZED
+
+            if fence_row is None or fence_row.terminated:
+                try:
+                    proof_hash = build_proof_subject_hash(
+                        operation_id=operation_id,
+                        intent_hash=latest.intent_hash,
+                        previous_truth_state=latest.state,
+                        asserted_truth_state=ConsequenceState.FAILED.value,
+                        consequence_identity=latest.receipt_id or "unknown",
+                        canonical_asserted_proposition=(
+                            f"failed {latest.action} on {latest.resource or '*'} "
+                            "with_proof fence_refusal"
+                        ),
+                    )
+                    # _SITE: begin_consequence_fence
+                    db.add(
+                        ConsequenceExecutionEvent(
+                            event_id=f"evt_{uuid.uuid4().hex}",
+                            operation_id=operation_id,
+                            intent_hash=latest.intent_hash,
+                            state=ConsequenceState.FAILED.value,
+                            version=latest.version + 1,
+                            receipt_id=latest.receipt_id,
+                            mount_id=latest.mount_id,
+                            execution_id=latest.execution_id,
+                            principal=latest.principal,
+                            action=latest.action,
+                            resource=latest.resource,
+                            # Certain: the refusal is decided here, before dispatch.
+                            completion_proof_type="fence_refusal",
+                            error_summary="mount_terminated",
+                            proof_subject_hash=proof_hash,
+                        )
+                    )
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                self._anchor_consequence_outcome(
+                    "refused",
+                    mount=mount,
+                    token=token,
+                    operation_id=operation_id,
+                    receipt_id=latest.receipt_id,
+                    action=latest.action,
+                    decision=Decision.DENY.value,
+                    reason="mount_terminated",
+                    proof_type="fence_refusal",
+                )
+                raise ExecutionTerminatedError("mount_terminated")
 
             try:
                 proof_hash = build_proof_subject_hash(
@@ -484,6 +544,17 @@ class MountRegistry:
                 )
                 db.add(ce)
                 db.commit()
+                self._anchor_consequence_outcome(
+                    target.value,
+                    mount=mount,
+                    token=token,
+                    operation_id=operation_id,
+                    receipt_id=latest.receipt_id,
+                    action=latest.action,
+                    decision=Decision.ALLOW.value,
+                    reason=error_summary or target.value,
+                    proof_type=pt,
+                )
             except Exception as exc:
                 db.rollback()
                 print(f"completion_reporter: append failed: {exc}")
@@ -522,7 +593,10 @@ class MountRegistry:
     def _row(self, mount_id: str, *, lock: bool = False) -> CapabilityMount | None:
         statement = select(CapabilityMount).where(CapabilityMount.mount_id == mount_id)
         if lock:
-            statement = statement.with_for_update()
+            # A locking read must see the committed row, not this session's cached
+            # copy (sessions run with expire_on_commit=False), or a concurrent
+            # terminate would go unseen.
+            statement = statement.with_for_update().execution_options(populate_existing=True)
         return self._db().execute(statement).scalar_one_or_none()
 
     def _evidence_consumed(self, jti: str) -> bool:
@@ -1206,6 +1280,7 @@ class MountRegistry:
                 UnmountReason.TASK_COMPLETE,
                 owner_principal=owner_principal,
                 owner_workspace=owner_workspace,
+                settle_seconds=0,
             )
             terminated = termination is Decision.ALLOW
             return (
@@ -1350,7 +1425,7 @@ class MountRegistry:
         def invoke_effect(**_: object) -> object:
             nonlocal invoked_here
             invoked_here = True
-            return adapter.dispatch(context)
+            return adapter.dispatch(self._with_permit(context, record.mount.id))
 
         try:
             # CAPPO's binding is the sole owner of authorization and execution.
@@ -1406,6 +1481,7 @@ class MountRegistry:
                 UnmountReason.TASK_COMPLETE,
                 owner_principal=owner_principal,
                 owner_workspace=owner_workspace,
+                settle_seconds=0,
             )
             terminated = termination is Decision.ALLOW
 
@@ -1465,6 +1541,207 @@ class MountRegistry:
                 )
         return AnchorResult("not_applicable", detail="already terminated; no local termination event found")
 
+    def _with_permit(self, context: ConsequenceContext, mount_id: str) -> ConsequenceContext:
+        """Attach a permit factory to a dispatch context (no-op when permits are unconfigured)."""
+        from dataclasses import replace
+
+        from .permits import mint_permit, payload_digest, permit_key
+
+        key = permit_key(self.settings)
+        if key is None or not context.operation_id:
+            return context
+        latest = self._db().execute(
+            select(ConsequenceExecutionEvent.receipt_id)
+            .where(ConsequenceExecutionEvent.operation_id == context.operation_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        self._db().commit()
+        operation_id = context.operation_id
+
+        def permit_for(payload: bytes) -> str:
+            return mint_permit(
+                key,
+                operation_id=operation_id,
+                mount_id=mount_id,
+                receipt_id=latest,
+                payload_sha256=payload_digest(payload),
+            )
+
+        return replace(context, permit_for=permit_for)
+
+    def redeem_consequence(
+        self,
+        operation_id: str,
+        permit: str,
+        payload_sha256: str,
+        *,
+        sink_ref: str | None = None,
+    ) -> tuple[Decision, str]:
+        """A target asks, immediately before committing: is this consequence still authorized?
+
+        Decided under the mount row lock that terminate() takes, so a redemption either
+        commits before the fence (terminate then waits for the started consequence to
+        settle) or is refused after it. ALLOW requires: a live, unexpired mount; the
+        operation in STARTED (CAPPO itself dispatched it); a permit matching this exact
+        payload; and no earlier redemption. Possession of a permit, of the target's own
+        credentials, or of state copied before revocation is not enough.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        from cappo_backend.models.consequence_redemption import ConsequenceRedemption
+
+        from .permits import permit_key, permit_matches
+
+        db = self._db()
+
+        def refuse(reason: str, record: MountRecord | None = None) -> tuple[Decision, str]:
+            db.rollback()
+            if record is not None:
+                self._anchor_consequence_outcome(
+                    "redeem_refused",
+                    mount=record.mount,
+                    token=record.token,
+                    operation_id=operation_id,
+                    receipt_id=None,
+                    action="redeem",
+                    decision=Decision.DENY.value,
+                    reason=reason,
+                    proof_type="target_redemption",
+                )
+            return Decision.DENY, reason
+
+        key = permit_key(self.settings)
+        if key is None:
+            return refuse("permits_not_configured")
+
+        first = db.execute(
+            select(ConsequenceExecutionEvent)
+            .where(ConsequenceExecutionEvent.operation_id == operation_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if first is None or not first.mount_id:
+            return refuse("unknown_operation")
+        mount_id = first.mount_id
+        db.commit()  # release the read before taking the mount lock (lock order: mount first)
+
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            return refuse("unknown_mount")
+        record = self._record(row)
+        if row.terminated:
+            return refuse("mount_terminated", record)
+        if _utc(row.expires_at) <= utc_now():
+            return refuse("mount_expired", record)
+
+        latest = db.execute(
+            select(ConsequenceExecutionEvent)
+            .where(ConsequenceExecutionEvent.operation_id == operation_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+            .execution_options(populate_existing=True)
+        ).scalar_one()
+        if latest.state != ConsequenceState.STARTED.value:
+            return refuse(f"operation_not_dispatched:{latest.state}", record)
+        if not permit_matches(
+            key,
+            permit,
+            operation_id=operation_id,
+            mount_id=mount_id,
+            receipt_id=latest.receipt_id,
+            payload_sha256=payload_sha256,
+        ):
+            return refuse("permit_mismatch", record)
+
+        db.add(
+            ConsequenceRedemption(
+                operation_id=operation_id,
+                mount_id=mount_id,
+                receipt_id=latest.receipt_id,
+                payload_sha256=payload_sha256,
+                sink_ref=sink_ref,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            return refuse("already_redeemed", record)
+        return Decision.ALLOW, "redeemed"
+
+    def _anchor_consequence_outcome(
+        self,
+        outcome: str,
+        *,
+        mount: Mount,
+        token: EphemeralScopedToken | PersistentServiceToken,
+        operation_id: str,
+        receipt_id: str | None,
+        action: str,
+        decision: str,
+        reason: str,
+        proof_type: str,
+    ) -> None:
+        """Append one consequence outcome (refused/succeeded/failed/...) to PGL.
+
+        Evidence only: called after the outcome is committed and outside the mount
+        row lock, never raises, and never gates the consequence. Safety comes from
+        the fence in begin_consequence, not from ledger timing.
+        """
+        db = self._db()
+        try:
+            self.anchor.anchor(
+                f"consequence_{outcome}",
+                action=action,
+                decision=decision,
+                reason=reason,
+                mount=mount,
+                token=token,
+                operation_id=operation_id,
+                receipt_id=receipt_id,
+                consequence_state=outcome,
+                proof_type=proof_type,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    _IN_FLIGHT_STATES = frozenset({ConsequenceState.AUTHORIZED.value, ConsequenceState.STARTED.value})
+
+    def _in_flight_operations(self, mount_id: str) -> list[str]:
+        """Operation ids on this mount whose latest state is authorized or started."""
+        db = self._db()
+        rows = db.execute(
+            select(
+                ConsequenceExecutionEvent.operation_id,
+                ConsequenceExecutionEvent.version,
+                ConsequenceExecutionEvent.state,
+            ).where(ConsequenceExecutionEvent.mount_id == mount_id)
+        ).all()
+        db.commit()  # end the read so the next poll sees newly committed events
+        latest: dict[str, tuple[int, str]] = {}
+        for operation_id, version, state in rows:
+            if operation_id not in latest or version > latest[operation_id][0]:
+                latest[operation_id] = (version, state)
+        return sorted(op for op, (_, state) in latest.items() if state in self._IN_FLIGHT_STATES)
+
+    def _settle_in_flight(self, mount_id: str, settle_seconds: float | None) -> list[str]:
+        """Wait up to settle_seconds for in-flight operations to reach a later state.
+
+        Called after the fence has committed: begin_consequence refuses every
+        operation that had not reached STARTED, so this set can only shrink.
+        """
+        import time
+
+        if settle_seconds is None:
+            settle_seconds = float(getattr(self.settings, "cappo_terminate_settle_seconds", 10.0))
+        deadline = time.monotonic() + max(settle_seconds, 0.0)
+        while True:
+            in_flight = self._in_flight_operations(mount_id)
+            if not in_flight or time.monotonic() >= deadline:
+                return in_flight
+            time.sleep(0.02)
+
     def terminate(
         self,
         mount_id: str,
@@ -1472,7 +1749,33 @@ class MountRegistry:
         *,
         owner_principal: str = "auth-disabled",
         owner_workspace: str | None = None,
+        settle_seconds: float | None = None,
     ) -> tuple[Decision, str, AnchorResult]:
+        decision, outcome, anchor, _in_flight = self.terminate_with_in_flight(
+            mount_id,
+            reason,
+            owner_principal=owner_principal,
+            owner_workspace=owner_workspace,
+            settle_seconds=settle_seconds,
+        )
+        return decision, outcome, anchor
+
+    def terminate_with_in_flight(
+        self,
+        mount_id: str,
+        reason: UnmountReason,
+        *,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+        settle_seconds: float | None = None,
+    ) -> tuple[Decision, str, AnchorResult, list[str]]:
+        """Fence the mount, then account for consequences already past evaluate().
+
+        "terminated" / "already_terminated" mean no operation on this mount is
+        authorized or started, so no further effect can land. If some still are
+        when settle_seconds runs out, the reason is "terminated_in_flight" and
+        their operation ids are returned: an effect for those may still land.
+        """
         db = self._db()
         row = self._row(mount_id, lock=True)
         if row is None:
@@ -1485,7 +1788,7 @@ class MountRegistry:
                 token=None,
             )
             db.commit()
-            return Decision.DENY, "unknown_mount", anchor
+            return Decision.DENY, "unknown_mount", anchor, []
         if not self._owned_by(row, owner_principal, owner_workspace):
             anchor = self.anchor.anchor(
                 "terminate",
@@ -1496,14 +1799,18 @@ class MountRegistry:
                 token=None,
             )
             db.commit()
-            return Decision.DENY, "owner_mismatch", anchor
+            return Decision.DENY, "owner_mismatch", anchor, []
 
         record = self._record(row)
         if row.terminated:
             db.commit()
             # Idempotent: hand back the anchor issued when the mount was terminated
             # (execute terminates automatically on TASK_COMPLETE) instead of "not_applicable".
-            return Decision.ALLOW, "already_terminated", self._stored_termination_anchor(db, mount_id)
+            prior_anchor = self._stored_termination_anchor(db, mount_id)
+            in_flight = self._settle_in_flight(mount_id, settle_seconds)
+            if in_flight:
+                return Decision.ALLOW, "terminated_in_flight", prior_anchor, in_flight
+            return Decision.ALLOW, "already_terminated", prior_anchor, []
         anchor = self.anchor.anchor(
             "terminate",
             action="execution",
@@ -1514,8 +1821,8 @@ class MountRegistry:
         )
         if anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
-            return Decision.DENY, "pgl_anchor_unconfirmed", anchor
-            
+            return Decision.DENY, "pgl_anchor_unconfirmed", anchor, []
+
         row.terminated = True
         mark_mount_revoked(mount_id)
         
@@ -1528,7 +1835,10 @@ class MountRegistry:
             lease.transition_state(LeaseState.REVOKED, current_epoch)
 
         db.commit()
-        return Decision.ALLOW, "terminated", anchor
+        in_flight = self._settle_in_flight(mount_id, settle_seconds)
+        if in_flight:
+            return Decision.ALLOW, "terminated_in_flight", anchor, in_flight
+        return Decision.ALLOW, "terminated", anchor, []
 
 
 def load_packages_from_json(raw: str | None) -> list[CapabilityPackage]:

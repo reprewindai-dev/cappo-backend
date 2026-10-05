@@ -147,6 +147,26 @@ class TerminateResponse(BaseModel):
     reason: str
     anchoring: dict[str, Any]
     mount_id: str
+    # Operations already authorized or started on the mount that had not
+    # settled when terminate answered; an effect for these may still land.
+    in_flight_operation_ids: list[str] = []
+
+
+class RedeemRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: str = Field(min_length=1, max_length=256)
+    permit: str = Field(min_length=1, max_length=256)
+    payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sink_ref: str | None = Field(default=None, max_length=128)
+
+
+class RedeemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Decision
+    reason: str
+    operation_id: str
 
 
 def get_registry(request: Request, db: Session = Depends(get_session)) -> MountRegistry:
@@ -506,7 +526,7 @@ def terminate_mount(
     registry: MountRegistry = Depends(get_registry),
 ) -> TerminateResponse:
     principal, workspace = _caller(request)
-    decision, reason, anchor = registry.terminate(
+    decision, reason, anchor, in_flight = registry.terminate_with_in_flight(
         mount_id,
         body.reason,
         owner_principal=principal,
@@ -517,4 +537,27 @@ def terminate_mount(
         reason=reason,
         anchoring=anchor_payload(anchor, request.app.state.settings),
         mount_id=mount_id,
+        in_flight_operation_ids=in_flight,
     )
+
+
+@router.post("/redeem", response_model=RedeemResponse)
+def redeem_consequence(
+    body: RedeemRequest,
+    request: Request,
+    db: Session = Depends(get_unscoped_session),
+) -> RedeemResponse:
+    """Target-side authority check: called by a target immediately before it commits.
+
+    The caller is a target, not a user, so there is no session: the permit (bound to the
+    operation and to the exact payload) is what is presented, and it only ever answers
+    whether CAPPO's own dispatched, still-authorized consequence may commit now.
+    """
+    registry = _build_registry(request, db)
+    decision, reason = registry.redeem_consequence(
+        body.operation_id,
+        body.permit,
+        body.payload_sha256,
+        sink_ref=body.sink_ref,
+    )
+    return RedeemResponse(decision=decision, reason=reason, operation_id=body.operation_id)

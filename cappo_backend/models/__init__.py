@@ -9,6 +9,7 @@ from cappo_backend.models.capability_action_receipt import CapabilityActionRecei
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.capability_mount import CapabilityMount
+from cappo_backend.models.consequence_redemption import ConsequenceRedemption
 from cappo_backend.models.consequence_execution import (
     ConsequenceExecutionEvent,
     ConsequenceInvariantViolation,
@@ -54,6 +55,7 @@ from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 from cappo_backend.p5.models import P5Event, P5Operation, P5Outbox  # noqa: F401
 
 __all__ = [
+    "ConsequenceRedemption",
     "FreeRunQuota",
     "AuditEvent",
     "CapabilityActionReceipt",
