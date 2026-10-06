@@ -435,6 +435,13 @@ class Settings(BaseSettings):
                 "VAULT_MASTER_KEY must be at least 32 characters long in production."
             )
 
+        if not self.redis_url.strip():
+            problems.append(
+                "REDIS_URL must be set in production: without Redis the /v1/exec "
+                "replay cache (Workload-Identity jti) degrades to allow-all and "
+                "replayed identities are accepted."
+            )
+
         if problems:
             raise InsecureProductionConfigError(
                 "Refusing to start with insecure production configuration: " + " ".join(problems)
