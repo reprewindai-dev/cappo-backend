@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     pgl_ledger_api_key: str | None = None
     pgl_ledger_timeout_ms: int = 8000
 
+    # --- Reconciliation ---
+    # Base URL of the target connector that holds execution evidence
+    # (``{base}/connectors/sandbox-file-append/status/{execution_id}``). Unset
+    # means ``POST /api/v1/reconcile/{execution_id}`` answers 503; there is no
+    # built-in loopback default.
+    reconcile_connector_base_url: str = ""
+
     # Capability discovery and signed beacon publication.
     capability_packages_json: str | None = None
     capability_effect_record_root: str | None = None

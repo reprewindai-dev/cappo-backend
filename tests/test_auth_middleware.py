@@ -91,6 +91,11 @@ class TestAuthEnabled:
         resp = auth_client.put("/v1/kill-switch/ws1", json={"active": True})
         assert resp.status_code == 401
 
+    def test_reconcile_is_not_anonymous(self, auth_client: TestClient) -> None:
+        resp = auth_client.post("/api/v1/reconcile/exec-1")
+        assert resp.status_code == 401
+        assert resp.json()["error"] == "AUTHENTICATION_REQUIRED"
+
 
 class TestAuthDisabledByDefault:
     def test_exec_returns_workspace_context_missing_when_auth_disabled(self, client: TestClient) -> None:
