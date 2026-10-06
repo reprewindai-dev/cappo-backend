@@ -91,6 +91,17 @@ class TestAuthEnabled:
         resp = auth_client.put("/v1/kill-switch/ws1", json={"active": True})
         assert resp.status_code == 401
 
+    def test_admin_route_requires_workspace_binding(self, auth_client: TestClient) -> None:
+        # A valid API key has no server-side workspace binding, so it cannot
+        # operate any workspace's kill switch or budget.
+        for path, body in (
+            ("/v1/kill-switch/ws1", {"active": True}),
+            ("/v1/budget/ws1", {"balance_cents": 10}),
+        ):
+            resp = auth_client.put(path, json=body, headers={"X-API-Key": _KEY})
+            assert resp.status_code == 403
+            assert resp.json()["detail"]["error"] == "WORKSPACE_CONTEXT_MISSING"
+
     def test_reconcile_is_not_anonymous(self, auth_client: TestClient) -> None:
         resp = auth_client.post("/api/v1/reconcile/exec-1")
         assert resp.status_code == 401
