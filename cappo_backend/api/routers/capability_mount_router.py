@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -29,8 +31,19 @@ from cappo_backend.capability_mount.service import (
     UnconfirmedAnchor,
 )
 from cappo_backend.db.session import get_session, get_unscoped_session
+from cappo_backend.services.audit_service import AuditService
+from cappo_backend.services.entitlement_meter import (
+    GOVERNED_ACTION,
+    GOVERNED_EXECUTION,
+    VERIFICATION_READ,
+    EntitlementMeter,
+    MeterOutcome,
+    get_meter,
+)
 from cappo_backend.services.mount_evidence import BoundMountEvidenceVerifier
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/capability", tags=["Capability Mount"])
 
@@ -242,6 +255,101 @@ def _deny_holder(request: Request) -> None:
         raise HTTPException(status_code=403, detail="HOLDER_SCOPE_FORBIDDEN")
 
 
+# --- Commercial metering (credits are accounting; CAPPO stays the authority) ---
+
+
+class _Metered:
+    """One metered call: commercial preflight before authority, settle after."""
+
+    def __init__(self, meter: EntitlementMeter, *, workspace: str, action_type: str,
+                 key: str, execution_id: str | None) -> None:
+        self.meter = meter
+        self.workspace = workspace
+        self.action_type = action_type
+        self.key = key
+        self.execution_id = execution_id
+        self.outcome: MeterOutcome | None = None
+        self.started = perf_counter()
+
+    def preflight(self, *, mount_id: str, principal: str, operation_ref: str | None) -> None:
+        self.outcome = self.meter.charge(
+            workspace_id=self.workspace, action_type=self.action_type, idempotency_key=self.key,
+            mount_id=mount_id, execution_ref=self.execution_id, operation_ref=operation_ref,
+            principal=principal,
+        )
+        if not self.outcome.allowed:
+            raise HTTPException(status_code=self.outcome.status_code or 402, detail=self.outcome.denial)
+        self.started = perf_counter()
+
+    def abort(self, reason: str) -> None:
+        if self.outcome and self.outcome.charged and not self.outcome.replay:
+            self.meter.reverse(self.key, reason)
+
+    def settle(self, db: Session, *, decision: Decision, reason: str,
+               receipt_id: str | None = None, operation_id: str | None = None) -> None:
+        o = self.outcome
+        if o is None:
+            return
+        reversed_ = False
+        if decision is Decision.DENY and o.charged and not o.replay:
+            reversed_ = self.meter.reverse(self.key, reason)
+        try:
+            # Credit cost has no field on the signed receipt; it is recorded as
+            # hash-chained audit evidence bound to the execution (run_id).
+            AuditService(db).record(
+                "credits_metered",
+                {
+                    "action_type": self.action_type,
+                    "credits": o.credits,
+                    "charged": o.charged and not reversed_,
+                    "replay": o.replay,
+                    "reversed": reversed_,
+                    "unmetered_reason": o.unmetered_reason,
+                    "ledger_entry_id": o.entry_id,
+                    "idempotency_key": self.key,
+                    "decision": decision.value,
+                    "reason": reason,
+                    "receipt_id": receipt_id,
+                    "operation_id": operation_id,
+                    # Per-execution timing for unit-economics (cost/credit) telemetry.
+                    "duration_ms": round((perf_counter() - self.started) * 1000, 3),
+                },
+                workspace_id=self.workspace,
+                run_id=self.execution_id,
+                forward_to_gnomledger=False,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.warning("credits_metered evidence not recorded for %s", self.key, exc_info=True)
+
+
+def _metered(request: Request, registry: MountRegistry, mount_id: str, principal: str,
+             workspace: str | None, *, action_type: str, key_prefix: str,
+             require_mounted: bool = True) -> _Metered | None:
+    meter = get_meter(request.app.state)
+    if not meter.enabled:
+        return None
+    record, state = registry.status(mount_id, owner_principal=principal, owner_workspace=workspace)
+    # Unknown/foreign/expired mounts are denied by CAPPO itself and never charged.
+    if record is None or (require_mounted and state != "mounted"):
+        return None
+    suffix = record.token.token_id if key_prefix != "read" else str(uuid4())
+    return _Metered(meter, workspace=record.mount.scope.workspace, action_type=action_type,
+                    key=f"cappo:{key_prefix}:{mount_id}:{suffix}",
+                    execution_id=record.token.execution_id)
+
+
+def _emit_decision(request: Request, workspace: str | None, decision: Decision, *,
+                   ref: str, executed: bool = False) -> None:
+    meter = get_meter(request.app.state)
+    meter.emit("first_authority_decision", workspace, ref=ref)
+    if decision is Decision.DENY:
+        meter.emit("first_denied_action", workspace, ref=ref)
+    elif executed:
+        meter.emit("first_governed_execution", workspace, ref=ref)
+
+
 @router.get("/packages", response_model=list[CapabilityPackage])
 def list_packages(
     request: Request,
@@ -258,10 +366,16 @@ def read_target_state(
     resource: str = Query(..., min_length=1),
     mount_id: str = Query(..., min_length=1),
     registry: MountRegistry = Depends(get_registry),
+    db: Session = Depends(get_session),
 ) -> TargetStateResponse:
     principal, workspace = _caller(request)
     if workspace is None:
         raise HTTPException(status_code=403, detail="WORKSPACE_IDENTITY_REQUIRED")
+
+    metering = _metered(request, registry, mount_id, principal, workspace,
+                        action_type=VERIFICATION_READ, key_prefix="read", require_mounted=False)
+    if metering is not None:
+        metering.preflight(mount_id=mount_id, principal=principal, operation_ref=None)  # fail-safe
 
     record, state = registry.status(
         mount_id,
@@ -315,6 +429,9 @@ def read_target_state(
             raise HTTPException(status_code=400, detail="invalid_target_resource") from exc
         raise
 
+    if metering is not None:
+        metering.settle(db, decision=Decision.ALLOW, reason="verification_read")
+
     return TargetStateResponse(
         target_ref=target_ref,
         resource=resource,
@@ -360,6 +477,8 @@ def request_mount(
             anchoring=anchor_payload(anchor, request.app.state.settings),
             holder_credential=None,
         )
+    get_meter(request.app.state).emit("capability_issued", workspace, ref=record.mount.id,
+                                      details={"package_ref": record.mount.package_ref})
     return MountResponse(
         decision=Decision.ALLOW,
         reason=reason,
@@ -422,8 +541,14 @@ def evaluate_action(
     body: ActionRequest,
     request: Request,
     registry: MountRegistry = Depends(get_registry),
+    db: Session = Depends(get_session),
 ) -> ActionResponse:
     principal, workspace = _caller(request)
+    metering = _metered(request, registry, mount_id, principal, workspace,
+                        action_type=GOVERNED_ACTION, key_prefix="action")
+    if metering is not None:
+        metering.key = f"{metering.key}:{body.action}"
+        metering.preflight(mount_id=mount_id, principal=principal, operation_ref=None)
     spiffe_fields = {
         "caller_spiffe_id": request.scope.get("caller_spiffe_id"),
         "trust_domain": request.scope.get("trust_domain"),
@@ -436,19 +561,28 @@ def evaluate_action(
         "operator_id": request.headers.get("x-veklom-operator-id"),
     }
 
-    decision, reason, anchor, _ = registry.evaluate(
-        mount_id,
-        body.action,
-        resource=body.resource,
-        token_id=body.token_id,
-        nonce=body.nonce,
-        owner_principal=principal,
-        owner_workspace=workspace,
-        approval_token=body.approval_token,
-        suppression_evidence=body.suppression_evidence,
-        suppression_confirmed=body.suppression_confirmed,
-        spiffe_fields=spiffe_fields,
-    )
+    try:
+        decision, reason, anchor, detail = registry.evaluate(
+            mount_id,
+            body.action,
+            resource=body.resource,
+            token_id=body.token_id,
+            nonce=body.nonce,
+            owner_principal=principal,
+            owner_workspace=workspace,
+            approval_token=body.approval_token,
+            suppression_evidence=body.suppression_evidence,
+            suppression_confirmed=body.suppression_confirmed,
+            spiffe_fields=spiffe_fields,
+        )
+    except Exception:
+        if metering is not None:
+            metering.abort("cappo_error")
+        raise
+    if metering is not None:
+        metering.settle(db, decision=decision, reason=reason,
+                        receipt_id=(detail or {}).get("receipt_id") if isinstance(detail, dict) else None)
+        _emit_decision(request, metering.workspace, decision, ref=mount_id)
     return ActionResponse(
         decision=decision,
         reason=reason,
@@ -465,8 +599,13 @@ def execute_consequence(
     body: ExecuteRequest,
     request: Request,
     registry: MountRegistry = Depends(get_registry),
+    db: Session = Depends(get_session),
 ) -> ExecuteResponse:
     principal, workspace = _caller(request)
+    metering = _metered(request, registry, mount_id, principal, workspace,
+                        action_type=GOVERNED_EXECUTION, key_prefix="execute")
+    if metering is not None:
+        metering.preflight(mount_id=mount_id, principal=principal, operation_ref=body.operation_id)
     spiffe_fields = {
         "caller_spiffe_id": request.scope.get("caller_spiffe_id"),
         "trust_domain": request.scope.get("trust_domain"),
@@ -478,22 +617,32 @@ def execute_consequence(
         "lease_id": request.headers.get("x-veklom-lease-id"),
         "operator_id": request.headers.get("x-veklom-operator-id"),
     }
-    decision, reason, consequence_state, payload = registry.execute_consequence(
-        mount_id,
-        body.action,
-        token_id=body.token_id,
-        nonce=body.nonce,
-        owner_principal=principal,
-        owner_workspace=workspace,
-        approval_token=body.approval_token,
-        suppression_evidence=body.suppression_evidence,
-        suppression_confirmed=body.suppression_confirmed,
-        target_ref=body.target_ref,
-        resource=body.resource,
-        arguments=body.arguments,
-        operation_id=body.operation_id,
-        spiffe_fields=spiffe_fields,
-    )
+    try:
+        decision, reason, consequence_state, payload = registry.execute_consequence(
+            mount_id,
+            body.action,
+            token_id=body.token_id,
+            nonce=body.nonce,
+            owner_principal=principal,
+            owner_workspace=workspace,
+            approval_token=body.approval_token,
+            suppression_evidence=body.suppression_evidence,
+            suppression_confirmed=body.suppression_confirmed,
+            target_ref=body.target_ref,
+            resource=body.resource,
+            arguments=body.arguments,
+            operation_id=body.operation_id,
+            spiffe_fields=spiffe_fields,
+        )
+    except Exception:
+        if metering is not None:
+            metering.abort("cappo_error")
+        raise
+    if metering is not None:
+        metering.settle(db, decision=decision, reason=reason, receipt_id=payload.get("receipt_id"),
+                        operation_id=payload.get("operation_id"))
+        _emit_decision(request, metering.workspace, decision, ref=mount_id,
+                       executed=bool(payload.get("target_invoked")))
     return ExecuteResponse(
         decision=decision,
         reason=reason,
