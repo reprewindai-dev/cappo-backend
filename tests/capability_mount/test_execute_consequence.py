@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.effects import (
     CappoUncertainError,
@@ -14,6 +17,7 @@ from cappo_backend.capability_mount.effects import (
 )
 from cappo_backend.capability_mount.models import CapabilityPackage
 from cappo_backend.capability_mount.service import AnchorResult
+from cappo_backend.models.capability_lease import CapabilityLease
 
 
 class ConfirmedAnchor:
@@ -404,3 +408,179 @@ def test_traversal_survives(
     ).json()
     assert success_body["decision"] == "allow"
     assert adapter.invocation_count == 1
+
+
+def test_public_execute_forwards_incarnation_and_epoch_fields(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mount, _adapter = prepare(client, tmp_path)
+    captured: dict[str, object] = {}
+
+    from cappo_backend.capability_mount.service import MountRegistry
+    original = MountRegistry.execute_consequence
+
+    def spy(self, *args, **kwargs):
+        captured.update(kwargs)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(MountRegistry, "execute_consequence", spy)
+
+    response = client.post(
+        f"/v1/capability/mounts/{mount['mount']['id']}/execute",
+        json=execute_payload(
+            mount,
+            substrate_id="host-a",
+            boot_instance_id="boot-42",
+            runtime_key_thumbprint="runtime-key-a",
+            state_root="sha256:" + ("a" * 64),
+            authority_epoch=7,
+        ),
+    )
+
+    assert response.status_code == 200
+    assert captured["substrate_id"] == "host-a"
+    assert captured["boot_instance_id"] == "boot-42"
+    assert captured["runtime_key_thumbprint"] == "runtime-key-a"
+    assert captured["state_root"] == "sha256:" + ("a" * 64)
+    assert captured["authority_epoch"] == 7
+
+
+@pytest.mark.parametrize(
+    ("claim", "presented", "expected_reason"),
+    [
+        ("substrate_id", "host-b", "substrate_id_mismatch"),
+        ("substrate_id", None, "substrate_id_mismatch"),
+        ("boot_instance_id", "old-boot", "boot_instance_id_mismatch"),
+        ("boot_instance_id", None, "boot_instance_id_mismatch"),
+        ("runtime_key_thumbprint", "wrong-key", "runtime_key_thumbprint_mismatch"),
+        ("runtime_key_thumbprint", None, "runtime_key_thumbprint_mismatch"),
+        ("state_root", "sha256:" + ("f" * 64), "state_root_mismatch"),
+        ("state_root", None, "state_root_mismatch"),
+    ],
+)
+def test_public_bound_mount_rejects_wrong_incarnation_before_target_invocation(
+    client: TestClient,
+    tmp_path: Path,
+    claim: str,
+    presented: str | None,
+    expected_reason: str,
+) -> None:
+    registry = client.app.state.mount_registry
+    registry.register_package(records_package())
+    registry.anchor = ConfirmedAnchor()
+    adapter = LocalRecordAdapter(tmp_path)
+    registry.target_adapters = TargetAdapterRegistry()
+    registry.target_adapters.register(LocalRecordAdapter.ref, adapter)
+    client.headers["X-Workspace-ID"] = "w1"
+
+    mounted = client.post(
+        "/v1/capability/mounts",
+        json={
+            "package_ref": "records@v1",
+            "execution_scope": {"workspace": "w1", "project": "p1"},
+            "requested_action_scope": {
+                "reads": [],
+                "writes": ["record.create"],
+                "blocked": [],
+            },
+            "ttl_seconds": 300,
+            "substrate_id": "host-a",
+            "boot_instance_id": "boot-1",
+            "runtime_key_thumbprint": "runtime-key-a",
+            "state_root": "sha256:" + ("0" * 64),
+        },
+    )
+    assert mounted.status_code == 200
+    mount = mounted.json()
+    assert mount["decision"] == "allow"
+
+    payload = execute_payload(
+        mount,
+        substrate_id="host-a",
+        boot_instance_id="boot-1",
+        runtime_key_thumbprint="runtime-key-a",
+        state_root="sha256:" + ("0" * 64),
+        authority_epoch=0,
+    )
+    if presented is None:
+        payload.pop(claim)
+    else:
+        payload[claim] = presented
+    before = {str(p.relative_to(tmp_path)): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    response = client.post(
+        f"/v1/capability/mounts/{mount['mount']['id']}/execute",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"] == "deny"
+    assert body["reason"] == expected_reason
+    assert body["consequence"]["target_invoked"] is False
+    assert adapter.invocation_count == 0
+    assert not (tmp_path / "activation-1.json").exists()
+    after = {str(p.relative_to(tmp_path)): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    assert after == before
+    assert mount["token"]["nonce"] not in response.text
+    assert mount["token"]["token_id"] not in response.text
+
+
+def test_public_stale_epoch_denies_without_invoking_target(
+    client: TestClient, db: Session, tmp_path: Path,
+) -> None:
+    """Exercise persisted epoch enforcement through HTTP, not a forwarding spy.
+
+    The lease is seeded in the test DB; this does not prove authority handoff
+    or external PGL persistence. The consequence uses the real file adapter.
+    """
+    mount, adapter = prepare(client, tmp_path)
+    db.add(CapabilityLease(
+        lease_id=str(uuid4()),
+        mount_id=mount["mount"]["id"],
+        capability_id="records@v1",
+        policy_version="1",
+        execution_identity=mount["token"]["execution_id"],
+        subject_spiffe_id="spiffe://example.org/workload/cappo-backend",
+        executor_spiffe_id="spiffe://example.org/workload/cappo-backend",
+        biscuit_hash="test-lease-fixture-not-a-biscuit",
+        authority_epoch=2,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    ))
+    db.commit()
+    url = f"/v1/capability/mounts/{mount['mount']['id']}/execute"
+    denied = client.post(url, json=execute_payload(mount, authority_epoch=1))
+    assert denied.status_code == 200
+    body = denied.json()
+    assert body["decision"] == "deny"
+    assert body["reason"] == "stale_authority_epoch"
+    assert body["consequence"]["target_invoked"] is False
+    assert adapter.invocation_count == 0
+    assert not (tmp_path / "activation-1.json").exists()
+    assert mount["token"]["nonce"] not in denied.text
+    assert mount["token"]["token_id"] not in denied.text
+
+
+
+def test_public_current_epoch_commits_once_and_replay_preserves_bytes(
+    client: TestClient, db: Session, tmp_path: Path,
+) -> None:
+    """Positive control uses the issued lease, not a fabricated replacement."""
+    mount, adapter = prepare(client, tmp_path)
+    lease = db.query(CapabilityLease).filter_by(mount_id=mount["mount"]["id"]).one()
+    url = f"/v1/capability/mounts/{mount['mount']['id']}/execute"
+    payload = execute_payload(mount, authority_epoch=lease.authority_epoch)
+    allowed = client.post(url, json=payload)
+    assert allowed.status_code == 200
+    assert allowed.json()["decision"] == "allow"
+    assert allowed.json()["consequence"]["target_invoked"] is True
+    assert adapter.invocation_count == 1
+    effect_path = tmp_path / "activation-1.json"
+    committed_bytes = effect_path.read_bytes()
+    retried = client.post(url, json=payload)
+    assert retried.status_code == 200
+    assert retried.json()["decision"] == "deny"
+    assert retried.json()["consequence"]["target_invoked"] is False
+    assert adapter.invocation_count == 1
+    assert effect_path.read_bytes() == committed_bytes
