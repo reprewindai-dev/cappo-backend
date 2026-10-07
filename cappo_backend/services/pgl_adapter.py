@@ -458,11 +458,19 @@ class GnomledgerPGLAdapter:
     ) -> dict[str, str]:
         if not agent_id:
             raise ValueError("agent_id is required to seal evidence in Gnomledger")
+        # gnomledger only accepts a fixed set of event_type literals; an evidence-seal
+        # type such as "capi_evidence_sealed" is not one of them and would be rejected
+        # with 422 (losing the seal). Record it as a "custom" ledger event and preserve
+        # the semantic CAPPO event type inside the details, matching mount_pgl.py.
         event_id = self._gnomledger.record_execution_attestation(
             agent_id=agent_id,
-            event_type=event_type,
+            event_type="custom",
             summary=f"CAPPO evidence seal for certificate {certificate_id}",
-            details={"certificate_id": certificate_id, "evidence_seal": evidence},
+            details={
+                "certificate_id": certificate_id,
+                "cappo_event_type": event_type,
+                "evidence_seal": evidence,
+            },
         )
         if not event_id:
             raise RuntimeError("Gnomledger did not acknowledge the evidence event")
