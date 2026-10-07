@@ -1,24 +1,19 @@
 """Governed Plan Compiler (GPC) router.
 
-Stats are read from real GovernedRun DB rows.
-Compile turns an intent into a deterministic blueprint against the live
-capability catalog (cappo_backend.blueprint.compiler). It never grants authority.
-No random data.
+Stats are read from real GovernedRun DB rows. No random data.
+
+Plan/contract compilation is not CAPPO's job: per the Capability OS wiring
+matrix (W-06) it belongs to the ABIDE domain service, and CAPPO stays the sole
+consequence authority. The old compile routes answer 410 with the new home.
 """
 
 from __future__ import annotations
 
-import time
-from datetime import datetime, timezone
-from typing import Any
-
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from cappo_backend.blueprint.codegen import blueprint_to_pipeline, compile_pipeline
-from cappo_backend.blueprint.compiler import compile_blueprint
 from cappo_backend.db.session import get_session
 from cappo_backend.models.governed_run import GovernedRun
 
@@ -63,43 +58,18 @@ def get_stats(db: Session = Depends(get_session)):
     }
 
 
-class CompileRequest(BaseModel):
-    intent: str = Field(min_length=1, max_length=2000)
+def _moved(location: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=410,
+        content={"error": "MOVED_TO_ABIDE", "detail": "Plan/contract compilation is owned by ABIDE (W-06).", "location": location},
+    )
 
 
 @router.post("/compile")
-def compile_plan(body: CompileRequest, request: Request):
-    """Compile an intent into a reviewable blueprint against the live capability catalog.
-
-    Replaces a template that returned the same three nodes (one labelled
-    "quantum") and ``policy_result: "approved"`` for any intent. The blueprint
-    grants nothing: it reports which steps a mount could cover, which the catalog
-    blocks, and which nothing covers. Deterministic for a given intent and catalog.
-    """
-    principal = request.scope.get("auth_principal")
-    if not isinstance(principal, str) or not principal:
-        raise HTTPException(status_code=401, detail="AUTHENTICATION_REQUIRED")
-    start = time.monotonic()
-    registry = request.app.state.mount_registry
-    plan = compile_blueprint(body.intent, registry.list_packages())
-    plan["pipeline"] = blueprint_to_pipeline(plan)
-    plan["python"] = compile_pipeline(plan["pipeline"])
-    plan["compile_ms"] = round((time.monotonic() - start) * 1000, 2)
-    plan["compiled_at"] = datetime.now(timezone.utc).isoformat()
-    return plan
-
-
-class PipelineCompileRequest(BaseModel):
-    graph: dict[str, Any]
+def compile_moved():
+    return _moved("/api/abide/v1/blueprint/compile")
 
 
 @router.post("/pipeline/compile")
-def compile_pipeline_graph(body: PipelineCompileRequest, request: Request):
-    """Recompile an edited canvas graph into governed Python (instant, no persistence)."""
-    principal = request.scope.get("auth_principal")
-    if not isinstance(principal, str) or not principal:
-        raise HTTPException(status_code=401, detail="AUTHENTICATION_REQUIRED")
-    nodes = body.graph.get("nodes")
-    if not isinstance(nodes, list) or len(nodes) > 500:
-        raise HTTPException(status_code=422, detail="graph.nodes must be a list of at most 500 nodes")
-    return compile_pipeline(body.graph)
+def pipeline_compile_moved():
+    return _moved("/api/abide/v1/pipeline/compile")
