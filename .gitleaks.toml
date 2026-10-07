@@ -1,0 +1,12 @@
+# Default gitleaks rules, plus two narrow allowlist entries.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Shared permit/redeem contract vector: TEST-ONLY keys derived from public strings, deliberately published so cappo-backend and demo-arena can prove byte-for-byte agreement. Never used outside these tests; real permit keys come from each environment's secrets."
+paths = ['''(^|/)tests/fixtures/redeem_contract_vector_v1_TEST_ONLY_KEYS\.json$''']
+
+[[allowlists]]
+description = "Python type annotations naming an Ed25519 key class (e.g. 'signing_key: Ed25519PrivateKey'), not key material."
+regexTarget = "match"
+regexes = ['''(?i)key:\s*(Ed25519PrivateKey|Ed25519PublicKey)\b''']
