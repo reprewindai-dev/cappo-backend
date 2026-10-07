@@ -1425,7 +1425,10 @@ class MountRegistry:
         def invoke_effect(**_: object) -> object:
             nonlocal invoked_here
             invoked_here = True
-            return adapter.dispatch(self._with_permit(context, record.mount.id))
+            # target_ref here is the key the adapter is registered under in CAPPO's own
+            # configuration (resolve() above refuses anything unregistered), so the
+            # permit is bound to the target CAPPO is actually dispatching to.
+            return adapter.dispatch(self._with_permit(context, record.mount.id, target_ref))
 
         try:
             # CAPPO's binding is the sole owner of authorization and execution.
@@ -1541,8 +1544,11 @@ class MountRegistry:
                 )
         return AnchorResult("not_applicable", detail="already terminated; no local termination event found")
 
-    def _with_permit(self, context: ConsequenceContext, mount_id: str) -> ConsequenceContext:
-        """Attach a permit factory to a dispatch context (no-op when permits are unconfigured)."""
+    def _with_permit(self, context: ConsequenceContext, mount_id: str, target_ref: str) -> ConsequenceContext:
+        """Attach a permit factory to a dispatch context (no-op when permits are unconfigured).
+
+        The permit is bound to ``target_ref``, the registered target being dispatched to.
+        """
         from dataclasses import replace
 
         from .permits import mint_permit, payload_digest, permit_key
@@ -1566,6 +1572,7 @@ class MountRegistry:
                 mount_id=mount_id,
                 receipt_id=latest,
                 payload_sha256=payload_digest(payload),
+                target_ref=target_ref,
             )
 
         return replace(context, permit_for=permit_for)
@@ -1577,21 +1584,24 @@ class MountRegistry:
         payload_sha256: str,
         *,
         sink_ref: str | None = None,
+        target_signature: str | None = None,
     ) -> tuple[Decision, str]:
         """A target asks, immediately before committing: is this consequence still authorized?
 
         Decided under the mount row lock that terminate() takes, so a redemption either
         commits before the fence (terminate then waits for the started consequence to
-        settle) or is refused after it. ALLOW requires: a live, unexpired mount; the
-        operation in STARTED (CAPPO itself dispatched it); a permit matching this exact
-        payload; and no earlier redemption. Possession of a permit, of the target's own
-        credentials, or of state copied before revocation is not enough.
+        settle) or is refused after it. ALLOW requires: an authenticated target (its
+        Ed25519 signature over this redemption verifies against the key pinned for it in
+        CAPPO's target configuration); a live, unexpired mount; the operation in STARTED
+        (CAPPO itself dispatched it); a permit matching this exact payload AND this
+        authenticated target; and no earlier redemption. Possession of a permit, of the
+        target's own credentials, or of state copied before revocation is not enough.
         """
         from sqlalchemy.exc import IntegrityError
 
         from cappo_backend.models.consequence_redemption import ConsequenceRedemption
 
-        from .permits import permit_key, permit_matches
+        from .permits import permit_key, permit_matches, redeem_message, target_signature_valid
 
         db = self._db()
 
@@ -1614,6 +1624,20 @@ class MountRegistry:
         key = permit_key(self.settings)
         if key is None:
             return refuse("permits_not_configured")
+
+        # Who is redeeming? Only a target registered in CAPPO's own configuration, with a
+        # pinned key, proving possession of that key for this exact redemption.
+        if not sink_ref:
+            return refuse("target_identity_required")
+        target = self.target_adapters.resolve(sink_ref)
+        pinned_key = getattr(target, "redeem_public_key_hex", None) if target is not None else None
+        if not pinned_key:
+            return refuse("target_not_registered_for_redemption")
+        signed = redeem_message(
+            operation_id=operation_id, payload_sha256=payload_sha256, permit=permit, target_ref=sink_ref
+        )
+        if not target_signature_valid(pinned_key, target_signature or "", signed):
+            return refuse("target_signature_invalid")
 
         first = db.execute(
             select(ConsequenceExecutionEvent)
@@ -1651,6 +1675,8 @@ class MountRegistry:
             mount_id=mount_id,
             receipt_id=latest.receipt_id,
             payload_sha256=payload_sha256,
+            # The authenticated target: a permit minted for any other target fails here.
+            target_ref=sink_ref,
         ):
             return refuse("permit_mismatch", record)
 

@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     # Capability discovery and signed beacon publication.
     capability_packages_json: str | None = None
     capability_effect_record_root: str | None = None
+    # JSON list of {"ref", "apply_url", "actions"?}: external targets that redeem
+    # CAPPO permits before committing (capability_mount/http_target.py).
+    cappo_http_targets: str | None = None
     biscuit_root_private_key_hex: str | None = None
     # Default to a home-anchored absolute path so the file location is
     # deterministic regardless of the process working directory.  A relative

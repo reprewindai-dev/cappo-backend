@@ -716,9 +716,12 @@ def redeem_consequence(
 ) -> RedeemResponse:
     """Target-side authority check: called by a target immediately before it commits.
 
-    The caller is a target, not a user, so there is no session: the permit (bound to the
-    operation and to the exact payload) is what is presented, and it only ever answers
-    whether CAPPO's own dispatched, still-authorized consequence may commit now.
+    The caller is a target, not a user, so there is no session. The target identifies
+    itself (sink_ref) and proves it with an Ed25519 signature over this redemption in
+    X-Veklom-Target-Signature, verified against the key pinned for it in CAPPO's
+    target configuration. The permit is bound to the operation, the exact payload and
+    that target, and it only ever answers whether CAPPO's own dispatched,
+    still-authorized consequence may commit now, at this target.
     """
     registry = _build_registry(request, db)
     decision, reason = registry.redeem_consequence(
@@ -726,5 +729,6 @@ def redeem_consequence(
         body.permit,
         body.payload_sha256,
         sink_ref=body.sink_ref,
+        target_signature=request.headers.get("x-veklom-target-signature"),
     )
     return RedeemResponse(decision=decision, reason=reason, operation_id=body.operation_id)
