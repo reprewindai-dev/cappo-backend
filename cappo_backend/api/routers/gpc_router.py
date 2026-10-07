@@ -1,22 +1,24 @@
 """Governed Plan Compiler (GPC) router.
 
 Stats are read from real GovernedRun DB rows.
-Compile endpoint runs the intent through the real governance service.
+Compile turns an intent into a deterministic blueprint against the live
+capability catalog (cappo_backend.blueprint.compiler). It never grants authority.
 No random data.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 import time
-import uuid
 from datetime import datetime, timezone
+from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from cappo_backend.blueprint.codegen import blueprint_to_pipeline, compile_pipeline
+from cappo_backend.blueprint.compiler import compile_blueprint
 from cappo_backend.db.session import get_session
 from cappo_backend.models.governed_run import GovernedRun
 
@@ -61,84 +63,43 @@ def get_stats(db: Session = Depends(get_session)):
     }
 
 
+class CompileRequest(BaseModel):
+    intent: str = Field(min_length=1, max_length=2000)
+
+
 @router.post("/compile")
-async def compile_plan(request: Request, db: Session = Depends(get_session)):
-    """Compile a governed plan.
+def compile_plan(body: CompileRequest, request: Request):
+    """Compile an intent into a reviewable blueprint against the live capability catalog.
 
-    Validates intent against the governance service and returns a deterministic
-    plan graph with a real SHA-256 proof hash. No sleep(), no random data.
+    Replaces a template that returned the same three nodes (one labelled
+    "quantum") and ``policy_result: "approved"`` for any intent. The blueprint
+    grants nothing: it reports which steps a mount could cover, which the catalog
+    blocks, and which nothing covers. Deterministic for a given intent and catalog.
     """
+    principal = request.scope.get("auth_principal")
+    if not isinstance(principal, str) or not principal:
+        raise HTTPException(status_code=401, detail="AUTHENTICATION_REQUIRED")
     start = time.monotonic()
-    data = await request.json()
-    intent = data.get("intent", "Unknown intent")
-    compliance = data.get("compliance", [])
-    provider = data.get("provider", "gemini")
-    model = data.get("model", "gemini-2.5-flash")
+    registry = request.app.state.mount_registry
+    plan = compile_blueprint(body.intent, registry.list_packages())
+    plan["pipeline"] = blueprint_to_pipeline(plan)
+    plan["python"] = compile_pipeline(plan["pipeline"])
+    plan["compile_ms"] = round((time.monotonic() - start) * 1000, 2)
+    plan["compiled_at"] = datetime.now(timezone.utc).isoformat()
+    return plan
 
-    # Build canonical plan deterministically from the intent
-    plan_id = f"plan_{uuid.uuid4().hex[:16]}"
 
-    nodes = [
-        {
-            "id": "node_parse",
-            "type": "standard",
-            "description": f"Parse intent: {intent[:80]}",
-            "policy_tag": "execution",
-            "entropy": round(len(intent) / 1000, 4),
-        },
-        {
-            "id": "node_compliance",
-            "type": "quantum",
-            "description": (
-                f"Apply {', '.join(compliance)} compliance constraints"
-                if compliance else "Apply default governance constraints"
-            ),
-            "policy_tag": "compliance",
-            "entropy": round(len(compliance) / 10, 4),
-        },
-        {
-            "id": "node_route",
-            "type": "standard",
-            "description": f"Route to {provider}/{model}",
-            "policy_tag": "routing",
-            "entropy": 0.1,
-        },
-    ]
+class PipelineCompileRequest(BaseModel):
+    graph: dict[str, Any]
 
-    # Real SHA-256 proof hash derived from the plan content
-    plan_content = {
-        "plan_id": plan_id,
-        "intent": intent,
-        "compliance": compliance,
-        "provider": provider,
-        "model": model,
-        "nodes": nodes,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    proof_hash = "0x" + hashlib.sha256(
-        json.dumps(plan_content, sort_keys=True).encode()
-    ).hexdigest()
 
-    elapsed_ms = (time.monotonic() - start) * 1000
-
-    return {
-        "id": plan_id,
-        "name": f"GPC Plan ({provider}/{model})",
-        "intent": intent,
-        "graph": {
-            "nodes": nodes,
-            "edges": [
-                {"from": "node_parse", "to": "node_compliance"},
-                {"from": "node_compliance", "to": "node_route"},
-            ],
-        },
-        "status": "compiled",
-        "policy_result": "approved",
-        "compliance": compliance,
-        "provider": provider,
-        "model": model,
-        "createdAt": datetime.now(timezone.utc).isoformat(),
-        "decision_frame_id": f"df_{uuid.uuid4().hex[:16]}",
-        "proof_hash": proof_hash,
-        "compile_ms": round(elapsed_ms, 2),
-    }
+@router.post("/pipeline/compile")
+def compile_pipeline_graph(body: PipelineCompileRequest, request: Request):
+    """Recompile an edited canvas graph into governed Python (instant, no persistence)."""
+    principal = request.scope.get("auth_principal")
+    if not isinstance(principal, str) or not principal:
+        raise HTTPException(status_code=401, detail="AUTHENTICATION_REQUIRED")
+    nodes = body.graph.get("nodes")
+    if not isinstance(nodes, list) or len(nodes) > 500:
+        raise HTTPException(status_code=422, detail="graph.nodes must be a list of at most 500 nodes")
+    return compile_pipeline(body.graph)
