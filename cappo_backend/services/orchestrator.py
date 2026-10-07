@@ -491,6 +491,9 @@ class RunOrchestrator:
         outcome_hash = sha256_json({"state": RunState.EXECUTED.value, "result": result})
         pre_cert_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
         governance_decision = _require_governance_decision(run)
+        # The model the executor actually used, if it reported one. Surfaced as
+        # accountable provenance in the post-execution attestation; never invented.
+        model_used = result.get("model") if isinstance(result, dict) else None
 
         params = PostCertificateParams(
             pre_certificate_id=pre_cert_id,
@@ -508,6 +511,7 @@ class RunOrchestrator:
             output_hash=output_hash,
             outcome_hash=outcome_hash,
             input_hash=run.hashes.get("input_hash"),
+            model_used=model_used if isinstance(model_used, str) else None,
         )
         post_cert = self._pgl.mint_post_certificate(params)
 

@@ -340,27 +340,53 @@ class GnomledgerPGLAdapter:
             logger.warning("Failed to get trust score from gnomledger for %s: %s", agent_id, e)
             return 0.0
 
+    def _provenance(self, params: PreCertificateParams | PostCertificateParams) -> dict[str, Any]:
+        """Genuine provenance CAPPO holds for this run — never fabricated.
+
+        Carries what recorded the event (this CAPPO instance's issuer identity and
+        actor) plus any provenance the caller already threaded through ``params``.
+        The gnomledger schema requires the field present; an empty provenance would
+        validate, but surfacing the real recorder is more honest.
+        """
+        provenance: dict[str, Any] = dict(params.provenance or {})
+        provenance.setdefault("issuer", self._settings.capability_beacon_issuer)
+        provenance.setdefault("recorded_by", "cappo-backend")
+        if self._settings.pgl_ledger_agent_id:
+            provenance.setdefault("ledger_agent_id", self._settings.pgl_ledger_agent_id)
+        return provenance
+
     def mint_pre_certificate(self, params: PreCertificateParams) -> PGLCertificate:
         agent_id = params.agent_id or params.run_id
         try:
             # 1. Resolve identity
             agent = self._gnomledger.validate_agent_for_execution(agent_id=agent_id)
-            
-            # 2. Append pre_execution_authorization event
+
+            # 2. Append pre_execution_authorization event. The details must satisfy
+            #    gnomledger's PreExecutionAuthorizationDetails schema in full — a
+            #    sparse payload is rejected with 422 and the attestation is lost.
             event_id = self._gnomledger.record_execution_attestation(
                 agent_id=agent.agent_id,
                 event_type="pre_execution_authorization",
                 summary=f"Execution authorization for run {params.run_id}",
                 details={
+                    "schema_version": "pgl.pre_execution_authorization.v1",
                     "run_id": params.run_id,
+                    "workspace_id": params.workspace_id,
+                    "agent_id": agent.agent_id,
                     "genome_hash": params.genome_hash,
+                    "constitution_hash": params.constitution_hash,
+                    "plan_hash": params.plan_hash,
                     "input_hash": params.input_hash,
                     "decision_frame_hash": params.decision_frame_hash,
+                    "governance_decision": params.governance_decision,
+                    "risk_tier": params.risk_tier,
                     "approved_budget_cents": params.approved_budget_cents,
                     "reserve_cents": params.reserve_cents,
+                    "actor_id": params.actor_id,
+                    "provenance": self._provenance(params),
                 }
             )
-            
+
             # 3. Return execution certificate
             cert = self._to_pgl_certificate(agent)
             cert.certificate_id = event_id  # Unique CAPPO execution certificate ID
@@ -374,17 +400,30 @@ class GnomledgerPGLAdapter:
             raise
 
     def mint_post_certificate(self, params: PostCertificateParams) -> PGLCertificate:
+        agent_id = params.agent_id or params.run_id
         try:
+            # The post attestation must satisfy gnomledger's
+            # PostExecutionAttestationDetails schema in full. pre_authorization_event_id
+            # is the event_id gnomledger returned for the pre event — threaded here via
+            # params.pre_certificate_id (which mint_pre_certificate set to that event_id).
+            details = {
+                "schema_version": "pgl.post_execution_attestation.v1",
+                "run_id": params.run_id,
+                "agent_id": agent_id,
+                "pre_authorization_event_id": params.pre_certificate_id,
+                "output_hash": params.output_hash,
+                "outcome_hash": params.outcome_hash,
+                "governance_decision": params.governance_decision,
+                "actor_id": params.actor_id,
+                "provenance": self._provenance(params),
+            }
+            if params.model_used:
+                details["model_used"] = params.model_used
             self._gnomledger.record_execution_attestation(
-                agent_id=params.agent_id or params.run_id,
+                agent_id=agent_id,
                 event_type="post_execution_attestation",
                 summary=f"Execution attestation for run {params.run_id}",
-                details={
-                    "run_id": params.run_id,
-                    "execution_id": params.pre_certificate_id,
-                    "outcome_hash": params.outcome_hash,
-                    "output_hash": params.output_hash,
-                }
+                details=details,
             )
         except Exception as e:
             logger.warning("Failed to record execution attestation to gnomledger for %s: %s", params.run_id, e)

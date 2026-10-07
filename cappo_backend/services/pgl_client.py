@@ -58,6 +58,9 @@ class PostCertificateParams:
     agent_id: str | None = None
     input_hash: str | None = None
     provenance: dict[str, Any] | None = None
+    # Identifier of the model that actually executed the task, threaded from the
+    # run result so the post-attestation can carry accountable model provenance.
+    model_used: str | None = None
 
 
 class PGLPersistenceError(RuntimeError):
