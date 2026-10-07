@@ -123,6 +123,10 @@ class ExecResponse(BaseModel):
     execution_id: str | None = None
     capability_lease: dict[str, Any] | None = None
     authority_envelope: dict[str, Any] | None = None
+    # Real PGL ledger identifiers recorded for this run. Lets a client fetch the
+    # persisted evidence event (GET /ledger/events/{event_id}) and verify it against
+    # the canonical ledger. Contains only identifiers CAPPO genuinely recorded.
+    pgl: dict[str, Any] | None = None
     links: dict[str, Any] | None = None
 
 
@@ -400,6 +404,29 @@ async def _seal_terminal_eee(
     seal["eee"] = envelope
     orchestrator.record_evidence_seal(run, seal)
     return envelope
+
+
+def _pgl_block(run: Any) -> dict[str, Any] | None:
+    """Surface the PGL ledger identifiers CAPPO recorded for this run.
+
+    These are the real references a client uses to retrieve and independently verify
+    the persisted evidence event against the canonical ledger. Never fabricated:
+    absent identifiers are simply omitted and the block is None when nothing recorded.
+    """
+    identity = (getattr(run, "pgl_identity", None) or {}) if run is not None else {}
+    block = {
+        key: identity.get(key)
+        for key in (
+            "pre_execution_certificate_id",
+            "post_execution_certificate_id",
+            "capi_evidence_event_id",
+        )
+        if identity.get(key)
+    }
+    if not block:
+        return None
+    block["persisted"] = bool(identity.get("persisted", False))
+    return block
 
 
 def _resolve_capability_lease(
@@ -842,6 +869,7 @@ async def governed_exec(
             else None
         ),
         authority_envelope=result.get("authority_envelope"),
+        pgl=_pgl_block(run),
         links={
             "audit": {
                 "href": f"/api/v1/gpc/audit/{run.run_id if run else 'unknown'}",

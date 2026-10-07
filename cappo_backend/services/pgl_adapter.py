@@ -419,7 +419,7 @@ class GnomledgerPGLAdapter:
             }
             if params.model_used:
                 details["model_used"] = params.model_used
-            self._gnomledger.record_execution_attestation(
+            post_event_id = self._gnomledger.record_execution_attestation(
                 agent_id=agent_id,
                 event_type="post_execution_attestation",
                 summary=f"Execution attestation for run {params.run_id}",
@@ -434,7 +434,10 @@ class GnomledgerPGLAdapter:
             return self._local.mint_post_certificate(params)
 
         return PGLCertificate(
-            certificate_id=str(params.pre_certificate_id),
+            # The gnomledger event_id for the post attestation — the real ledger
+            # reference a client can retrieve and verify. Falls back to the pre
+            # event_id only if the ledger returned no id.
+            certificate_id=str(post_event_id or params.pre_certificate_id),
             run_id=params.run_id,
             workspace_id=params.workspace_id,
             genome_hash=params.genome_hash,
