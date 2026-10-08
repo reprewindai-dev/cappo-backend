@@ -20,19 +20,20 @@ from cappo_backend.capability_mount.service import (
     AnchorResult,
     MountRegistry,
 )
-from cappo_backend.db.session import SessionLocal
 from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.substrate import PGLProducer, PGLSubject, PGLUnifiedLifecycleEvent
 
 
 @pytest.fixture
-def db_session() -> Session:
-    session = SessionLocal()
+def db_session(db: Session) -> Session:
+    # The shared conftest `db` fixture is the in-memory test database with every table
+    # created. These tests used the app's SessionLocal, which has no tables under test,
+    # so all six failed at setup ("no such table: capability_leases") and never reached
+    # their substrate assertions.
     try:
-        yield session
+        yield db
     finally:
-        session.rollback()
-        session.close()
+        db.rollback()
 
 @pytest.fixture
 def registry(db_session: Session, tmp_path) -> MountRegistry:
