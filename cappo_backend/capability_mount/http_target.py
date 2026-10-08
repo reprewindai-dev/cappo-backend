@@ -33,6 +33,10 @@ _OPS = {"record.insert": "insert", "record.modify": "modify", "record.delete": "
 class HttpTargetAdapter:
     """POSTs ``{operation_id, op, record_id, fields}`` to the target's /apply."""
 
+    # Its actions are all writes, but it can still return the target's own public
+    # state summary (read_state), so CAPPO's target-state route may call it.
+    state_readable = True
+
     def __init__(
         self,
         ref: str,

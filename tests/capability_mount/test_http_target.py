@@ -94,3 +94,50 @@ def test_config_loader_carries_the_pinned_key():
     assert adapter.ref == "arena.protected-dataset"
     assert adapter.redeem_public_key_hex == "ab" * 32
     assert adapter.actions == frozenset({"record.modify"})
+
+
+def test_target_state_route_reads_a_write_only_http_target(client):
+    """The arena maps only writes; CAPPO's readback route must still return its /state.
+
+    Found in the 2026-10-07 UI dry run: the route required a ".read" action and
+    answered 400 target_not_readable for every HTTP target.
+    """
+    from cappo_backend.capability_mount.effects import TargetAdapterRegistry
+    from tests.capability_mount.test_terminate_fence import ConfirmedAnchor, records_package
+
+    statement = {"records": 100, "dataset_sha256": "d" * 64, "log_head": {"seq": 3, "hash": "h" * 64}}
+
+    class S(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def do_GET(self):
+            raw = json.dumps(statement).encode()
+            self.send_response(200 if self.path == "/state" else 404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), S)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        registry = client.app.state.mount_registry
+        registry.register_package(records_package())
+        registry.anchor = ConfirmedAnchor()
+        registry.target_adapters = TargetAdapterRegistry()
+        registry.target_adapters.register(
+            "unit.http", HttpTargetAdapter("unit.http", f"http://127.0.0.1:{server.server_address[1]}/apply",
+                                           ["record.modify"]))
+        client.headers["X-Workspace-ID"] = "w1"
+        mount = client.post("/v1/capability/mounts", json={
+            "package_ref": "records@v1", "execution_scope": {"workspace": "w1", "project": "p1"},
+            "requested_action_scope": {"reads": [], "writes": ["record.create"]}, "ttl_seconds": 300}).json()
+
+        r = client.get("/v1/capability/targets/unit.http/state",
+                       params={"resource": "42", "mount_id": mount["mount"]["id"]})
+
+        assert r.status_code == 200, r.text
+        assert r.json()["state"] == statement  # the target's own statement, verbatim
+    finally:
+        server.shutdown()

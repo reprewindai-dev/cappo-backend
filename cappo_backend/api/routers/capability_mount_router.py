@@ -418,6 +418,9 @@ def read_target_state(
         (candidate for candidate in sorted(adapter.actions) if candidate.endswith(".read")),
         None,
     )
+    if read_action is None and getattr(adapter, "state_readable", False):
+        # A write-only target that still publishes its own state summary (HTTP targets).
+        read_action = "target.state"
     if read_action is None:
         raise HTTPException(status_code=400, detail="target_not_readable")
 
