@@ -99,6 +99,8 @@ class GovernedCounterAdapter(TargetAdapter):
     """Sandbox reference capability for one-step governed counter mutations."""
 
     ref = "activation.governed-counter"
+    # State is keyed by (workspace, project, resource): sandbox never touches live counters.
+    project_isolated = True
     actions = frozenset({"counter.read", "counter.increment", "counter.reset"})
 
     def __init__(self, root: str | Path) -> None:
