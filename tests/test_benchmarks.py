@@ -24,8 +24,15 @@ def test_provider_row_reports_only_measured_values() -> None:
     row = _build_provider_data("gemini", run_count=10, avg_lat=120.0, error_run_count=1)
     assert row["measured"] is True
     assert row["runCount"] == 10
-    assert row["sla"] == 90.0
-    assert row["uptime24h"] == 90.0
+    # Observed success is reported as an observation, never as an SLA or uptime figure.
+    assert row["sla"] is None
+    assert row["uptime24h"] is None
+    assert row["observedSuccess"] == {
+        "succeeded": 9,
+        "attempts": 10,
+        "percent": 90.0,
+        "basis": "governed runs recorded by this Veklom deployment",
+    }
     assert row["complianceLabels"] == []
     assert row["p50"] == 120.0
 

@@ -267,13 +267,21 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
         "p50": round(avg_lat, 1) if avg_lat > 0 else seed["p50"],
         "p95": round(avg_lat * 1.25, 1) if avg_lat > 0 else seed["p95"],
         "p99": round(avg_lat * 1.4, 1) if avg_lat > 0 else seed["p99"],
-        "sla": real_uptime,
+        # An SLA is a provider's commitment and uptime needs continuous monitoring; Veklom has
+        # neither. It reports only what it observed: successes out of governed-run attempts.
+        "sla": None,
         "drift": seed["drift"],
         "sovereignTier": seed["sovereignTier"],
         # Veklom does not certify providers; compliance labels are never asserted here.
         "complianceLabels": [],
         "measured": True,
         "runCount": run_count,
+        "observedSuccess": {
+            "succeeded": run_count - error_run_count,
+            "attempts": run_count,
+            "percent": real_uptime,
+            "basis": "governed runs recorded by this Veklom deployment",
+        },
         "govScore": gov_score,
         "devScore": dev_score,
         "endpointUrl": seed["endpointUrl"],
@@ -281,7 +289,7 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
         "mcpSchema": seed["mcpSchema"],
         "provider": seed["provider"],
         "throughput": int(seed["throughput"] * (1 - error_rate)),
-        "uptime24h": real_uptime,
+        "uptime24h": None,
         "totalStaked": seed["totalStaked"],
         "status": status_str,
     }
