@@ -1,8 +1,8 @@
 """Benchmarks router — API Trust Rankings derived from real execution data.
 
 Aggregates GovernedRun execution statistics by provider to produce a live
-leaderboard. Falls back to seed data when no runs exist yet, but that seed
-data is clearly marked and will be replaced as real runs accumulate.
+leaderboard. Only providers with governed runs are listed, and only measured
+values are reported: an empty board means nothing has been measured yet.
 """
 
 from __future__ import annotations
@@ -255,11 +255,10 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
     dev_score = max(0, int(seed["devScore"] * trust_score_pct - latency_penalty))
 
     # sla and uptime as percentages (99.95 not 0.9995) for VNP frontend
+    # Only measured values are reported: the success rate observed across this provider's
+    # governed runs. No seed baseline is blended in and no SLA is asserted on the provider's behalf.
     real_uptime = round((1 - error_rate) * 100, 2)
-    alpha = min(1.0, run_count / 100.0)
-    blended_uptime = alpha * real_uptime + (1 - alpha) * seed["uptime24h"]
-    blended_sla = seed["sla"]
-    status_str = "Excellent" if blended_uptime >= 99.9 else "Nominal" if blended_uptime >= 99.0 else "Degraded"
+    status_str = "Excellent" if real_uptime >= 99.9 else "Nominal" if real_uptime >= 99.0 else "Degraded"
 
     return {
         "id": provider_key,
@@ -268,10 +267,13 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
         "p50": round(avg_lat, 1) if avg_lat > 0 else seed["p50"],
         "p95": round(avg_lat * 1.25, 1) if avg_lat > 0 else seed["p95"],
         "p99": round(avg_lat * 1.4, 1) if avg_lat > 0 else seed["p99"],
-        "sla": round(blended_sla, 2),
+        "sla": real_uptime,
         "drift": seed["drift"],
         "sovereignTier": seed["sovereignTier"],
-        "complianceLabels": seed["complianceLabels"],
+        # Veklom does not certify providers; compliance labels are never asserted here.
+        "complianceLabels": [],
+        "measured": True,
+        "runCount": run_count,
         "govScore": gov_score,
         "devScore": dev_score,
         "endpointUrl": seed["endpointUrl"],
@@ -279,37 +281,11 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
         "mcpSchema": seed["mcpSchema"],
         "provider": seed["provider"],
         "throughput": int(seed["throughput"] * (1 - error_rate)),
-        "uptime24h": round(blended_uptime, 2),
+        "uptime24h": real_uptime,
         "totalStaked": seed["totalStaked"],
         "status": status_str,
     }
 
-
-def _fill_missing_seed_providers(real_providers: dict[str, dict]) -> None:
-    for key, seed in _PROVIDER_SEED.items():
-        if key not in real_providers:
-            real_providers[key] = {
-                "id": key,
-                "name": seed["name"],
-                "category": seed["category"],
-                "p50": seed["p50"],
-                "p95": seed["p95"],
-                "p99": seed["p99"],
-                "sla": seed["sla"],
-                "drift": seed["drift"],
-                "sovereignTier": seed["sovereignTier"],
-                "complianceLabels": seed["complianceLabels"],
-                "govScore": seed["govScore"],
-                "devScore": seed["devScore"],
-                "endpointUrl": seed["endpointUrl"],
-                "description": seed["description"],
-                "mcpSchema": seed["mcpSchema"],
-                "provider": seed["provider"],
-                "throughput": seed["throughput"],
-                "uptime24h": seed["uptime24h"],
-                "totalStaked": seed["totalStaked"],
-                "status": seed["status"],
-            }
 
 
 @router.get("/leaderboard")
@@ -334,8 +310,8 @@ async def get_leaderboard(db: Session = Depends(get_unscoped_session)):
             provider_key, run_count, avg_lat, error_run_count
         )
 
-    # Fill in seed providers not yet seen in real runs
-    _fill_missing_seed_providers(real_providers)
+    # Providers with no governed runs are not listed. Seed rows used to fill the board,
+    # which published unmeasured SLAs and compliance labels as if observed (2026-10-08).
 
     # Sort by overall trust score derived from gov + dev + compliance
     def Math_round_trust(val):

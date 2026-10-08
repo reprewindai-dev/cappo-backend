@@ -8,18 +8,26 @@ def test_leaderboard_endpoint(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
-    assert len(data) >= 5
-    first_item = data[0]
-    # Check that it's a flat BenchApi structure
-    assert "id" in first_item
-    assert "name" in first_item
-    assert "govScore" in first_item
-    assert "devScore" in first_item
-    assert "sovereignTier" in first_item
-    assert "complianceLabels" in first_item
-    assert "p50" in first_item
-    assert "p95" in first_item
-    assert "p99" in first_item
+    # Only measured providers are listed; unmeasured seed rows are never published.
+    for item in data:
+        assert item["measured"] is True
+        assert item["runCount"] > 0
+        assert item["complianceLabels"] == []
+        for field in ("id", "name", "govScore", "devScore", "sovereignTier", "p50", "p95", "p99"):
+            assert field in item
+
+
+def test_provider_row_reports_only_measured_values() -> None:
+    from cappo_backend.api.routers.benchmarks_router import _build_provider_data
+
+    # 10 governed runs, 1 failed: the board reports the observed 90% and nothing it did not see.
+    row = _build_provider_data("gemini", run_count=10, avg_lat=120.0, error_run_count=1)
+    assert row["measured"] is True
+    assert row["runCount"] == 10
+    assert row["sla"] == 90.0
+    assert row["uptime24h"] == 90.0
+    assert row["complianceLabels"] == []
+    assert row["p50"] == 120.0
 
 
 def test_staking_markets_endpoint(client: TestClient) -> None:
