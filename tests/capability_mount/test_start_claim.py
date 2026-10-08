@@ -102,13 +102,43 @@ def test_revoked_after_the_claim_the_result_is_still_refused(
     assert adapter.invocation_count == 0
 
 
-def test_one_claim_per_mount_even_for_the_same_operation(client: TestClient, tmp_path: Path) -> None:
+def test_one_claim_per_mount_and_a_retry_of_the_same_claim_is_idempotent(client: TestClient, tmp_path: Path) -> None:
     _setup(client, tmp_path)
     body = _mount(client)
     assert _claim(client, body, "job-1")["decision"] == "allow"
 
-    assert _claim(client, body, "job-1")["reason"] == "start_already_claimed"  # re-dispatch
-    assert _claim(client, body, "job-2")["reason"] == "start_already_claimed"
+    # The first response was lost; the same operation asks again and learns its claim stands.
+    replay = _claim(client, body, "job-1")
+    assert (replay["decision"], replay["reason"]) == ("allow", "start_claim_replayed")
+    # Any other operation is refused: one claim per mount.
+    other = _claim(client, body, "job-2")
+    assert (other["decision"], other["reason"]) == ("deny", "start_already_claimed")
+
+
+def test_a_retry_after_revocation_is_refused_not_replayed(
+    client: TestClient, tmp_path: Path, db: Session
+) -> None:
+    adapter = _setup(client, tmp_path)
+    body = _mount(client)
+    assert _claim(client, body, "job-1")["decision"] == "allow"  # recorded; response "lost"
+
+    owner_terminate(db, body["mount"]["id"])  # revoked during the worker's recovery
+
+    retry = _claim(client, body, "job-1")
+    assert (retry["decision"], retry["reason"]) == ("deny", "terminated")
+    assert _commit(client, body, "job-1")["decision"] == "deny"
+    assert adapter.invocation_count == 0
+
+
+def test_a_lost_claim_response_then_retry_still_commits_exactly_once(client: TestClient, tmp_path: Path) -> None:
+    adapter = _setup(client, tmp_path)
+    body = _mount(client)
+    _claim(client, body, "job-1")  # response lost
+    assert _claim(client, body, "job-1")["reason"] == "start_claim_replayed"  # retry
+
+    assert _commit(client, body, "job-1")["decision"] == "allow"
+    assert _commit(client, body, "job-1")["decision"] == "deny"
+    assert adapter.invocation_count == 1
 
 
 def test_commit_without_a_start_claim_is_refused(client: TestClient, tmp_path: Path) -> None:

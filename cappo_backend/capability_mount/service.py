@@ -1865,8 +1865,10 @@ class MountRegistry:
         locked exactly as terminate() locks it, so a revocation either commits first (the claim
         is refused and the work never starts) or after (the claim stands; the work may finish,
         but its commit is still refused because the mount is terminated). One claim per mount:
-        a second claim, even for the same operation, is refused, so a re-dispatch cannot start
-        the work twice. The claim consumes nothing: the single-use commit stays with execute.
+        a claim for any other operation is refused. A repeated claim for the same operation is
+        answered idempotently (start_claim_replayed), so a worker whose response was lost can
+        learn its claim stands; it must keep its own durable record of whether the work started.
+        The claim consumes nothing: the single-use commit stays with execute.
         """
         db = self._db()
         row = self._row(mount_id, lock=True)
@@ -1883,6 +1885,11 @@ class MountRegistry:
                 return Decision.DENY, "token_replay"
             if token_id != row.token_id or nonce != row.token_nonce:
                 return Decision.DENY, "token_mismatch"
+            if row.start_claim_operation_id == operation_id:
+                # Idempotent: a retry after a lost response learns its claim stands. Whether the
+                # work already started is the claimant's durable record to keep (the worker's
+                # journal); revocation is checked above, so a revoked mount never replays.
+                return Decision.ALLOW, "start_claim_replayed"
             if row.start_claim_operation_id is not None:
                 return Decision.DENY, "start_already_claimed"
             row.start_claim_operation_id = operation_id
