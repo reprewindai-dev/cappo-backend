@@ -4,7 +4,11 @@ Before any work, read [`00_VEKLOM_BIBLE.md`](./00_VEKLOM_BIBLE.md).
 
 That file is the canonical Veklom cross-repo architecture/runtime contract. Repo-local source and tests govern CAPPO implementation details only when they do not conflict with current runtime evidence or the Bible.
 
-Do not infer service placement, ports, health, compliance, or production status from old docs. Production runs in Docker Desktop (WSL2) on the owner's Windows host, published through a Cloudflare tunnel. Coolify, Hetzner and Vercel are not part of Veklom; ignore older docs that say otherwise.
+Do not infer service placement, ports, health, compliance, or production status from old docs, and never use historical hosting instructions as current deployment authority. Consult the latest verified deployment record (`veklom-m1p2/backups/prod-upgrade-*/DEPLOY-RECORD.md`) before changing infrastructure.
+- **Current deployment, verified 2026-10-08:** Docker Desktop (WSL2) on the owner's Windows host, published through a Cloudflare tunnel.
+- **Owner decision (2026-10-07):** Coolify, Hetzner and Vercel are not part of Veklom. Older docs that route work to them are stale.
+
+Veklom's design stays portable (Own Your Cloud). The hosting above is today's deployment, not the architecture.
 
 ## CAPPO's role, and the three meanings of "sandbox"
 
