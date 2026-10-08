@@ -4,4 +4,14 @@ Before any work, read [`00_VEKLOM_BIBLE.md`](./00_VEKLOM_BIBLE.md).
 
 That file is the canonical Veklom cross-repo architecture/runtime contract. Repo-local source and tests govern CAPPO implementation details only when they do not conflict with current runtime evidence or the Bible.
 
-Do not infer service placement, ports, health, compliance, or production status from old docs. Use Coolify UI/API/MCP for Coolify management; SSH is for direct host/container verification or operations. Host port `8000` is currently Coolify-owned even though internal Docker port `8000` can be used behind Traefik.
+Do not infer service placement, ports, health, compliance, or production status from old docs. Production runs in Docker Desktop (WSL2) on the owner's Windows host, published through a Cloudflare tunnel. Coolify, Hetzner and Vercel are not part of Veklom; ignore older docs that say otherwise.
+
+## CAPPO's role, and the three meanings of "sandbox"
+
+CAPPO is the sole consequence authority: one bounded, single-use grant for one exact operation, with a signed receipt. Veklom is one product. The design model is in veklom-FRONTEND `docs/capability-os/DESIGN_MODEL.md`. Keep these apart:
+
+- **Customer playground** (Capability OS "Switch to sandbox"): mounts carry `execution_scope.project = "sandbox"`.
+  - It follows the same rules and code paths as live, and must never change live state.
+  - A target adapter that keeps no separate playground copy (`project_isolated` is not True) must refuse playground consequences (`target_has_no_sandbox`), never execute them against live data.
+- **Execution containment** (LockerPhycer): what a running agent can reach. It applies in playground and live alike. Going live never removes containment.
+- **Deployment test copy** (staging): tests releases of Veklom itself. It is not a customer feature.
