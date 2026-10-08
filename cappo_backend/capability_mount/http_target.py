@@ -36,6 +36,8 @@ class HttpTargetAdapter:
     # Its actions are all writes, but it can still return the target's own public
     # state summary (read_state), so CAPPO's target-state route may call it.
     state_readable = True
+    # One dataset, no project scope in the request: a sandbox mount must never reach it.
+    project_isolated = False
 
     def __init__(
         self,

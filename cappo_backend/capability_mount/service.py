@@ -49,6 +49,10 @@ from .models import (
     UnmountReason,
 )
 
+# The project scope the Capability OS sandbox mounts under (veklom-FRONTEND lib/cos/sandbox.tsx).
+# Only targets that keep state per project (``project_isolated = True``) may act for it.
+SANDBOX_PROJECT = "sandbox"
+
 GOVERNED_COUNTER_PACKAGE = CapabilityPackage(
     id="veklom.governed-counter@v1",
     family="sandbox",
@@ -1378,6 +1382,11 @@ class MountRegistry:
             return preflight_deny("unknown_effect_target", record)
         if action not in adapter.actions:
             return preflight_deny("effect_not_mapped", record)
+        if record.mount.scope.project == SANDBOX_PROJECT and not getattr(adapter, "project_isolated", False):
+            # Sandbox and live are one product with the same rules, but sandbox must never
+            # reach live state. A target that keeps no separate sandbox copy (for example an
+            # HTTP record store with one dataset) is refused rather than changed (fail closed).
+            return preflight_deny("target_has_no_sandbox", record)
         try:
             validate_resource(resource)
         except ValueError:
