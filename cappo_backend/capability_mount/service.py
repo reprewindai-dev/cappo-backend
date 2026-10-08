@@ -1370,6 +1370,13 @@ class MountRegistry:
         ):
             return preflight_deny("token_mismatch", record)
         bound_package = self.packages.get(record.token.package_ref)
+        if (
+            bound_package is not None
+            and bound_package.requires_start_claim
+            and (operation_id is None or row.start_claim_operation_id != operation_id)
+        ):
+            # The work behind this consequence had no CAPPO-recorded right to start.
+            return preflight_deny("start_not_claimed", record)
         if bound_package is not None and bound_package.target_ref and target_ref != bound_package.target_ref:
             # The package names the one target its writes act on; authority for it
             # is not authority over any other registered target.
@@ -1840,6 +1847,49 @@ class MountRegistry:
             if not in_flight or time.monotonic() >= deadline:
                 return in_flight
             time.sleep(0.02)
+
+    def claim_start(
+        self,
+        mount_id: str,
+        *,
+        token_id: str,
+        nonce: str,
+        operation_id: str,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+    ) -> tuple[Decision, str]:
+        """Atomically grant one operation the right to start work under this mount.
+
+        For packages whose work runs before its consequence (``requires_start_claim``), the
+        worker must hold this claim before it starts: no claim, no compute. The mount row is
+        locked exactly as terminate() locks it, so a revocation either commits first (the claim
+        is refused and the work never starts) or after (the claim stands; the work may finish,
+        but its commit is still refused because the mount is terminated). One claim per mount:
+        a second claim, even for the same operation, is refused, so a re-dispatch cannot start
+        the work twice. The claim consumes nothing: the single-use commit stays with execute.
+        """
+        db = self._db()
+        row = self._row(mount_id, lock=True)
+        try:
+            if row is None:
+                return Decision.DENY, "unknown_mount"
+            if not self._owned_by(row, owner_principal, owner_workspace):
+                return Decision.DENY, "owner_mismatch"
+            if row.terminated:
+                return Decision.DENY, "terminated"
+            if _utc(row.expires_at) <= utc_now():
+                return Decision.DENY, "expired"
+            if row.nonce_consumed:
+                return Decision.DENY, "token_replay"
+            if token_id != row.token_id or nonce != row.token_nonce:
+                return Decision.DENY, "token_mismatch"
+            if row.start_claim_operation_id is not None:
+                return Decision.DENY, "start_already_claimed"
+            row.start_claim_operation_id = operation_id
+            row.start_claimed_at = utc_now()
+            return Decision.ALLOW, "start_claimed"
+        finally:
+            db.commit()
 
     def terminate(
         self,

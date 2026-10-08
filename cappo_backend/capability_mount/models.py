@@ -71,6 +71,12 @@ class CapabilityPackage(ContractModel):
     # execute refuses any other target_ref, and discovery publishes it so a
     # contract can name the target without the caller inventing it.
     target_ref: str | None = Field(default=None, min_length=1)
+    # Work that runs before its consequence (e.g. a compute job whose result is then committed)
+    # must first claim an atomic, CAPPO-recorded right to start: POST .../start-claim. Execute
+    # then refuses an operation that did not claim the start (start_not_claimed). The claim takes
+    # the same mount-row lock as terminate(), so revocation lands either before the claim (the
+    # work never starts) or after it.
+    requires_start_claim: bool = False
 
     @field_validator(
         "reads",

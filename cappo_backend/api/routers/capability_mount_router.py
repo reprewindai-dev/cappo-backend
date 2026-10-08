@@ -609,6 +609,44 @@ def evaluate_action(
     )
 
 
+class StartClaimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    token_id: str = Field(min_length=1)
+    nonce: str = Field(min_length=1)
+    operation_id: str = Field(min_length=1, max_length=256)
+
+
+class StartClaimResponse(BaseModel):
+    decision: Decision
+    reason: str
+    mount_id: str
+    operation_id: str
+
+
+@router.post("/mounts/{mount_id}/start-claim", response_model=StartClaimResponse)
+def claim_start(
+    mount_id: str,
+    body: StartClaimRequest,
+    request: Request,
+    registry: MountRegistry = Depends(get_registry),
+) -> StartClaimResponse:
+    """Atomic, CAPPO-recorded right to start work whose consequence comes later.
+
+    Consumes nothing; one claim per mount; refused once the mount is terminated, expired or used.
+    """
+    principal, workspace = _caller(request)
+    decision, reason = registry.claim_start(
+        mount_id,
+        token_id=body.token_id,
+        nonce=body.nonce,
+        operation_id=body.operation_id,
+        owner_principal=principal,
+        owner_workspace=workspace,
+    )
+    return StartClaimResponse(decision=decision, reason=reason, mount_id=mount_id, operation_id=body.operation_id)
+
+
 @router.post("/mounts/{mount_id}/execute", response_model=ExecuteResponse)
 def execute_consequence(
     mount_id: str,
