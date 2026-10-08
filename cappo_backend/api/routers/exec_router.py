@@ -672,9 +672,17 @@ async def governed_exec(
 
         if lease_context is not None and lease_ref is not None:
             registry, record, principal = lease_context
+            # The resource this request will act on is fixed by the mounted package; the
+            # lease is evaluated against it, so a resource-bounded mount is enforced here too.
+            exec_resource = (
+                "activation_consequences"
+                if record.mount.package_ref == ACTIVATION_PACKAGE_ID
+                else "provider-dispatch"
+            )
             decision, reason, _anchor, detail = registry.evaluate(
                 lease_ref.mount_id,
                 body.action or "execute",
+                resource=exec_resource,
                 token_id=lease_ref.token_id,
                 nonce=lease_ref.nonce,
                 owner_principal=principal,
@@ -727,13 +735,13 @@ async def governed_exec(
             operation_id = f"exec:{record.token.execution_id}"
             if is_activation_package:
                 executor_override = ActivationTargetExecutor(db)
-                lifecycle_resource = "activation_consequences"
+                lifecycle_resource = exec_resource
                 normalized_args = {
                     "workspace_id": str(canonical_workspace),
                     "execution_id": record.token.execution_id,
                 }
             else:
-                lifecycle_resource = "provider-dispatch"
+                lifecycle_resource = exec_resource
                 normalized_args = {
                     "prompt_sha256": hashlib.sha256(
                         body.prompt.encode("utf-8")

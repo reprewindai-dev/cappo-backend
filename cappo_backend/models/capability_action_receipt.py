@@ -28,14 +28,69 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, LargeBinary, String
+from typing import Any
+
+from sqlalchemy import BigInteger, DateTime, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base
 
+# Receipt canonical-form versions. A row's version decides how its content_hash and
+# signed COSE payload are (re)computed; historical rows are never reinterpreted.
+#   v1 (NULL column): the original form, resource recorded as the placeholder "*".
+#   v2: names the actual resource, target_ref and bound-operation envelope digest.
+RECEIPT_SCHEMA_V1 = 1
+RECEIPT_SCHEMA_V2 = 2
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def receipt_canonical(row: "CapabilityActionReceipt") -> dict[str, Any]:
+    """The canonical fields a receipt's content_hash and COSE signature cover.
+
+    Derived only from stored columns, so any verifier can recompute it from the row.
+    """
+    actioned_at = row.actioned_at
+    if actioned_at.tzinfo is None:
+        actioned_at = actioned_at.replace(tzinfo=timezone.utc)
+    version = row.receipt_schema_version or RECEIPT_SCHEMA_V1
+    canonical: dict[str, Any] = {
+        "execution_id": row.execution_id,
+        "mount_id": row.mount_id,
+        "token_id": row.token_id,
+        "principal": row.principal,
+        "caller_spiffe_id": row.caller_spiffe_id,
+        "executor_spiffe_id": row.executor_spiffe_id,
+        "eei_id": row.eei_id,
+        "profile_id": row.profile_id,
+        "lease_id": row.lease_id,
+        "operator_id": row.operator_id,
+        "caller_cert_sha256": row.caller_cert_sha256,
+        "capability_id": row.capability_id,
+        "biscuit_token_sha256": row.biscuit_token_sha256,
+        "action": row.action,
+        "resource": "*",
+        "policy_version": row.policy_version,
+        "decision": row.decision,
+        "reason": row.reason,
+        "timestamp": actioned_at.isoformat(),
+        "actioned_at": actioned_at.isoformat(),
+        "result_hash": None,
+        "pgl_anchor_id": row.pgl_anchor_id,
+    }
+    if version == RECEIPT_SCHEMA_V1:
+        return canonical
+    if version != RECEIPT_SCHEMA_V2:
+        raise ValueError(f"unknown receipt schema version {version}")
+    return {
+        **canonical,
+        "receipt_schema_version": RECEIPT_SCHEMA_V2,
+        "resource": row.resource,
+        "target_ref": row.target_ref,
+        "envelope_digest": row.envelope_digest,
+    }
 
 
 class CapabilityActionReceipt(Base):
@@ -48,6 +103,12 @@ class CapabilityActionReceipt(Base):
     principal: Mapped[str] = mapped_column(String, index=True)
     action: Mapped[str] = mapped_column(String)
     resource: Mapped[str | None] = mapped_column(String, nullable=True)
+    # The target dispatched to, and the bound operation's envelope digest (operation-bound
+    # mounts only). Both are in the signed canonical receipt, so both are stored.
+    target_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    envelope_digest: Mapped[str | None] = mapped_column(String, nullable=True)
+    # NULL = v1 (historical canonical form); see receipt_canonical().
+    receipt_schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     decision: Mapped[str] = mapped_column(String)      # always "allow" for receipts
     reason: Mapped[str] = mapped_column(String)
     actioned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

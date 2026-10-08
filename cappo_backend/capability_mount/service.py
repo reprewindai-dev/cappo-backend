@@ -13,7 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.engine import mark_mount_revoked
-from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+from cappo_backend.models.capability_action_receipt import (
+    RECEIPT_SCHEMA_V2,
+    CapabilityActionReceipt,
+    receipt_canonical,
+)
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import (
@@ -31,6 +35,7 @@ from cappo_backend.services.mount_evidence import (
 
 from .effects import ConsequenceContext, TargetAdapterRegistry, validate_resource
 from .engine import AuditSink, ExecutionBinding, Mounter
+from .envelope import operation_envelope_digest
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
     CapabilityPackage,
@@ -56,7 +61,21 @@ GOVERNED_COUNTER_PACKAGE = CapabilityPackage(
     writes=["counter.increment"],
     blocked=["counter.reset"],
     outputs=["counter.state"],
+    target_ref="activation.governed-counter",
 )
+
+
+def _resource_in(resource: str | None, allowed: set[str]) -> bool:
+    """Effective-authority resource check: "*" is unbounded, "dir/*" an explicit
+    prefix grant, anything else an exact name ("42" never covers "420")."""
+    if "*" in allowed:
+        return True
+    if resource is None:
+        return False
+    return any(
+        resource == bound or (bound.endswith("/*") and resource.startswith(bound[:-1]))
+        for bound in allowed
+    )
 
 
 class DatabaseAuditSink(AuditSink):
@@ -277,6 +296,7 @@ class MountRegistry:
                 suppression_evidence=str(kwargs.get("suppression_evidence")) if "suppression_evidence" in kwargs else None,
                 suppression_confirmed=bool(kwargs.get("suppression_confirmed")),
                 spiffe_fields=kwargs.get("spiffe_fields"),
+                target_ref=str(kwargs.get("target_ref")) if kwargs.get("target_ref") is not None else None,
             )
             receipt_id = (detail or {}).get("receipt_id")
 
@@ -717,8 +737,11 @@ class MountRegistry:
                 writes=token.grants.writes,
                 execution_id=token.execution_id,
                 ttl_seconds=token.ttl_seconds,
+                # The bounds go into the signed token itself, not only into metadata.
+                resources=token.grants.resources or None,
                 revocation_scope=revocation_scope,
                 revocation_epoch=revocation_epoch,
+                envelope_digest=token.grants.envelope_digest,
             )
             token = token.model_copy(update={"biscuit_token": biscuit_token})
                 
@@ -781,7 +804,7 @@ class MountRegistry:
             expires_at=token.expires_at,
             lease_state=LeaseState.ACTIVE.value,
             allowed_actions=set(token.grants.reads + token.grants.writes + token.grants.external_send),
-            allowed_resources=set(["*"]),
+            allowed_resources=set(token.grants.resources) or {"*"},
             offline_enabled=False,
             revocation_scope=f"execution:{token.execution_id}" if token.execution_id else "workspace"
         )
@@ -836,6 +859,7 @@ class MountRegistry:
         suppression_evidence: str | None = None,
         suppression_confirmed: bool = False,
         spiffe_fields: dict[str, str | None] | None = None,
+        target_ref: str | None = None,
     ) -> tuple[Decision, str, AnchorResult, ExecutionBinding | None]:
         # ``suppression_confirmed`` remains a compatibility input only. A caller
         # boolean is never evidence and cannot satisfy the suppression gate.
@@ -962,6 +986,9 @@ class MountRegistry:
                     package_actions = set(package.reads + package.writes + package.external_send_actions)
                     p_auth = AuthorityContext(
                         allowed_actions=package_actions,
+                        # A package defines actions, not resources: it is no resource
+                        # ceiling. The bound comes from the lease and the Biscuit, and
+                        # the effective set is their intersection (checked below).
                         allowed_resources={"*"},
                         executor_spiffe_id=b_auth.executor_spiffe_id,
                         subject_spiffe_id=b_auth.subject_spiffe_id,
@@ -978,10 +1005,20 @@ class MountRegistry:
                 effective_auth = lease.evaluate_authority(b_auth, p_auth, ConnectivityState.ONLINE)
                 if action not in effective_auth.allowed_actions:
                     raise InvariantViolationError(f"Action '{action}' is not in effective authority subset: {effective_auth.allowed_actions}")
+                # extract_authority_context() reads "no allowed_resource facts" as "*".
+                # For a resource-bounded mount that would turn a missing signed bound into
+                # unlimited authority, so the signed token must carry the bound itself.
+                if record.token.grants.resources and "*" in b_auth.allowed_resources:
+                    raise InvariantViolationError("resource_bound_not_signed")
+                if not _resource_in(resource, effective_auth.allowed_resources):
+                    raise InvariantViolationError("resource_not_granted")
 
             except InvariantViolationError as e:
                 print(f"DEBUG INVARIANT: {e}")
-                reason = "lease_invariant_violation"
+                reason = (
+                    str(e) if str(e) in ("resource_not_granted", "resource_bound_not_signed")
+                    else "lease_invariant_violation"
+                )
                 anchor = self.anchor.anchor(
                     "action_decision",
                     principal=owner_principal,
@@ -1005,6 +1042,10 @@ class MountRegistry:
                     if record.binding._profile.is_blocked(action)  # noqa: SLF001
                     else "not_in_capability_profile"
                 )
+                record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
+                decision = Decision.DENY
+            elif not record.binding._profile.covers_resource(resource):  # noqa: SLF001
+                reason = "resource_not_granted"
                 record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
                 decision = Decision.DENY
             else:
@@ -1124,50 +1165,25 @@ class MountRegistry:
                 _biscuit_sha256 = hashlib.sha256(record.token.biscuit_token.encode()).hexdigest()
 
             sp = spiffe_fields or {}
-            
-            _receipt_canonical = {
-                "execution_id": record.token.execution_id,
-                "mount_id": mount_id,
-                "token_id": record.token.token_id,
-                "principal": owner_principal,
-                "caller_spiffe_id": sp.get("caller_spiffe_id"),
-                "executor_spiffe_id": sp.get("executor_spiffe_id"),
-                "eei_id": sp.get("eei_id"),
-                "profile_id": sp.get("profile_id"),
-                "lease_id": sp.get("lease_id"),
-                "operator_id": sp.get("operator_id"),
-                "caller_cert_sha256": sp.get("caller_cert_sha256"),
-                "capability_id": record.mount.package_ref,
-                "biscuit_token_sha256": _biscuit_sha256,
-                "action": action,
-                "resource": "*",
-                "policy_version": "1.0",
-                "decision": decision.value,
-                "reason": reason,
-                "timestamp": _actioned_at.isoformat(),
-                "actioned_at": _actioned_at.isoformat(),
-                "result_hash": None,
-                "pgl_anchor_id": anchor.anchor_id,
-            }
-            
-            from cappo_backend.security.evidence import (
-                get_evidence_key_pair,
-                mint_signed_execution_evidence,
-            )
-            _evidence_pk = get_evidence_key_pair()
-            _cose_bytes = mint_signed_execution_evidence(_receipt_canonical, _evidence_pk)
-            
+
+            # v2 receipt: names the resource, target and bound-operation envelope actually
+            # exercised. The canonical form is derived from the stored row itself
+            # (receipt_canonical), so content_hash and the COSE signature describe the same
+            # fact and a verifier can recompute both from durable state.
             receipt = CapabilityActionReceipt(
+                receipt_schema_version=RECEIPT_SCHEMA_V2,
                 receipt_id=f"rcpt_{anchor.anchor_id or utc_now().strftime('%Y%m%d%H%M%S%f')}",
                 execution_id=record.token.execution_id,
                 mount_id=mount_id,
                 token_id=record.token.token_id,
                 principal=owner_principal,
                 action=action,
+                resource=resource,
+                target_ref=target_ref,
+                envelope_digest=record.token.grants.envelope_digest,
                 decision=decision.value,
                 reason=reason,
                 actioned_at=_actioned_at,
-                content_hash=sha256_json(_receipt_canonical),
                 pgl_anchor_id=anchor.anchor_id,
                 pgl_anchor_status=anchor.status,
                 pgl_event_hash=anchor.external_ref,
@@ -1184,8 +1200,14 @@ class MountRegistry:
                 svid_not_after=sp.get("svid_not_after"),
                 policy_version="1.0",
                 biscuit_token_sha256=_biscuit_sha256,
-                signed_receipt_cose=_cose_bytes,
             )
+            from cappo_backend.security.evidence import (
+                get_evidence_key_pair,
+                mint_signed_execution_evidence,
+            )
+            _receipt_canonical = receipt_canonical(receipt)
+            receipt.content_hash = sha256_json(_receipt_canonical)
+            receipt.signed_receipt_cose = mint_signed_execution_evidence(_receipt_canonical, get_evidence_key_pair())
             # NOTE: Consequence lifecycle (AUTHORIZED→STARTED→SUCCEEDED|FAILED|OUTCOME_UNKNOWN)
             # is tracked via ConsequenceExecutionEvent append-only events, NOT on this receipt.
             # This receipt is immutable authorization evidence only.
@@ -1343,6 +1365,14 @@ class MountRegistry:
             and (token_id != row.token_id or nonce != row.token_nonce)
         ):
             return preflight_deny("token_mismatch", record)
+        bound_package = self.packages.get(record.token.package_ref)
+        if bound_package is not None and bound_package.target_ref and target_ref != bound_package.target_ref:
+            # The package names the one target its writes act on; authority for it
+            # is not authority over any other registered target.
+            return preflight_deny("target_not_bound_to_package", record)
+        envelope_reason = self._envelope_refusal(record, target_ref, action, resource, arguments)
+        if envelope_reason is not None:
+            return preflight_deny(envelope_reason, record)
         adapter = self.target_adapters.resolve(target_ref)
         if adapter is None:
             return preflight_deny("unknown_effect_target", record)
@@ -1543,6 +1573,40 @@ class MountRegistry:
                     detail=f"terminated earlier ({payload.get('reason')}); anchored at that time",
                 )
         return AnchorResult("not_applicable", detail="already terminated; no local termination event found")
+
+    @staticmethod
+    def _envelope_refusal(
+        record: MountRecord,
+        target_ref: str,
+        action: str,
+        resource: str,
+        arguments: dict[str, Any],
+    ) -> str | None:
+        """For an envelope-bound mount, the request must hash to the bound operation.
+
+        Checked against the grants and, when the mount carries one, against the
+        signed Biscuit's ``allowed_envelope``: metadata alone is not trusted.
+        """
+        bound = record.token.grants.envelope_digest
+        if bound is not None and not record.token.biscuit_token:
+            # An envelope that exists only in stored metadata is not a signed bound.
+            return "operation_envelope_unverifiable"
+        signed: set[str] | None = set()
+        if record.token.biscuit_token:
+            from cappo_backend.security.biscuit import extract_allowed_envelopes
+
+            signed = extract_allowed_envelopes(record.token.biscuit_token)
+            if signed is None:
+                return "operation_envelope_unverifiable"
+        if bound is None and not signed:
+            return None
+        if bound is None or (record.token.biscuit_token and bound not in signed):
+            return "operation_envelope_unverifiable"
+        requested = operation_envelope_digest(
+            package_ref=record.token.package_ref, target_ref=target_ref, action=action, resource=resource,
+            arguments=dict(arguments or {}),
+        )
+        return None if requested == bound else "operation_envelope_mismatch"
 
     def _with_permit(self, context: ConsequenceContext, mount_id: str, target_ref: str) -> ConsequenceContext:
         """Attach a permit factory to a dispatch context (no-op when permits are unconfigured).

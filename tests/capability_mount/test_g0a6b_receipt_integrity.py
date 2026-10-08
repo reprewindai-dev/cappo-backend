@@ -110,6 +110,17 @@ def _recompute_hash(rcpt: CapabilityActionReceipt) -> str:
         "result_hash": None,
         "pgl_anchor_id": rcpt.pgl_anchor_id,
     }
+    # v2 receipts (2026-10-07) name the authority actually exercised; v1 (NULL) rows
+    # keep the historical form above, "*" placeholder included, and still verify.
+    if rcpt.receipt_schema_version == 2:
+        canonical.update({
+            "receipt_schema_version": 2,
+            "resource": rcpt.resource,
+            "target_ref": rcpt.target_ref,
+            "envelope_digest": rcpt.envelope_digest,
+        })
+    else:
+        assert rcpt.receipt_schema_version is None, f"unknown receipt schema {rcpt.receipt_schema_version!r}"
     return sha256_json(canonical)
 
 

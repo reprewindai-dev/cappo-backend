@@ -67,6 +67,10 @@ class CapabilityPackage(ContractModel):
 
     external_send_actions: list[str] = Field(default_factory=list)
     suppression_required_actions: list[str] = Field(default_factory=list)
+    # The registered consequence target this package's writes act on. When set,
+    # execute refuses any other target_ref, and discovery publishes it so a
+    # contract can name the target without the caller inventing it.
+    target_ref: str | None = Field(default=None, min_length=1)
 
     @field_validator(
         "reads",
@@ -98,6 +102,15 @@ class CapabilityPackage(ContractModel):
         return actions
 
 
+class BoundOperationSpec(ContractModel):
+    """The one exact operation a mount is requested for (an ABIDE contract step)."""
+
+    target_ref: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    resource: str = Field(min_length=1)
+    arguments: dict[str, JsonValue] = Field(default_factory=dict)
+
+
 class MountScope(ContractModel):
     workspace: str = Field(min_length=1)
     project: str = Field(min_length=1)
@@ -105,6 +118,9 @@ class MountScope(ContractModel):
     writes: list[str] | None = None
     resources: list[str] | None = None
     blocked: list[str] = Field(default_factory=list)
+    # When set, the mount authorizes exactly this operation: its action, its one
+    # resource, its package's target, and (via the envelope digest) its arguments.
+    operation: BoundOperationSpec | None = None
 
 
 class Grants(ContractModel):
@@ -114,6 +130,8 @@ class Grants(ContractModel):
     blocked: list[str] = Field(default_factory=list)
     external_send: list[str] = Field(default_factory=list)
     suppression_required: list[str] = Field(default_factory=list)
+    # Digest of the one operation this mount may perform (envelope.py); None = not envelope-bound.
+    envelope_digest: str | None = None
 
 
 class MountToken(ContractModel):

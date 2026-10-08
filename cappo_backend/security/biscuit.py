@@ -21,6 +21,37 @@ AUTHORIZER_MAX_ITERATIONS = 1000
 AUTHORIZER_MAX_FACTS = 5000
 
 
+import re as _re
+
+# Resource and envelope values are interpolated into Datalog source, so they are
+# restricted to characters that cannot close a string literal or start new code.
+_RESOURCE_TERM = _re.compile(r"^[A-Za-z0-9._:@/-]{1,256}(/\*)?$")
+_ENVELOPE_TERM = _re.compile(r"^[0-9a-f]{64}$")
+
+
+def _resource_bound_code(resources: list[str], fact: str, prefix_fact: str) -> list[str]:
+    """Facts for a resource bound: exact names, plus explicit ``dir/*`` prefixes.
+
+    A plain name matches only itself ("42" never covers "420"); a prefix is only
+    ever granted by writing it as ``something/*``.
+    """
+    code = []
+    for res in resources:
+        if not _RESOURCE_TERM.fullmatch(res):
+            raise ValueError(f"invalid resource bound: {res!r}")
+        if res.endswith("/*"):
+            code.append(f'{prefix_fact}("{res[:-1]}");')
+        else:
+            code.append(f'{fact}("{res}");')
+    return code
+
+
+def _checked_envelope(envelope_digest: str) -> str:
+    if not _ENVELOPE_TERM.fullmatch(envelope_digest):
+        raise ValueError("envelope digest must be 64 lowercase hex characters")
+    return envelope_digest
+
+
 def apply_authorizer_limits(builder: AuthorizerBuilder) -> AuthorizerBuilder:
     """Set bounded Datalog limits on a builder before ``build()``."""
     limits = builder.limits()
@@ -112,10 +143,10 @@ def mint_biscuit_capability(
     builder.add_code(f'revocation_epoch({revocation_epoch});')
     
     if envelope_digest is not None:
-        builder.add_code(f'allowed_envelope("{envelope_digest}");')
+        builder.add_code(f'allowed_envelope("{_checked_envelope(envelope_digest)}");')
         builder.add_code('check if current_envelope($env), allowed_envelope($env);')
 
-    
+
     if executor_spiffe_id:
         builder.add_code(f'allowed_executor("{executor_spiffe_id}");')
     else:
@@ -127,9 +158,13 @@ def mint_biscuit_capability(
         builder.add_code(f'allowed_action("{w}");')
     
     if resources:
-        for res in resources:
-            builder.add_code(f'allowed_resource("{res}");')
-        builder.add_code('check if current_action($act, $res), allowed_action($act), allowed_resource($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+        for code in _resource_bound_code(resources, "allowed_resource", "allowed_resource_prefix"):
+            builder.add_code(code)
+        builder.add_code(
+            'check if current_action($act, $res), allowed_action($act), allowed_resource($res)'
+            ' or current_action($act, $res), allowed_action($act), allowed_resource_prefix($p), $res.starts_with($p)'
+            ' or current_action("terminate", "");'
+        )
     else:
         # If no resources bounded, only check action
         builder.add_code('check if current_action($act, $res), allowed_action($act) or current_action("terminate", "");')
@@ -172,9 +207,13 @@ def attenuate_biscuit_capability(
         
     if resources is not None:
         if resources:
-            for res in resources:
-                builder.add_code(f'allowed_resource_child("{res}");')
-            builder.add_code('check if current_action($act, $res), allowed_resource_child($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+            for code in _resource_bound_code(resources, "allowed_resource_child", "allowed_resource_child_prefix"):
+                builder.add_code(code)
+            builder.add_code(
+                'check if current_action($act, $res), allowed_resource_child($res)'
+                ' or current_action($act, $res), allowed_resource_child_prefix($p), $res.starts_with($p)'
+                ' or current_action("terminate", "");'
+            )
 
     if ttl_seconds is not None:
         from datetime import datetime, timedelta, timezone
@@ -183,9 +222,9 @@ def attenuate_biscuit_capability(
         builder.add_code(f'check if time($t), $t <= "{expires_str}";')
 
     if envelope_digest is not None:
-        builder.add_code(f'allowed_envelope("{envelope_digest}");')
+        builder.add_code(f'allowed_envelope("{_checked_envelope(envelope_digest)}");')
         builder.add_code('check if current_envelope($env), allowed_envelope($env);')
-        
+
     child_token = token.append(builder)
     return child_token.to_base64()
 
@@ -228,10 +267,12 @@ def verify_biscuit_capability(
             auth_builder.add_code(f'current_subject("{subject_spiffe_id}");')
         else:
             auth_builder.add_code('current_subject("any");')
+        if resource and not _RESOURCE_TERM.fullmatch(resource):
+            return False
         auth_builder.add_code(f'current_action("{action}", "{resource}");')
-        
+
         if envelope_digest is not None:
-            auth_builder.add_code(f'current_envelope("{envelope_digest}");')
+            auth_builder.add_code(f'current_envelope("{_checked_envelope(envelope_digest)}");')
 
         auth_builder.set_time()
         auth_builder.add_code('allow if true;')
@@ -311,6 +352,10 @@ def extract_authority_context(token_b64: str):
         resource_facts = auth.query(biscuit_auth.Rule('rule($res) <- allowed_resource($res)'))
         for fact in resource_facts:
             resources.add(str(fact.terms[0]).strip('"'))
+        # Explicit prefix grants come back in the lease's "dir/*" notation.
+        prefix_facts = auth.query(biscuit_auth.Rule('rule($p) <- allowed_resource_prefix($p)'))
+        for fact in prefix_facts:
+            resources.add(str(fact.terms[0]).strip('"') + "*")
             
         executor_spiffe_id = "any"
         exec_facts = auth.query(biscuit_auth.Rule('rule($exec) <- allowed_executor($exec)'))
@@ -354,5 +399,24 @@ def extract_authority_context(token_b64: str):
         import traceback; traceback.print_exc()
         import logging
         logging.getLogger("cappo.security").error(f"AUTHORITY_EXTRACTION_FAILED: {type(e).__name__}: {str(e)}")
+        return None
+
+
+def extract_allowed_envelopes(token_b64: str) -> set[str] | None:
+    """The ``allowed_envelope`` digests a signature-verified token carries.
+
+    Returns an empty set for a token without an envelope bound, and None when the
+    token cannot be verified (callers must fail closed on None).
+    """
+    try:
+        kp = get_root_key_pair()
+        token = Biscuit.from_base64(token_b64, kp.public_key)
+        auth_builder = AuthorizerBuilder()
+        auth_builder.add_code('allow if true;')
+        apply_authorizer_limits(auth_builder)
+        auth = auth_builder.build(token)
+        facts = auth.query(biscuit_auth.Rule('rule($env) <- allowed_envelope($env)'))
+        return {str(fact.terms[0]).strip('"') for fact in facts}
+    except Exception:
         return None
 
