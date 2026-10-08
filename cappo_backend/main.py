@@ -48,6 +48,7 @@ from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_adm
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
 from cappo_backend.capability_mount.http_target import load_http_targets
+from cappo_backend.capability_mount.fabric_compute import FABRIC_COMPUTE_JOB_PACKAGE, ResultSinkAdapter
 from cappo_backend.capability_mount.effects import (
     GovernedCounterAdapter,
     LocalRecordAdapter,
@@ -121,9 +122,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for http_target in load_http_targets(settings.cappo_http_targets):
         target_adapters.register(http_target.ref, http_target)
 
+    fabric_sink = None
+    if settings.fabric_result_sink_url and settings.fabric_result_sink_token:
+        fabric_sink = ResultSinkAdapter(settings.fabric_result_sink_url, settings.fabric_result_sink_token)
+        target_adapters.register(ResultSinkAdapter.ref, fabric_sink)
+
     mount_registry = MountRegistry(target_adapters=target_adapters)
     if settings.capability_effect_record_root:
         mount_registry.register_package(GOVERNED_COUNTER_PACKAGE)
+    if fabric_sink is not None:
+        # Private Cloud: governed compute on owned machines (capability_mount/fabric_compute.py).
+        mount_registry.register_package(FABRIC_COMPUTE_JOB_PACKAGE)
     for package in load_packages_from_json(settings.capability_packages_json):
         mount_registry.register_package(package)
     app.state.mount_registry = mount_registry

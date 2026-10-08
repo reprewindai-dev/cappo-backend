@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     # JSON list of {"ref", "apply_url", "actions"?}: external targets that redeem
     # CAPPO permits before committing (capability_mount/http_target.py).
     cappo_http_targets: str | None = None
+    # Private Cloud results sink (capability_mount/fabric_compute.py). Both set -> the
+    # compute.job@v1 package is offered and its commits go to this sink.
+    fabric_result_sink_url: str | None = None
+    fabric_result_sink_token: str | None = None
     biscuit_root_private_key_hex: str | None = None
     # Default to a home-anchored absolute path so the file location is
     # deterministic regardless of the process working directory.  A relative
