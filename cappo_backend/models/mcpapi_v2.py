@@ -131,6 +131,11 @@ class QuarantinedRequest(BaseModel):
     status: QuarantineStatus
     resolution_timestamp: Optional[str] = None
     resolution_reason: Optional[str] = None
+    # Requester/approver separation binding. The gateway's quarantine service
+    # passes these; without the fields pydantic silently dropped them and the
+    # self-approval check in safety_layer had nothing to compare against.
+    requester_id: Optional[str] = None
+    bound_identities: List[str] = Field(default_factory=list)
 
 class ApprovalSignature(BaseModel):
     approver_id: str

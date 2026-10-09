@@ -160,6 +160,46 @@ def test_b_requester_cannot_approve_own_request_service_boundary() -> None:
     assert qr.resolution_reason == "Quorum of approvers reached"
 
 
+_HTTP_JWT_SECRET = "proof-test-b-session-secret-0123456789abcdef"
+_HTTP_WORKSPACE = "ws-proof-b"
+
+
+def _session_client(approver_registry: str) -> TestClient:
+    """App with the website-gateway credential shape: LockerPhycer session JWTs
+    (HS256, ``sub`` = account, ``workspace_id`` = owned workspace) and a
+    server-held approver registry. Trust never comes from the request."""
+    settings = Settings(
+        api_keys="test-key",
+        environment="development",
+        auth_enabled=True,
+        jwt_public_verification_key=_HTTP_JWT_SECRET,
+        jwt_algorithm="HS256",
+        jwt_issuer="veklom-lockerphycer",
+        jwt_audience="veklom-cappo",
+        governance_approvers=approver_registry,
+    )
+    return TestClient(create_app(settings))
+
+
+def _session(subject: str, workspace: str = _HTTP_WORKSPACE) -> dict[str, str]:
+    import jwt as pyjwt
+
+    now = datetime.now(timezone.utc)
+    token = pyjwt.encode(
+        {
+            "sub": subject,
+            "workspace_id": workspace,
+            "iss": "veklom-lockerphycer",
+            "aud": "veklom-cappo",
+            "iat": now,
+            "exp": now + timedelta(minutes=5),
+        },
+        _HTTP_JWT_SECRET,
+        algorithm="HS256",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_b_requester_cannot_approve_own_request_http_router_boundary() -> None:
     """Proof Test B (HTTP Router Boundary):
 
@@ -167,19 +207,25 @@ def test_b_requester_cannot_approve_own_request_http_router_boundary() -> None:
     Self-approval returns 403 Forbidden with SELF_APPROVAL_FORBIDDEN detail.
     Underlying quarantine item remains quarantined. Subsequent valid
     independent approvers achieve quorum via HTTP API.
+
+    The approver is the authenticated session subject and its trust is the
+    server-held registry value: the requester is registered with trust 99 to
+    show that even maximal server-side trust cannot override separation.
     """
     reset_mcp_v2_stack()
-    settings = Settings(api_keys="test-key", environment="development")
-    client = TestClient(create_app(settings))
-    headers = {"X-API-Key": "test-key"}
+    requester_id = "hostile-workload-agent"
+    client = _session_client(
+        f"{requester_id}:99,valid-independent-approver-1:95,valid-independent-approver-2:90"
+    )
+    headers = _session(requester_id)
 
     stack = get_mcp_v2_stack()
-    requester_id = "hostile-workload-agent"
 
-    # Directly quarantine high-risk request on the stack
+    # Directly quarantine high-risk request on the stack, bound to the workspace
     qr = stack.quarantine.quarantine(
         {"agent_id": requester_id, "operation": "privileged_transfer"},
         [_critical_anomaly(requester_id)],
+        workspace_id=_HTTP_WORKSPACE,
     )
     quarantine_id = qr.quarantine_id
     assert quarantine_id is not None
@@ -192,11 +238,11 @@ def test_b_requester_cannot_approve_own_request_http_router_boundary() -> None:
     assert target_item["status"] == "quarantined"
     assert target_item["approvals_received"] == []
 
-    # Adversarial HTTP Self-Approval
+    # Adversarial HTTP Self-Approval (the session IS the requester)
     self_approve_resp = client.post(
         f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
         headers=headers,
-        json={"approver_id": requester_id, "approver_trust": 99.0},
+        json={"approver_id": requester_id},
     )
     assert self_approve_resp.status_code == 403
     error_detail = self_approve_resp.json()["detail"]
@@ -219,11 +265,11 @@ def test_b_requester_cannot_approve_own_request_http_router_boundary() -> None:
     assert item_after["status"] == "quarantined"
     assert item_after["approvals_received"] == []
 
-    # Valid independent approver 1
+    # Valid independent approver 1 (its own session; no trust in the body)
     app1_resp = client.post(
         f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
-        headers=headers,
-        json={"approver_id": "valid-independent-approver-1", "approver_trust": 95.0},
+        headers=_session("valid-independent-approver-1"),
+        json={},
     )
     assert app1_resp.status_code == 200
     assert app1_resp.json()["quorum_reached"] is False
@@ -232,12 +278,13 @@ def test_b_requester_cannot_approve_own_request_http_router_boundary() -> None:
     # Valid independent approver 2 -> Quorum reached
     app2_resp = client.post(
         f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
-        headers=headers,
-        json={"approver_id": "valid-independent-approver-2", "approver_trust": 90.0},
+        headers=_session("valid-independent-approver-2"),
+        json={},
     )
     assert app2_resp.status_code == 200
     assert app2_resp.json()["quorum_reached"] is True
     assert app2_resp.json()["status"] == "approved"
+    assert qr.approvals_received == ["valid-independent-approver-1", "valid-independent-approver-2"]
 
     reset_mcp_v2_stack()
 
@@ -420,8 +467,7 @@ def test_b_predator_http_router_rejects_spoofed_approver_id() -> None:
     the original requester.
     """
     reset_mcp_v2_stack()
-    settings = Settings(api_keys="test-key", environment="development")
-    client = TestClient(create_app(settings))
+    client = _session_client("exec-A:99,exec-B:95")
 
     stack = get_mcp_v2_stack()
     requester_id = "exec-A"
@@ -430,18 +476,27 @@ def test_b_predator_http_router_rejects_spoofed_approver_id() -> None:
         {"operation": "nuclear_delete"},
         [_critical_anomaly(requester_id)],
         requester_id=requester_id,
+        workspace_id=_HTTP_WORKSPACE,
     )
     quarantine_id = qr.quarantine_id
 
-    # Caller authenticated as 'exec-A' sends body with approver_id='exec-B'
-    spoofed_headers = {
-        "X-API-Key": "test-key",
-        "X-Authenticated-Agent-Id": "exec-A",
-    }
+    # Session authenticated as 'exec-A' sends body with approver_id='exec-B'
+    # (plus a spoofing header, which the router never reads).
+    spoofed_headers = {**_session("exec-A"), "X-Authenticated-Agent-Id": "exec-B"}
     resp = client.post(
         f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
         headers=spoofed_headers,
-        json={"approver_id": "exec-B", "approver_trust": 95.0},
+        json={"approver_id": "exec-B"},
+    )
+    assert resp.status_code == 403
+    # The body may not name anyone but the verified caller; the item is untouched.
+    assert "APPROVER_IDENTITY_MISMATCH" in resp.json()["detail"]
+
+    # Session authenticated as 'exec-A' confirming its own identity: self-approval.
+    resp = client.post(
+        f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
+        headers=spoofed_headers,
+        json={"approver_id": "exec-A"},
     )
     assert resp.status_code == 403
     assert "SELF_APPROVAL_FORBIDDEN" in resp.json()["detail"]
@@ -452,6 +507,15 @@ def test_b_predator_http_router_rejects_spoofed_approver_id() -> None:
     assert target["status"] == "quarantined"
     assert target["approvals_received"] == []
     assert target["requester_id"] == "exec-A"
+
+    # The real exec-B session is a distinct, registered approver and is recorded.
+    resp = client.post(
+        f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
+        headers=_session("exec-B"),
+        json={},
+    )
+    assert resp.status_code == 200
+    assert qr.approvals_received == ["exec-B"]
 
     reset_mcp_v2_stack()
 
@@ -841,18 +905,8 @@ def test_b_predator_jwt_authenticated_caller_denied_body_spoofing_over_http() ->
     bypass self-approval by submitting a forged 'approver_id': 'exec-B' in the HTTP body.
     """
     reset_mcp_v2_stack()
-    settings = Settings(api_keys="test-key", environment="development")
-    app = create_app(settings)
-
-    # Middleware simulating upstream JWT validation placing claims in request.scope
-    @app.middleware("http")
-    async def fake_jwt_middleware(request: Request, call_next):
-        if request.headers.get("X-Simulate-JWT") == "exec-A":
-            request.scope["jwt_payload"] = {"sub": "exec-A", "iss": "auth.veklom.internal"}
-            request.scope["auth_principal"] = "jwt:auth.veklom.internal:exec-A"
-        return await call_next(request)
-
-    client = TestClient(app)
+    # Real AuthMiddleware JWT path: the verified subject is 'exec-A'.
+    client = _session_client("exec-A:99,exec-B:95")
     stack = get_mcp_v2_stack()
     requester_id = "exec-A"
 
@@ -860,19 +914,22 @@ def test_b_predator_jwt_authenticated_caller_denied_body_spoofing_over_http() ->
         {"operation": "privileged_action"},
         [_critical_anomaly(requester_id)],
         requester_id=requester_id,
+        workspace_id=_HTTP_WORKSPACE,
     )
     quarantine_id = qr.quarantine_id
 
     # Caller authenticated via JWT as 'exec-A' claims approver_id='exec-B' in body
-    headers = {
-        "X-API-Key": "test-key",
-        "X-Simulate-JWT": "exec-A",
-    }
+    headers = _session("exec-A")
     resp = client.post(
         f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
         headers=headers,
-        json={"approver_id": "exec-B", "approver_trust": 95.0},
+        json={"approver_id": "exec-B"},
     )
+    assert resp.status_code == 403
+    assert "APPROVER_IDENTITY_MISMATCH" in resp.json()["detail"]
+
+    # Without the forged claim the verified subject is the requester: still denied.
+    resp = client.post(f"/v1/governance/v2/quarantine/{quarantine_id}/approve", headers=headers)
     assert resp.status_code == 403
     assert "SELF_APPROVAL_FORBIDDEN" in resp.json()["detail"]
 
@@ -959,8 +1016,7 @@ def test_b_predator_untrusted_client_header_x_agent_id_cannot_spoof_authenticate
     to masquerade as an authenticated approver when their body contains their real requester identity.
     """
     reset_mcp_v2_stack()
-    settings = Settings(api_keys="test-key", environment="development")
-    client = TestClient(create_app(settings))
+    client = _session_client("exec-A:99,exec-B:95")
     stack = get_mcp_v2_stack()
     requester_id = "exec-A"
 
@@ -968,18 +1024,20 @@ def test_b_predator_untrusted_client_header_x_agent_id_cannot_spoof_authenticate
         {"operation": "nuclear_delete"},
         [_critical_anomaly(requester_id)],
         requester_id=requester_id,
+        workspace_id=_HTTP_WORKSPACE,
     )
     quarantine_id = qr.quarantine_id
 
-    # Caller passes X-Agent-Id: exec-B to spoof identity, but body has approver_id: exec-A
+    # Session is 'exec-A'; client headers claim exec-B, body confirms exec-A.
     headers = {
-        "X-API-Key": "test-key",
-        "X-Agent-Id": "exec-B",  # Spoofed client header MUST be ignored
+        **_session(requester_id),
+        "X-Agent-Id": "exec-B",  # Spoofed client headers MUST be ignored
+        "X-Authenticated-Agent-Id": "exec-B",
     }
     resp = client.post(
         f"/v1/governance/v2/quarantine/{quarantine_id}/approve",
         headers=headers,
-        json={"approver_id": requester_id, "approver_trust": 95.0},
+        json={"approver_id": requester_id},
     )
     assert resp.status_code == 403
     assert "SELF_APPROVAL_FORBIDDEN" in resp.json()["detail"]

@@ -70,12 +70,18 @@ class MCPv2Stack:
         owner_policy: Policy | None = None,
         runtime_policy: Policy | None = None,
         at: datetime | None = None,
+        workspace_id: str | None = None,
     ) -> dict:
         """Run Safety → Intelligence → Governance phases for one request.
 
         Returns a structured evidence dict. ``allow`` is False when an anomaly
         recommends ``block`` or quarantine is required, or when the composed
         policy denies the capability for the current trust level.
+
+        ``workspace_id`` is the verified tenant of the caller. A quarantined
+        request is bound to it so the quarantine queue can be served per
+        workspace; callers that cannot establish a workspace leave it ``None``
+        and the item is then unreachable through tenant-scoped surfaces.
         """
         # --- Safety phase ------------------------------------------------
         anomalies = self.anomaly.detect(agent_id, metric)
@@ -93,7 +99,9 @@ class MCPv2Stack:
 
         quarantine_id: str | None = None
         if worst_action in ("block", "quarantine"):
-            qr = self.quarantine.quarantine(request, anomalies)
+            qr = self.quarantine.quarantine(
+                request, anomalies, requester_id=agent_id, workspace_id=workspace_id
+            )
             quarantine_id = qr.quarantine_id
 
         # --- Intelligence phase -----------------------------------------

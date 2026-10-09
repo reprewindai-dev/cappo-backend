@@ -8,6 +8,7 @@ explicit environment flag. Placeholders must never be acceptable in production.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import Any
 
@@ -291,6 +292,40 @@ class Settings(BaseSettings):
     # Shared secret matching LockerPhycer ENTITLEMENTS_INTERNAL_TOKEN.
     entitlements_service_token: str = ""
     entitlements_timeout_ms: int = 3000
+
+    # --- Governance v2 quarantine approvers (server-held registry) ---
+    # Comma-separated verified principal identities that may approve or deny a
+    # quarantined request, each optionally followed by ":<trust>" (0-100).
+    #   GOVERNANCE_APPROVERS="ops@veklom.com:95,api-key:<sha256 fingerprint>"
+    # The identity is the JWT subject for session callers (LockerPhycer mints
+    # `sub` = account email) or "api-key:<sha256 of the key>" for API-key callers.
+    # Trust is NEVER accepted from a request; an identity absent from this
+    # registry has trust 0 and cannot approve. Empty registry = nobody approves.
+    governance_approvers: str = ""
+    # Trust assigned to a registered approver that carries no explicit ":<trust>".
+    governance_approver_default_trust: float = 100.0
+
+    @property
+    def governance_approver_registry(self) -> dict[str, float]:
+        """Normalized identity → server-held trust for registered approvers."""
+        from cappo_backend.services.safety import normalize_identity
+
+        registry: dict[str, float] = {}
+        for raw in self.governance_approvers.split(","):
+            entry = raw.strip()
+            if not entry:
+                continue
+            identity, trust = entry, self.governance_approver_default_trust
+            head, sep, tail = entry.rpartition(":")
+            # Only a short numeric suffix is a trust value; a long digit run is
+            # part of the identity (e.g. an all-digit key fingerprint).
+            if sep and head and re.fullmatch(r"\d{1,3}(\.\d{1,3})?", tail):
+                trust = float(tail)
+                identity = head
+            key = normalize_identity(identity)
+            if key:
+                registry[key] = max(0.0, min(100.0, trust))
+        return registry
 
     @property
     def is_production(self) -> bool:
