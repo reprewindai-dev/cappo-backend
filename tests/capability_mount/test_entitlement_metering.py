@@ -184,6 +184,19 @@ def test_verification_read_is_metered(client: TestClient, tmp_path: Path) -> Non
     assert lp.balance == 995
 
 
+def test_milestones_reach_lockerphycer_with_metering_off(client: TestClient, tmp_path: Path) -> None:
+    lp = FakeLockerPhycer()
+    _install(client, tmp_path, lp)
+    meter = client.app.state.entitlement_meter
+    meter.settings.entitlements_metering = "off"
+    assert meter.enabled is False
+    mount = _mount(client)
+    assert _execute(client, mount).json()["decision"] == "allow"
+    # Nothing is charged, but the checklist milestones are delivered.
+    assert lp.debits == {}
+    assert {"capability_issued", "first_governed_execution"} <= set(lp.events)
+
+
 def test_metering_off_by_default_makes_no_calls(client: TestClient, tmp_path: Path) -> None:
     registry = client.app.state.mount_registry
     registry.register_package(GOVERNED_COUNTER_PACKAGE)

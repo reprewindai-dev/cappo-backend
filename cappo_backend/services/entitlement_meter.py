@@ -123,8 +123,13 @@ class EntitlementMeter:
 
     def emit(self, event_name: str, workspace_id: str | None, *, ref: str | None = None,
              details: dict[str, Any] | None = None, background: bool = True) -> None:
-        """Report an activation milestone (fire-and-forget, deduped locally and in LockerPhycer)."""
-        if not (self.enabled and self._configured and workspace_id):
+        """Report an activation milestone (fire-and-forget, deduped locally and in LockerPhycer).
+
+        Milestones are not charges: they drive the onboarding checklist and only need the
+        LockerPhycer link (URL + service token), so they are sent with metering "off" too.
+        Tying them to "enforce" left every checklist stuck at Identity while billing was off.
+        """
+        if not (self._configured and workspace_id):
             return
         marker = (event_name, workspace_id)
         if event_name != "capability_issued":

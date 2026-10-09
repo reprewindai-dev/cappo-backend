@@ -349,6 +349,21 @@ def _metered(request: Request, registry: MountRegistry, mount_id: str, principal
                     execution_id=record.token.execution_id)
 
 
+def _milestone_workspace(request: Request, registry: MountRegistry, mount_id: str,
+                         metering: "_Metered | None") -> str | None:
+    """Workspace to report a checklist milestone against, metered or not.
+
+    Milestones are not charges, so they are reported with metering off too, against
+    the mount's own workspace. No lookup when the LockerPhycer link is absent.
+    """
+    if metering is not None:
+        return metering.workspace
+    if not get_meter(request.app.state)._configured:
+        return None
+    record = registry.get(mount_id)
+    return record.mount.scope.workspace if record is not None else None
+
+
 def _emit_decision(request: Request, workspace: str | None, decision: Decision, *,
                    ref: str, executed: bool = False) -> None:
     meter = get_meter(request.app.state)
@@ -598,7 +613,8 @@ def evaluate_action(
     if metering is not None:
         metering.settle(db, decision=decision, reason=reason,
                         receipt_id=(detail or {}).get("receipt_id") if isinstance(detail, dict) else None)
-        _emit_decision(request, metering.workspace, decision, ref=mount_id)
+    _emit_decision(request, _milestone_workspace(request, registry, mount_id, metering), decision,
+                   ref=mount_id)
     return ActionResponse(
         decision=decision,
         reason=reason,
@@ -700,8 +716,8 @@ def execute_consequence(
     if metering is not None:
         metering.settle(db, decision=decision, reason=reason, receipt_id=payload.get("receipt_id"),
                         operation_id=payload.get("operation_id"))
-        _emit_decision(request, metering.workspace, decision, ref=mount_id,
-                       executed=bool(payload.get("target_invoked")))
+    _emit_decision(request, _milestone_workspace(request, registry, mount_id, metering), decision,
+                   ref=mount_id, executed=bool(payload.get("target_invoked")))
     return ExecuteResponse(
         decision=decision,
         reason=reason,
