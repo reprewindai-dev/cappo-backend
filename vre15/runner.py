@@ -207,6 +207,14 @@ def main() -> int:
                     (cg / "memory.memsw.limit_in_bytes").write_text(str(budget))
                 rundir = work / f"{tag}-{policy}"
                 rundir.mkdir()
+                run_images = None
+                if images and policy in ("mapped", "mapped-ckpt"):
+                    # Each mapped run gets its own copy of the pristine images:
+                    # mapped-ckpt writes checkpoints into its images, and a shared
+                    # copy contaminated the next run (aborted run 20261011T175453Z).
+                    subprocess.run(["cp", "-r", "--sparse=always", str(work / "images"), str(rundir / "images")],
+                                   check=True)
+                    run_images = [str(rundir / "images" / pathlib.Path(p).name) for p in images]
                 if kernel_paged:
                     subprocess.run(["swapon", str(swapfile)], check=True)
                 os.sync()
@@ -215,7 +223,7 @@ def main() -> int:
                         "initial": initial, "workdir": str(rundir), "idle_s": args.idle_s,
                         "budget_bytes": budget, "per_tenant_bytes": PER_TENANT_BYTES,
                         "headroom_band_bytes": args.headroom_kib * 1024, "reclaim_dry_run": args.reclaim_dry_run,
-                        "record_ws": args.record_ws, "probe_revoked": args.probe_revoked, "images": images,
+                        "record_ws": args.record_ws, "probe_revoked": args.probe_revoked, "images": run_images,
                         "out": str(rundir / "result.json")}
                 sampler = None
                 if args.sample:
