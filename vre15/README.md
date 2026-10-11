@@ -256,6 +256,99 @@ What does hold at every budget: native-steered's WILLNEED drives 1.7 to 45
 times native's swap-in I/O. native-pageout's swap-ins stay within about
 ±30% of native's.
 
+## Paired repeats over five seeds: run `20261011T075620Z`
+
+**Setup:** budgets of 16, 12 and 8 MiB, the informative trace, seeds 1–5,
+and native, native-steered and native-pageout. Within each (budget, seed)
+cell all three policies replay the same trace. The policy order rotates
+from cell to cell (`--rotate-order`), and each run's position is recorded.
+
+**Analysis:** `python -m vre15.paired vre15/runs/20261011T075620Z/manifest.json`
+gives per-seed paired differences against native and an exact two-sided
+sign test. With five seeds even 5 of 5 wins gives p = 0.0625, so this run
+alone cannot reach p < 0.05.
+
+**Clean runs:** 44 of 45 runs completed, with 0 integrity failures and 0
+authority violations. Batch deadlines were met 100% in every run at 16 MiB,
+in all but one at 12 MiB (99.37%), and in all but two at 8 MiB (98.56% and
+99.82%).
+
+**One kill:** native at 16 MiB, seed 1, was OOM-killed during warm-up,
+before serving anything (exit -9; the cgroup recorded `oom_kill 1`).
+- Swap was on, with 1.7 GB free, swappiness 60 and memsw unlimited.
+- The kernel log shows a memcg OOM on a `GFP_HIGHUSER_MOVABLE` fault with
+  11 MiB anon resident: reclaim could not keep pace with warm-up allocation
+  under the limit.
+- Warm-up is identical for all three policies (every tenant materialized,
+  no advice yet), so the kill reflects the kernel under a 16 MiB limit,
+  not the native policy.
+- The kill is kept in the manifest, and `paired.py` leaves that seed out of
+  the native pairs rather than scoring it.
+
+| Budget | Policy vs native | Wins / losses | Sign test p | Median Δ deadlines met | Median Δ p99 | Interactive ≤100 ms, mean (min) | Median swap-ins |
+|---|---|---|---|---|---|---|---|
+| 16 | native | — | — | — | — | 99.28% (97.84%), 4 seeds | 7,584 |
+| 16 | native-pageout | 4 / 0 | 0.125 | +0.19 pts | −1.0 ms | 99.89% (99.74%) | 6,115 |
+| 16 | native-steered | 4 / 0 | 0.125 | +0.29 pts | +0.2 ms | 99.95% (99.82%) | 165,893 |
+| 12 | native | — | — | — | — | 98.55% (96.20%) | 11,177 |
+| 12 | native-pageout | 2 / 3 | 1.0 | −0.14 pts | −2.2 ms | 99.05% (97.15%) | 12,211 |
+| 12 | native-steered | 2 / 3 | 1.0 | −0.20 pts | +4.7 ms | 99.28% (99.12%) | 183,197 |
+| 8 | native | — | — | — | — | 97.54% (95.05%) | 45,949 |
+| 8 | native-pageout | 1 / 4 | 0.375 | −1.31 pts | +33.9 ms | 95.20% (91.23%) | 56,125 |
+| 8 | native-steered | 3 / 2 | 1.0 | +0.06 pts | +21.4 ms | 98.15% (97.57%) | 259,455 |
+
+### What it shows
+
+1. **16 MiB is the only budget with a consistent direction.** Both steered
+   policies met more interactive deadlines than native on all 4 seeds where
+   native completed.
+   - The median gain is small: 0.19 and 0.29 points.
+   - Most of the mean gain comes from native's occasional collapse
+     episodes, which the steered policies did not show. Seed 5 is the
+     clearest: native met 97.84% at a p99 of 283 ms.
+   - p = 0.125 for each, which is not significant.
+2. **The direction does not survive tighter budgets.**
+   - At 12 MiB both policies split 2–3 against native.
+   - At 8 MiB native-pageout is worse than native on 4 of 5 seeds (median
+     −1.31 points), and native-steered splits 3–2.
+   - An effect that appears at one budget, vanishes at the next and
+     reverses at the one after is not yet a property of envelope awareness.
+3. **native-steered lowers the variance, not the typical case.** Its worst
+   seed is much better than native's at 12 MiB (99.12% against 96.20%) and
+   at 8 MiB (97.57% against 95.05%). Its median p99 is worse at both, and
+   it pays 5.6× (8 MiB) to 22× (16 MiB) native's swap-in I/O.
+4. **No order effect large enough to matter.** Mean interactive
+   within-deadline by position in cell was 98.24%, 98.54% and 98.78% for
+   first, second and third, against a spread of several points between
+   seeds. Rotation balances each policy across positions.
+
+**Verdict, unchanged:** no budget shows a statistically supported
+improvement of envelope-aware residency over native at the same budget. The
+one consistent signal (16 MiB) is small, rests on 4 seeds, and depends on
+native's tail collapses. It is a hypothesis, tested next on fresh seeds.
+
+## Pre-registered confirmation (fixed before the run)
+
+Written and committed before any run with these seeds.
+
+- **Hypotheses:**
+  - **H1:** at 16 MiB on the informative trace, native-pageout meets more
+    interactive deadlines than native.
+  - **H2:** the same for native-steered against native.
+- **Seeds:** fresh, 101–110 (10 seeds). Nothing else changes: 300 tenants,
+  90 s, 250 req/s, the same three policies, `--rotate-order`.
+- **Test:** for each hypothesis, an exact two-sided sign test on the paired
+  per-seed within-deadline shares from `vre15/paired.py`.
+  - Seeds where either run failed are excluded and reported.
+  - Ties are excluded.
+  - The threshold is α = 0.025 per hypothesis (Bonferroni over the two).
+- **Decision:** a hypothesis is confirmed only if the policy wins more
+  seeds than it loses and p < 0.025. With all 10 seeds usable, that means
+  at least 9 wins out of 10 (p = 0.0215). Anything else is reported as
+  not confirmed, with the numbers.
+- **Not a criterion:** p99, swap I/O and memory are reported but do not
+  decide the outcome.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
