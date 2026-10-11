@@ -9,6 +9,7 @@
   python -m vdb_c1.cli export --home H --intent-id ID --out bundle.json [--witness-dir W]
   python -m vdb_c1.cli witness-init --dir W --home H     (pins H's keys; adds W's key to H/trust_store.json)
   python -m vdb_c1.cli witness-observe --dir W --home H  (countersign the journal head, or refuse)
+  python -m vdb_c1.cli eee --home H --out envelopes.json  (one EEE v0.1.0 envelope per terminal attempt)
   python vdb_c1/verify.py bundle.json H/trust_store.json [--require-witness]
 """
 
@@ -54,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--intent-id", required=True)
     e.add_argument("--out", type=pathlib.Path, required=True)
     e.add_argument("--witness-dir", type=pathlib.Path)
+    ee = sub.add_parser("eee")
+    ee.add_argument("--home", type=pathlib.Path, required=True)
+    ee.add_argument("--out", type=pathlib.Path, required=True)
     for name in ("witness-init", "witness-observe"):
         w = sub.add_parser(name)
         w.add_argument("--dir", type=pathlib.Path, required=True)
@@ -93,6 +97,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("no witness checkpoint covers this finality yet", file=sys.stderr)
                 return 1
         a.out.write_text(json.dumps(c.export_bundle(a.intent_id, checkpoint=cp), indent=1))
+    elif a.cmd == "eee":
+        envs = Coordinator.open(a.home).eee_envelopes()
+        a.out.write_text(json.dumps(envs, indent=1))
+        print(json.dumps({"envelopes": len(envs)}))
     elif a.cmd == "witness-init":
         trust_path = a.home / "trust_store.json"
         trust = json.loads(trust_path.read_text())

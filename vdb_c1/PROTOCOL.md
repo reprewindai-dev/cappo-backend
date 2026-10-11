@@ -216,3 +216,32 @@ fails `REJECTED_NOT_WITNESSED`.
 
 W1 makes history the witness has seen unforgeable after the fact. It does
 not let the witness see the SQLite store.
+
+## EEE v0.1.0 output (`eee.py`)
+
+`Coordinator.eee_envelopes()` (CLI: `eee --home H --out envelopes.json`)
+derives one EEE-Core envelope per terminal attempt from the journal:
+
+| Terminal record | EEE `status` | `actual_effects` |
+|---|---|---|
+| FINALIZED | `completed` | `["state:upsert:<namespace>"]` |
+| ADMISSION_REJECTED / PRECONDITION_REJECTED | `denied` | `[]` |
+| ABORTED | `error` | `[]` |
+
+COMMIT_UNCERTAIN gets no envelope until recovery resolves it.
+
+- Envelopes are signed by a dedicated EEE issuer key, separate from the
+  finalizer key, published as `eee_issuer_keys` in `trust_store.json`.
+- The same journal always yields byte-identical envelopes.
+- The wire format matches CAPPO's `cappo_backend/services/eee.py`:
+  - root = `sha256:` + hash of the JCS form without `envelope_hash`,
+    `previous_envelope_hash` and `signatures`;
+  - the signature is Ed25519 over the ASCII root, base64url;
+  - `signer = issuer#kid`.
+- `revocation_check.method` is `none`: C1 intents are single-use and expire
+  within 10 minutes, and there is no revocation list. Verifiers report this
+  as `REVOCATION_NOT_CHECKED`, so the honest verdict is
+  `VALID_WITH_UNRESOLVED_REFS`.
+- An admission rejection established no authority. Its `authority_window`
+  is the zero-length window at the decision time. Admitted intents carry
+  their verified window.

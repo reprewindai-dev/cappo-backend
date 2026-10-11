@@ -36,6 +36,7 @@ and Python's `sqlite3`. No root or network is needed.
 | `cli.py` | command line |
 | `verify.py` | offline verifier; imports nothing from this package |
 | `witness.py` | W1 witness: countersigns journal heads only forward; refuses forks, rollbacks and invalid finality |
+| `eee.py` | EEE v0.1.0 envelope per terminal attempt, verified by CAPPO's own `EEEVerifier` |
 | `prove.py` | recorded proof run |
 | `evidence/20261011T044036Z/` | committed run: two bundles, trust store, clean-room verdicts, manifest |
 
@@ -97,6 +98,38 @@ The recorded run (`evidence/20261011T044036Z`):
 Planting a bug that skips the witness's fork check, and separately one that
 skips the verifier's head-hash check, each failed exactly the test meant to
 catch it.
+
+## EEE output (added after C1.0)
+
+`tests/test_vdb_c1_eee.py` has 14 tests. They build envelopes with
+`vdb_c1/eee.py` and verify them with CAPPO's own
+`cappo_backend.services.eee.EEEVerifier`, which is a separate
+implementation. They cover:
+- a finalized upsert gives a `completed` envelope;
+- four kinds of denial give `denied` envelopes;
+- a crash-A abort gives an `error` envelope;
+- all of these verify as `VALID_WITH_UNRESOLVED_REFS`, and the only
+  unresolved reason is `REVOCATION_NOT_CHECKED`;
+- there is one envelope per terminal attempt, and generation is
+  deterministic;
+- tampering is rejected with CAPPO's exact reasons, whether the edit is to
+  status, effects, budget or signature;
+- an unpinned key is rejected;
+- the issuer key is separate from the finalizer key and stored `0600`.
+
+Two findings about EEE and CAPPO, both left unchanged:
+1. **CAPPO's evidence root leaves out `previous_envelope_hash`.** Frozen EEE
+   §5.3 says that member stays inside the hash. As built, changing a chain
+   link does not break CAPPO's signature check. C1 does not chain envelopes
+   (that is an EEE-Full feature), so its output verifies under both readings.
+   CAPPO's builder and verifier need a decision before chaining is used.
+2. **Spec gap: a correct denial can fail verification.** §7 step 6 checks
+   `started_at` against the authority window for every envelope, denials
+   included. The denial of an expired or not-yet-valid authority would
+   therefore fail verification if it recorded the real window, although
+   §3.4 requires exactly that denial. C1 sidesteps this by giving admission
+   rejections a zero-length window, because no authority was established.
+   The spec should exempt `status: denied`.
 
 ## What this does not show
 

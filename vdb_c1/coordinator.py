@@ -25,7 +25,7 @@ from collections.abc import Callable
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
-from vdb_c1 import canon
+from vdb_c1 import canon, eee
 from vdb_c1 import states as S
 from vdb_c1.journal import Journal, JournalCorrupt
 from vdb_c1.state_adapter import PreconditionFailed, SqliteStateAdapter
@@ -202,7 +202,7 @@ class Coordinator:
             reason = "E_ROOT_MISMATCH"
         if reason:
             self._append(S.PRECONDITION_REJECTED, intent_id, {
-                "intent_hash": intent_hash, "reason": reason,
+                "intent_hash": intent_hash, "reason": reason, "signed_intent": signed,
                 "observed_generation": pre["generation"], "observed_root": pre["root"]})
             return {"intent_id": intent_id, "state": S.PRECONDITION_REJECTED, "reason": reason,
                     "replayed": False}
@@ -409,6 +409,25 @@ class Coordinator:
             self._append(S.ABORTED, iid, {"intent_hash": ih, "reason": "E_STORAGE_COMMIT_NOT_DURABLE"})
         else:
             self._confirm_commit(iid, recovered=True)
+
+    # -- EEE --------------------------------------------------------------------
+    def eee_envelopes(self) -> list[dict]:
+        """One EEE v0.1.0 envelope per terminal attempt, derived from the
+        journal and signed by a dedicated EEE issuer key (created on first
+        use, its public half published in trust_store.json)."""
+        key_path = self.home / "eee_issuer.key"
+        with self._locked():
+            if not key_path.exists():
+                sk = Ed25519PrivateKey.generate()
+                kid = save_key(key_path, sk)
+                trust_path = self.home / "trust_store.json"
+                trust = json.loads(trust_path.read_text())
+                trust.setdefault("eee_issuer_keys", {})[kid] = canon.b64u(canon.public_raw(sk))
+                trust_path.write_text(json.dumps(trust, indent=1))
+            sk, kid = load_key(key_path)
+            snap = self.adapter.snapshot()
+            return eee.envelopes_from_journal(self.journal.records, snap["namespace"],
+                                              snap["store_id"], sk, kid)
 
     # -- export ------------------------------------------------------------------
     def export_bundle(self, intent_id: str, checkpoint: dict | None = None) -> dict:
