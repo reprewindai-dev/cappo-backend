@@ -84,6 +84,16 @@ Policies:
                 the page cache before each run, so the tenant cgroup faults
                 them in and is charged for them (same budget; see
                 vre15/mapped_probe.py).
+  mapped-ckpt   mapped, plus checkpoint on revocation. When a tenant's
+                authority window closes (and it is not still authorized by
+                an overlapping window), the pages it modified since its
+                image (pagemap: present but no longer file-backed, or
+                swapped) are written into the image and fdatasync'd; a
+                SHA-256 over the (page index, contents) pairs is recorded as
+                the checkpoint's evidence digest; the tenant is remapped
+                clean from the updated image and paged out, which now
+                writes nothing. The governed state and the memory release
+                become one act.
   Release-on-revocation variants (each changes one thing from
   native-pageout; exploration, see the README):
   native-cold   MADV_COLD instead of MADV_PAGEOUT at window close: the pages
@@ -117,6 +127,7 @@ restored fresh plus the same number of steps, with no demotion.
 """
 
 import ctypes
+import hashlib
 import json
 import os
 import queue
@@ -146,8 +157,9 @@ PREFETCH_LEAD_S = 0.5
 RECORD_STEPS = 32
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
                 "envelope-prefetch", "envelope-declared", "lru-pageout", "native-cold", "pageout-delay",
-                "pageout-bg", "mapped")
-RELEASE_ONLY = ("native-pageout", "lru-pageout", "native-cold", "pageout-delay", "pageout-bg")
+                "pageout-bg", "mapped", "mapped-ckpt")
+MAPPED = ("mapped", "mapped-ckpt")
+RELEASE_ONLY = ("native-pageout", "lru-pageout", "native-cold", "pageout-delay", "pageout-bg", "mapped-ckpt")
 STEERED = ("native-steered", "envelope-prefetch", "envelope-declared") + RELEASE_ONLY
 PREFETCHING = ("envelope-prefetch", "envelope-declared")
 HEADROOM = ("envelope-headroom", "lru-headroom")
@@ -261,6 +273,7 @@ class Host:
         self.live = {}                                  # t -> (store, exports)
         self.region = {}                                # t -> (base address, length) of linear memory
         self.mapped_once = set()                        # mapped: tenants mapped from their image
+        self.ckpt = {"count": 0, "pages": 0, "ms": [], "digests": []}   # mapped-ckpt
         self.path = {t: spec["initial"][t] for t in range(n)}
         self.last = {t: -1e9 for t in range(n)}
         self.steps = [0] * n
@@ -304,7 +317,7 @@ class Host:
         self.restore_ms.append((time.perf_counter() - t0) * 1000)
 
     def materialize(self, t):
-        if self.policy == "mapped" and t not in self.mapped_once:
+        if self.policy in MAPPED and t not in self.mapped_once:
             self.mapped_once.add(t)
             return self.materialize_mapped(t)
         t0 = time.perf_counter()
@@ -349,6 +362,48 @@ class Host:
             if v == protect:
                 break
             self.demote(v)
+
+    def checkpoint(self, t):
+        """mapped-ckpt: write modified pages into the image, remap clean, page out."""
+        t0 = time.perf_counter()
+        base, length = self.region[t]
+        n = length // PAGE
+        with open("/proc/self/pagemap", "rb") as f:
+            f.seek((base // PAGE) * 8)
+            raw = f.read(n * 8)
+        dirty = []
+        for i in range(n):
+            e = struct.unpack_from("<Q", raw, 8 * i)[0]
+            present, swapped, file_page = e >> 63 & 1, e >> 62 & 1, e >> 61 & 1
+            if swapped or (present and not file_page):
+                dirty.append(i)
+        h = hashlib.sha256()
+        fd = os.open(self.spec["images"][t], os.O_RDWR)
+        try:
+            for first, count in runs_of(dirty):
+                data = ctypes.string_at(base + first * PAGE, count * PAGE)
+                os.pwrite(fd, data, first * PAGE)
+                h.update(struct.pack("<II", first, count))
+                h.update(data)
+            if dirty:
+                os.fdatasync(fd)
+            if _libc.mmap(base, length, PROT_RW, MAP_PRIVATE | MAP_FIXED, fd, 0) != base:
+                raise OSError(ctypes.get_errno(), "remap after checkpoint failed")
+        finally:
+            os.close(fd)
+        _libc.madvise(base, length, MADV_PAGEOUT)
+        self.ckpt["count"] += 1
+        self.ckpt["pages"] += len(dirty)
+        self.ckpt["ms"].append((time.perf_counter() - t0) * 1000)
+        self.ckpt["digests"].append([t, len(dirty), h.hexdigest()])
+
+    def checkpoint_stats(self):
+        if self.policy != "mapped-ckpt":
+            return None
+        ms = sorted(self.ckpt["ms"])
+        return {"count": self.ckpt["count"], "pages_written": self.ckpt["pages"],
+                "ms_p50": round(ms[len(ms) // 2], 3) if ms else None,
+                "ms_max": round(ms[-1], 3) if ms else None, "digests": self.ckpt["digests"]}
 
     def release_worker(self):
         """pageout-bg: page out tenants queued at window close, off the request loop."""
@@ -400,6 +455,10 @@ class Host:
                 self.advice_errors += err != 0
             for t, kind in self.edges.pop_due(horizon):
                 if kind == "open" and self.policy in RELEASE_ONLY + PREFETCHING:
+                    continue
+                if self.policy == "mapped-ckpt":
+                    if not tr.authorized(self.env[t], horizon):
+                        self.checkpoint(t)
                     continue
                 if self.policy == "pageout-delay":
                     self.delayed.append((horizon + RELEASE_DELAY_S, t))
@@ -550,6 +609,7 @@ class Host:
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
                 "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim, "prefetch": prefetch, "trace_start_wall": start_wall,
                 "release": {"skipped_reauthorized": self.release_skipped, "worker_errors": self.release_errors},
+                "checkpoints": self.checkpoint_stats(),
                 "revoked_residency": self.revoked_residency(),
                 "base_rss": self.base_rss, "integrity_failures": failures,
                 "authority_violations": sum(1 for (t, lat, cls, ok), (at, _, _) in

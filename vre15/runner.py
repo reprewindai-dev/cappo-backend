@@ -46,10 +46,11 @@ from vre15 import traces
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout",
             "envelope-headroom", "lru-headroom", "envelope-prefetch", "envelope-declared",
-            "lru-pageout", "native-cold", "pageout-delay", "pageout-bg", "mapped")
+            "lru-pageout", "native-cold", "pageout-delay", "pageout-bg", "mapped",
+            "mapped-ckpt")
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
                 "envelope-prefetch", "envelope-declared", "lru-pageout", "native-cold", "pageout-delay",
-                "pageout-bg", "mapped")
+                "pageout-bg", "mapped", "mapped-ckpt")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
@@ -129,7 +130,7 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "major_faults": raw.get("major_faults"),
         "request_thread_major_faults": raw.get("request_thread_major_faults"),
         "recording": raw.get("recording"), "revoked_residency": raw.get("revoked_residency"),
-        "release": raw.get("release"), "trace_start_wall": raw.get("trace_start_wall"),
+        "release": raw.get("release"), "checkpoints": raw.get("checkpoints"), "trace_start_wall": raw.get("trace_start_wall"),
         **(stall_stats(raw["results"], trace) if raw.get("results") else {}), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 
@@ -182,7 +183,8 @@ def main() -> int:
         made = probe("make-many", {"dir": str(work), "cwasm": str(work / "m.cwasm"), "tenants": args.tenants,
                                    "pages": 64, "density": 250, "steps": 0, "codec": "sparse"})
         initial = [t["path"] for t in made["tenants"]]
-        images = make_images(initial, work / "images") if "mapped" in args.policies else None
+        images = (make_images(initial, work / "images")
+                  if {"mapped", "mapped-ckpt"} & set(args.policies) else None)
         subprocess.run(["fallocate", "-l", "2G", str(swapfile)], check=True)
         os.chmod(swapfile, 0o600)
         subprocess.run(["mkswap", str(swapfile)], check=True, capture_output=True)
