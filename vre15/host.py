@@ -144,6 +144,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "vre1"))
 import snapshot as snap  # noqa: E402
 
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(HERE))      # repo root: vre15.evidence and vdb_c1, evidence mode only
 import revoke  # noqa: E402
 import traces as tr  # noqa: E402
 
@@ -274,7 +275,9 @@ class Host:
         self.live = {}                                  # t -> (store, exports)
         self.region = {}                                # t -> (base address, length) of linear memory
         self.mapped_once = set()                        # mapped: tenants mapped from their image
-        self.ckpt = {"count": 0, "pages": 0, "ms": [], "digests": []}   # mapped-ckpt
+        self.ckpt = {"count": 0, "pages": 0, "ms": [], "digests": [],   # mapped-ckpt
+                     "evidence_ms": [], "held_privately_max": 0}
+        self.journal = None                             # mapped-ckpt evidence mode
         self.path = {t: spec["initial"][t] for t in range(n)}
         self.last = {t: -1e9 for t in range(n)}
         self.steps = [0] * n
@@ -364,13 +367,28 @@ class Host:
                 break
             self.demote(v)
 
-    def checkpoint(self, t):
-        """mapped-ckpt: residency follows authority (vre15/revoke.py)."""
-        r = revoke.revoke(*self.region[t], self.spec["images"][t])
+    def checkpoint(self, t, horizon):
+        """mapped-ckpt: residency follows authority (vre15/revoke.py). In
+        evidence mode, also measure the post-condition and append a signed
+        record (vre15/evidence.py); its cost is counted separately."""
+        started = time.perf_counter()
+        base, length = self.region[t]
+        r = revoke.revoke(base, length, self.spec["images"][t])
         self.ckpt["count"] += 1
         self.ckpt["pages"] += r.pages
         self.ckpt["ms"].append(r.ms)
         self.ckpt["digests"].append([t, r.pages, r.digest])
+        if self.journal is None:
+            return
+        held = len(revoke.held_privately(base, length))
+        cached = resident_count(base, length)
+        done = time.perf_counter()
+        window = max((w for w in self.env[t]["windows"] if w[1] <= horizon), key=lambda w: w[1])
+        wall = self.start_wall - self.t0
+        self.journal.submit(t, self.env[t], window, self.start_wall + window[1], wall + started, wall + done,
+                            r, held, length // PAGE, cached, os.path.basename(self.spec["images"][t]))
+        self.ckpt["evidence_ms"].append((time.perf_counter() - done) * 1000)
+        self.ckpt["held_privately_max"] = max(self.ckpt["held_privately_max"], held)
 
     def checkpoint_stats(self):
         if self.policy != "mapped-ckpt":
@@ -378,7 +396,13 @@ class Host:
         ms = sorted(self.ckpt["ms"])
         return {"count": self.ckpt["count"], "pages_written": self.ckpt["pages"],
                 "ms_p50": round(ms[len(ms) // 2], 3) if ms else None,
-                "ms_max": round(ms[-1], 3) if ms else None, "digests": self.ckpt["digests"]}
+                "ms_max": round(ms[-1], 3) if ms else None, "digests": self.ckpt["digests"],
+                "evidence": None if self.journal is None else {
+                    "records": len(self.ckpt["evidence_ms"]),
+                    "held_privately_max": self.ckpt["held_privately_max"],
+                    "ms_p50": round(sorted(self.ckpt["evidence_ms"])[len(self.ckpt["evidence_ms"]) // 2], 3)
+                    if self.ckpt["evidence_ms"] else None,
+                    "ms_max": round(max(self.ckpt["evidence_ms"]), 3) if self.ckpt["evidence_ms"] else None}}
 
     def release_worker(self):
         """pageout-bg: page out tenants queued at window close, off the request loop."""
@@ -433,7 +457,7 @@ class Host:
                     continue
                 if self.policy == "mapped-ckpt":
                     if not tr.authorized(self.env[t], horizon):
-                        self.checkpoint(t)
+                        self.checkpoint(t, horizon)
                     continue
                 if self.policy == "pageout-delay":
                     self.delayed.append((horizon + RELEASE_DELAY_S, t))
@@ -529,6 +553,13 @@ class Host:
         swap0, maj0, tmaj0 = vmstat(), majflt(), thread_majflt()
         start = time.perf_counter()
         start_wall = time.time()
+        if self.spec.get("evidence"):
+            from vre15 import evidence
+            ev = self.spec["evidence"]
+            self.t0, self.start_wall = start, start_wall
+            last = self.trace["requests"][-1][0] if self.trace["requests"] else 0.0
+            custody = evidence.custody_grant(ev["run_id"], start_wall, start_wall + last + 600)
+            self.journal = evidence.Journal(ev["journal"], ev["issuer_key"], custody, background=True)
         if self.reclaimer:
             self.reclaimer.t0 = start
         if self.prefetcher:
@@ -575,6 +606,8 @@ class Host:
             self.reclaimer.halt.set()
             self.reclaimer.join()
             reclaim = self.reclaimer.stats()
+        if self.journal is not None:
+            self.journal.close()
         failures = self.integrity()
         return {"results": results, "rss_samples": rss_samples, "memcg_samples": cg_samples, "wall_s": wall,
                 "restores": self.restores, "restore_ms": self.restore_ms, "demotions": self.demotions,

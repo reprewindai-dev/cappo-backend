@@ -39,7 +39,8 @@ def test_requests_are_time_ordered():
 def test_committed_runs_are_clean():
     for manifest in sorted(RUNS.glob("*/manifest.json")):
         rows = json.loads(manifest.read_text())["summary"]["vre15"]
-        assert {"native"} <= {r["policy"] for r in rows}
+        if not any("evidence" in r for r in rows):        # evidence runs measure cost, not a comparison
+            assert {"native"} <= {r["policy"] for r in rows}
         for r in rows:
             if r["exit_code"] != 0:
                 # Kept, never dropped: an OOM kill of a kernel-paged policy is
@@ -142,3 +143,27 @@ def test_stall_episodes_count_runs_of_stall_seconds():
     s = stall_stats(results, trace)
     assert s["stall_buckets"] == [0, 1, 4]
     assert (s["stall_seconds"], s["stall_episodes"]) == (3, 2)
+
+
+def test_committed_evidence_bundles_verify_offline():
+    """Every committed revocation bundle verifies from the repository alone:
+    chain, issuer-signed EEE envelopes, residency, and the witness head. The
+    images were checked at run time (the row's verdict) and are not kept."""
+    from vre15 import verify_evidence
+    bundles = sorted(RUNS.glob("*/*.evidence.json"))
+    assert bundles
+    for b in bundles:
+        trust = json.loads(pathlib.Path(str(b).replace(".evidence.json", ".trust.json")).read_text())
+        v = verify_evidence.verify_bundle(json.loads(b.read_text()), trust, require_witness=True)
+        assert v["verdict"] == "VALID" and v["profile"] == "W1", (b, v)
+        row = next(r for r in json.loads((b.parent / "manifest.json").read_text())["summary"]["vre15"]
+                   if "evidence" in r)
+        assert row["evidence"]["verdict"] == "VALID" and row["evidence"]["revocations"] == v["revocations"]
+        # CAPPO's own EEE verifier, written independently, agrees on every envelope.
+        from cappo_backend.services.eee import EEEVerifier, VerificationVerdict
+        from vdb_c1 import canon
+        cappo = EEEVerifier({kid: canon.unb64u(pub) for kid, pub in trust["issuer_keys"].items()})
+        for rec in json.loads(b.read_text())["journal"]:
+            report = cappo.verify(rec["body"]["envelope"])
+            assert report.verdict == VerificationVerdict.VALID_WITH_UNRESOLVED_REFS, (b, rec["seq"], report)
+            assert report.reasons == ["REVOCATION_NOT_CHECKED"]

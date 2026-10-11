@@ -1074,6 +1074,136 @@ governance mechanism and not a performance one.
   of which depends on the cgroup version, but that is unverified until
   run there.
 
+## Revocations as verifiable evidence
+
+Residency following authority was a measured result. It is now also
+evidence a third party can check offline. Each revocation becomes a signed
+record, and a separate witness countersigns the history. The verifier
+re-derives everything without the runtime's code.
+
+### Three roles, three keys
+
+1. **The runtime (issuer).** `vre15/evidence.py` keeps the revocation
+   journal: append-only, hash-chained, fsynced. Each revocation appends one
+   record holding:
+   - a digest of the tenant's authority envelope, and the window that
+     ended;
+   - the revocation's start and end times;
+   - the receipt: the exact runs of pages written, and their digest;
+   - the post-condition, measured from pagemap right after the revocation:
+     the number of private pages still present or swapped;
+   - an EEE v0.1.0 envelope signed by the issuer key.
+2. **The witness.** It holds its own key and state. It re-reads the journal,
+   re-verifies every record, refuses to sign an invalid one, and only moves
+   forward: a rolled-back or rewritten journal gets signed fork evidence.
+   Outside the cgroup, it also hashes the final image files into its
+   checkpoint.
+3. **The verifier.** `vre15/verify_evidence.py` uses only the standard
+   library plus `rfc8785` and `cryptography`, and runs from an empty
+   directory. It checks:
+   - chain integrity;
+   - every envelope's hash and issuer signature;
+   - that each envelope matches its record;
+   - that no revocation started before the tenant's window ended;
+   - that zero private pages were held after each revocation;
+   - that the witness head covers the whole journal;
+   - with the images: each tenant's last receipt digest, recomputed from
+     the image bytes, and every image against the witness's hash.
+
+### How the envelope is framed
+
+A revocation always starts after the tenant's authority has ended. EEE
+requires an execution to start inside its authority window (§7.6), so the
+envelope does not claim the tenant's authority:
+- The action is the runtime's custody duty, under a custody grant that spans
+  the run.
+- The tenant's ended window is committed as the input.
+- The signed output commitment binds the receipt digest, the exact page
+  runs, the image name and the measured post-condition.
+- The status is "completed" only when no private page remained. Otherwise it
+  is "error", with a RESIDENCY_RETAINED violation.
+- `revocation_check` is "none", because the custody grant has no revocation
+  list. CAPPO's EEEVerifier therefore reports every envelope
+  VALID_WITH_UNRESOLVED_REFS, with only REVOCATION_NOT_CHECKED, as for
+  VDB-C1.
+
+### Tests
+
+The tests in `tests/test_vre15_evidence.py` run on real file-backed regions
+with real revocations. Each of these modifications is rejected with its own
+reason:
+- a dropped record;
+- a dropped or reordered record, re-chained (caught by the witness);
+- a record edited without its envelope;
+- a re-signed envelope declaring retained pages;
+- a revocation dated before its authority ended;
+- edited page runs;
+- an edited envelope;
+- an untrusted issuer key;
+- a missing witness;
+- an image changed after it was witnessed, either at a page the last
+  receipt covers or at a page only the witness's hash covers.
+
+The tests also check that:
+- the witness refuses a rollback and signs fork evidence;
+- the witness refuses to countersign a record that declares retained pages;
+- the background writer produces a journal that verifies;
+- CAPPO's own EEEVerifier, written independently, accepts every envelope.
+
+### A gap found while building it
+
+The first version committed only the receipt digest, not the list of page
+runs. The runs could then be edited without breaking the signature. Without
+the image files, only the witness head still caught the edit. The runs are
+now inside the signed output commitment, and a test checks that.
+
+### Runs (seed 402, 16 MiB, mapped-ckpt, `--evidence`)
+
+**`20261011T230741Z` (format v0, superseded, kept; see its `NOTE.md`).**
+The runtime hashed each tenant's whole 4 MiB image at every revocation, on
+the request thread, inside the 16 MiB cgroup. That read evicted live
+tenants:
+
+| Measure | This run | Same seed, no evidence |
+|---|---|---|
+| Interactive deadlines met | 90.94% | 99.89% |
+| p99 | 961 ms | 7 ms |
+| Swap-ins | 90,538 | 13,059 |
+
+The evidence itself verified VALID. The design was changed: the witness
+hashes the images outside the cgroup, and signing and fsync run on a
+background writer thread.
+
+**`20261011T231257Z` (current format).**
+
+| Measure | Result |
+|---|---|
+| Verdict at run time | VALID, W1 |
+| Revocations / tenants | 415 / 300 |
+| Images checked | all 300 |
+| Private pages held after a revocation | 0 every time |
+| Checkpoint digest sequence | identical to `20261011T180001Z` |
+| Lag from window end to signed revocation | p50 7 ms, max 72 ms |
+| Request-thread cost per record (enqueue) | p50 0.06 ms, max 2.9 ms |
+
+The page-table measurement just before the enqueue is not timed
+separately.
+
+- The committed bundle verifies from the repository alone; images are not
+  kept, at about 300 MiB per run. `tests/test_vre15.py` re-verifies every
+  committed bundle with both verifiers.
+- Single-run cost, observed and not a claim: interactive deadlines met
+  99.75%, p99 16.4 ms, swap-ins 23,973. The same seed without evidence gave
+  99.89%, 7.0 ms and 13,059.
+
+### What the evidence does not establish
+
+- That the runtime measured honestly. The issuer key is the runtime's, and
+  the witness checks history, not memory. This is evidence level E2: the
+  supervisor is trusted.
+- Anything about copies of tenant state outside the governed region.
+- Behaviour on WSL2 / cgroup v2.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps

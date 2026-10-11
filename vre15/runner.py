@@ -135,6 +135,26 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
     }
 
 
+def seal_evidence(rundir, issuer, prefix):
+    """Witness the run's revocation journal, then verify the bundle offline,
+    including against the images before they are deleted. Keeps the bundle
+    and the public trust store; returns the verdict."""
+    from vre15 import evidence, verify_evidence
+    journal = rundir / "revocations.jsonl"
+    if not journal.exists() or not journal.stat().st_size:
+        return {"verdict": "NO_REVOCATIONS"}
+    witness_keys = evidence.Witness.create(rundir / "witness", issuer)
+    try:
+        checkpoint = evidence.Witness(rundir / "witness").observe(journal, rundir / "images")
+    except evidence.WitnessRefused as e:
+        return {"verdict": "WITNESS_REFUSED", "reason": e.reason, "detail": str(e)}
+    bundle = evidence.bundle(evidence.read_journal(journal), checkpoint)
+    trust = {"issuer_keys": issuer, "witness_keys": witness_keys}
+    pathlib.Path(f"{prefix}.evidence.json").write_text(json.dumps(bundle))
+    pathlib.Path(f"{prefix}.trust.json").write_text(json.dumps(trust, indent=1))
+    return verify_evidence.verify_bundle(bundle, trust, rundir / "images", require_witness=True)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tenants", type=int, default=300)
@@ -164,6 +184,9 @@ def main() -> int:
     ap.add_argument("--policies", nargs="*", default=list(POLICIES))
     ap.add_argument("--rotate-order", action="store_true",
                     help="rotate the policy order from one cell to the next, so no policy always runs first")
+    ap.add_argument("--evidence", action="store_true",
+                    help="mapped-ckpt: sign every revocation, have a witness countersign the journal, "
+                         "and verify the bundle offline against the run's images (vre15/evidence.py)")
     ap.add_argument("--out", type=pathlib.Path, default=HERE / "runs")
     args = ap.parse_args()
     if os.geteuid() != 0:
@@ -225,6 +248,14 @@ def main() -> int:
                         "headroom_band_bytes": args.headroom_kib * 1024, "reclaim_dry_run": args.reclaim_dry_run,
                         "record_ws": args.record_ws, "probe_revoked": args.probe_revoked, "images": run_images,
                         "out": str(rundir / "result.json")}
+                issuer = None
+                if args.evidence and policy == "mapped-ckpt":
+                    # Private keys stay in the scratch run directory, which is
+                    # deleted; only the public trust store is kept.
+                    from vre15 import evidence
+                    issuer = evidence.new_issuer(rundir / "issuer.key")
+                    spec["evidence"] = {"journal": str(rundir / "revocations.jsonl"),
+                                        "issuer_key": str(rundir / "issuer.key"), "run_id": f"{run_id}/{tag}"}
                 sampler = None
                 if args.sample:
                     sampler = subprocess.Popen([sys.executable, "-I", str(HERE / "sampler.py"),
@@ -247,6 +278,8 @@ def main() -> int:
                     row["rep"] = rep
                 if proc.returncode != 0:
                     row["stderr_tail"] = proc.stderr[-600:]
+                if issuer is not None:
+                    row["evidence"] = seal_evidence(rundir, issuer, out / f"{tag}-{policy}")
                 rows.append(row)
                 (out / f"{tag}-{policy}.json").write_text(json.dumps(raw.get("results", [])))
                 cg.rmdir()

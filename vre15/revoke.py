@@ -27,7 +27,8 @@ revoked tenants with nothing resident 5 s after authority ended, against
 9% under native reclaim.
 
 Each revocation returns a receipt whose digest covers the page indices and
-bytes written. Identical writes under identical authority give identical
+bytes written, and the runs of pages it wrote (vre15/evidence.py turns it
+into a signed, witnessed record). Identical writes under identical authority give identical
 digests, so the receipt is evidence of exactly what changed.
 
 Linux only, Linux 5.4 or later (MADV_PAGEOUT). Reading pagemap flags needs
@@ -62,6 +63,7 @@ class Receipt:
     digest: str
     ms: float
     pageout_errno: int = 0
+    runs: tuple = ()
 
 
 def _pagemap(base, length):
@@ -142,4 +144,5 @@ def revoke(base, length, image):
     finally:
         os.close(fd)
     err = 0 if _libc.madvise(base, length, MADV_PAGEOUT) == 0 else ctypes.get_errno()
-    return Receipt(len(dirty), h.hexdigest(), (time.perf_counter() - t0) * 1000, err)
+    return Receipt(len(dirty), h.hexdigest(), (time.perf_counter() - t0) * 1000, err,
+                   tuple((first, count) for first, count in runs_of(dirty)))
