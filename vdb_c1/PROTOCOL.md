@@ -139,7 +139,7 @@ Meanings:
 
 | Last record for an unterminated intent | Action |
 |---|---|
-| PREPARED | `applied` row absent → `ABORTED`; present → treat as COMMIT_UNCERTAIN (below) |
+| PREPARED | `applied` row absent → `ABORTED`; present → protocol violation (COMMITTING is journaled before COMMIT), coordinator stops |
 | COMMITTING / COMMIT_UNCERTAIN | journal `COMMIT_UNCERTAIN` (once); `applied` present and the fresh read confirms → `COMMITTED` (`recovered: true`) → `FINALIZED`; absent → `ABORTED`; present but unconfirmed → stays `COMMIT_UNCERTAIN` |
 | COMMITTED | `FINALIZED` (byte-identical certificate) |
 
@@ -171,6 +171,7 @@ It returns exactly one verdict:
 | `REJECTED_JOURNAL_INCONSISTENT` | the hash chain, seq, prev, record order or state sequence is wrong |
 | `REJECTED_UNTRUSTED_KEY` | an intent or certificate is signed by a kid not in the trust store |
 | `REJECTED_BAD_SIGNATURE` | a signature does not verify |
+| `REJECTED_OUTSIDE_AUTHORITY_WINDOW` | PREPARED was recorded outside the intent's validity window |
 | `REJECTED_ROOT_MISMATCH` | a pre or post root does not recompute from its entries |
 | `REJECTED_GENERATION_MISMATCH` | the generation chain is not expected → expected+1 |
 | `REJECTED_PAYLOAD_SUBSTITUTION` | the committed state, commitment or certificate disagrees with the signed intent |

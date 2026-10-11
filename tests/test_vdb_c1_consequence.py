@@ -299,10 +299,10 @@ def test_torn_final_line_is_dropped_and_mid_file_damage_stops(home):
     data = j.read_bytes()
     j.write_bytes(data + b'{"protocol":"veklom.vdb.c1.jour')
     c = Coordinator.open(home["path"])
-    assert c.journal.torn_tail_bytes > 0 and len(c.journal.records) == 5
+    assert c.journal.torn_tail_bytes > 0 and len(c.journal.records) == 4
     assert j.read_bytes() == data
     lines = data.split(b"\n")
-    lines[1] = lines[1].replace(b'"PREPARED"', b'"ABORTED"', 1)
+    lines[0] = lines[0].replace(b'"PREPARED"', b'"ABORTED"', 1)
     j.write_bytes(b"\n".join(lines))
     with pytest.raises(coordinator.JournalCorrupt):
         Coordinator.open(home["path"])
@@ -411,3 +411,43 @@ def test_verifier_imports_nothing_from_the_package():
     src = (REPO / "vdb_c1" / "verify.py").read_text()
     assert "vdb_c1" not in src.replace('"vdb_c1"', "")
     assert "import coordinator" not in src and "from ." not in src
+
+
+def test_fresh_read_mismatch_blocks_finality(home, tmp_path):
+    """Committed state altered before confirmation: no certificate, ever."""
+    import sqlite3
+    signed = crash(home, tmp_path, "after_storage_commit")
+    iid = signed["payload"]["intent_id"]
+    db = sqlite3.connect(home["path"] / "state.db")
+    db.execute("UPDATE kv SET value = 'tampered' WHERE key = 'k1'")
+    db.commit()
+    db.close()
+    c = Coordinator.open(home["path"])
+    res = c.submit(signed)
+    assert res["state"] == "COMMIT_UNCERTAIN" and "certificate" not in res
+    assert "FINALIZED" not in kinds_for(home, iid) and "COMMITTED" not in kinds_for(home, iid)
+    assert c.adapter.execute_calls == 0
+    with pytest.raises(ValueError):
+        c.export_bundle(iid)
+    c.submit(signed)                              # retrying does not stack records
+    assert kinds_for(home, iid).count("COMMIT_UNCERTAIN") == 1
+
+
+def test_cli_end_to_end_clean_room(tmp_path):
+    key, h = tmp_path / "authority.key", tmp_path / "h"
+    assert run_cli("keygen", "--out", str(key)).returncode == 0
+    assert oct(key.stat().st_mode & 0o777) == "0o600"
+    assert run_cli("init", "--home", str(h), "--namespace", NS,
+                   "--authority-key", str(key)).returncode == 0
+    trust = json.loads((h / "trust_store.json").read_text())
+    assert all("private" not in json.dumps(v) for v in trust.values())
+    intent = tmp_path / "i.json"
+    out = run_cli("sign-intent", "--key", str(key), "--home", str(h), "--set", "a", "1",
+                  "--out", str(intent))
+    iid = json.loads(out.stdout)["intent_id"]
+    res = json.loads(run_cli("submit", "--home", str(h), "--intent", str(intent)).stdout)
+    assert res["state"] == "FINALIZED"
+    bundle = tmp_path / "b.json"
+    assert run_cli("export", "--home", str(h), "--intent-id", iid, "--out", str(bundle)).returncode == 0
+    code, v = clean_room_verify(tmp_path, json.loads(bundle.read_text()), h / "trust_store.json")
+    assert (code, v["verdict"]) == (0, "VALID_FINALIZED")
