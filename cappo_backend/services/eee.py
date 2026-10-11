@@ -113,10 +113,32 @@ class EEEBuilder:
 
 
 class EEEVerifier:
-    """Offline EEE verifier; callers provide already-resolved issuer keys."""
+    """Offline EEE verifier; callers provide already-resolved issuer keys.
 
-    def __init__(self, public_keys: Mapping[str, bytes]) -> None:
-        self._public_keys = dict(public_keys)
+    Trust is held per issuer (2026-10-11). ``issuer_keys`` maps every issuer the caller trusts
+    to that issuer's own ``{kid: public key}``. A record verifies only with a key held by the
+    issuer it names, so trusting several issuers never lets one of them sign as another, and
+    no issuer has a special seat: Veklom's CAPPO is one entry like any other.
+
+    ``public_keys`` (``{kid: key}`` for whichever issuer the record names) is the earlier
+    single-issuer form. Use it only when exactly one issuer is trusted.
+    """
+
+    def __init__(
+        self,
+        public_keys: Mapping[str, bytes] | None = None,
+        *,
+        issuer_keys: Mapping[str, Mapping[str, bytes]] | None = None,
+    ) -> None:
+        if (public_keys is None) == (issuer_keys is None):
+            raise ValueError("EEEVerifier needs exactly one of public_keys or issuer_keys")
+        self._any_issuer_keys = dict(public_keys or {})
+        self._issuer_keys = {issuer: dict(keys) for issuer, keys in (issuer_keys or {}).items()}
+
+    def _keys_for(self, issuer: Any) -> Mapping[str, bytes]:
+        if self._any_issuer_keys:
+            return self._any_issuer_keys
+        return self._issuer_keys.get(issuer, {}) if isinstance(issuer, str) else {}
 
     def verify(self, envelope: Mapping[str, Any]) -> VerificationReport:
         reasons: list[str] = []
@@ -151,6 +173,7 @@ class EEEVerifier:
         if not isinstance(signatures, list):
             return False
         issuer = envelope.get("issuer")
+        trusted = self._keys_for(issuer)
         for signature in signatures:
             if not isinstance(signature, Mapping):
                 continue
@@ -160,10 +183,10 @@ class EEEVerifier:
             signer = signature.get("signer")
             if not isinstance(kid, str) or not isinstance(signer, str):
                 continue
-            if signer != f"{issuer}#{kid}" or kid not in self._public_keys:
+            if signer != f"{issuer}#{kid}" or kid not in trusted:
                 continue
             try:
-                key = Ed25519PublicKey.from_public_bytes(self._public_keys[kid])
+                key = Ed25519PublicKey.from_public_bytes(trusted[kid])
                 key.verify(_b64url_decode(str(signature.get("value", ""))), str(envelope["envelope_hash"]).encode("ascii"))
                 return True
             except (ValueError, InvalidSignature):

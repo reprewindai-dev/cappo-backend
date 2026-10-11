@@ -19,6 +19,7 @@ import hashlib
 import os
 import shutil
 import threading
+from collections.abc import Mapping
 
 import cbor2
 from cryptography.exceptions import InvalidSignature
@@ -169,6 +170,40 @@ def mint_signed_execution_evidence(
     signature = private_key.sign(sig_data)
     cose_sign1 = [protected_header, unprotected_header, payload, signature]
     return cbor2.dumps(cbor2.CBORTag(18, cose_sign1), canonical=True)
+
+
+def evidence_issuer() -> str:
+    """Name this deployment signs receipts as. Any operator can run CAPPO under its own name."""
+    return (os.getenv("EVIDENCE_ISSUER") or "cappo").strip() or "cappo"
+
+
+def verify_with_trust_store(
+    cose_bytes: bytes,
+    issuer_keys: dict[str, list[ed25519.Ed25519PublicKey]],
+) -> tuple[str, dict]:
+    """Verify a receipt against every issuer the caller chooses to trust.
+
+    The receipt names its signing key by fingerprint (unprotected header label 4). The issuer is
+    whoever in the caller's trust store holds that key; no issuer is built in. Returns
+    (issuer, receipt). Raises ValueError if no trusted issuer holds the key or the signature fails.
+    """
+    try:
+        decoded = cbor2.loads(cose_bytes)
+        unprotected = decoded.value[1] if isinstance(decoded, cbor2.CBORTag) else {}
+        kid = unprotected.get(4) if isinstance(unprotected, Mapping) else None
+        kid = kid.decode() if isinstance(kid, bytes) else kid
+    except Exception as e:
+        raise ValueError(f"Failed to parse COSE bytes: {e}")
+    holders = [
+        (issuer, key)
+        for issuer, keys in issuer_keys.items()
+        for key in keys
+        if evidence_key_id(key) == kid
+    ]
+    if not holders:
+        raise ValueError("No trusted issuer holds the key that signed this receipt")
+    issuer, key = holders[0]
+    return issuer, verify_signed_execution_evidence(cose_bytes, key)
 
 
 def verify_signed_execution_evidence(
