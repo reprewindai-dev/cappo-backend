@@ -657,6 +657,56 @@ few seeds, one will look good by chance, so the two stages are kept apart.
   idle moment.
 - **Run:** fresh seeds, sign test, α = 0.025 per hypothesis.
 
+## Threshold window: run `20261011T140814Z` (exploratory)
+
+**Setup:** budgets of 10, 12, 14, 16, 20, 24 and 32 MiB; seeds 401–403 on
+the informative trace; native, native-pageout, native-steered and
+envelope-declared; `--record-ws` for every arm; rotated order. Read with
+`python -m vre15.window`.
+
+**Results:**
+- 79 of 84 runs completed, with 0 integrity failures and 0 authority
+  violations.
+- 5 runs were OOM-killed in warm-up, before serving any request, all while
+  copying state into anonymous memory:
+  - native-steered at 12 MiB (seed 403) and 14 MiB (seed 401);
+  - native-pageout at 14 MiB (seed 401);
+  - envelope-declared at 14 and 16 MiB (seed 401).
+
+| Budget | native, mean (min) | native p99 | native-pageout vs native | Its Δ request-thread major faults |
+|---|---|---|---|---|
+| 32 | 99.997% (99.99%) | 2.7 ms | 1W/0L, ±0 | +19 |
+| 24 | 99.997% (99.99%) | 2.6 ms | 0W/0L, ±0 | −65 |
+| 20 | 99.89% (99.76%) | 4.1 ms | 2W/0L, +0.05 pts | −142 |
+| **16** | **98.59% (97.44%)** | **224 ms** | **3W/0L, +1.12 pts, p99 −222 ms** | **−10,977 (about −60%)** |
+| 14 | 99.72% (99.44%) | 4.8 ms | 1W/1L of 2, +0.09 pts | −1,928 |
+| 12 | 99.28% (99.05%) | 15.9 ms | 2W/1L, +0.56 pts | −6,806 |
+| 10 | 98.92% (97.59%) | 6.6 ms | 2W/1L, +0.22 pts | +1,527 |
+
+**What it shows (exploratory, three seeds; no claims):**
+- **Onset:** native's mean falls below 99.9% from 20 MiB down.
+- **Centre:** native collapses hardest at 16 MiB. Two of three seeds were
+  below 99%, with p99 at 224 ms.
+- **The candidate:** native-pageout leans positive at 20, 16, 12 and 10
+  MiB.
+  - At 16 MiB it won all three seeds.
+  - It cut the request thread's own major faults by about 60%. That is a
+    mechanism signal, separate from the deadline share.
+- native-steered and envelope-declared also lean positive at 16 MiB.
+  native-steered pays several thousand extra request-thread faults at
+  every budget.
+- **Metric note:** stall episodes per run, computed after the fact from
+  the per-request results, are too coarse to separate policies. Most runs
+  have about one, even at 32 MiB. A collapse is one severe episode, not
+  many. Severity, measured by the within-deadline share and p99, is the
+  informative measure.
+
+16 MiB is the window's centre, and the next steps run there:
+1. A/A for native, to test whether collapses are seed-driven or
+   run-driven.
+2. The sampler, to test whether collapses follow swap writeback.
+3. A smoke test of the mapped policy.
+
 ## State as a mapped snapshot: feasibility probe
 
 So far every tenant's state has been copied into anonymous memory, and
