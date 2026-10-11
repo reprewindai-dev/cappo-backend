@@ -79,3 +79,27 @@ def test_paired_sign_test_and_pairing():
     assert r["failed"] == [{"seed": 4, "policy": "native", "exit_code": -9, "oom_kills": 1}]
     assert r["median_pct_diff"] == 0.0
     assert r["median_p99_diff_ms"] == 10
+
+
+def test_oracle_bound_properties():
+    from vre15 import oracle
+
+    for variant in ("informative", "uninformative"):
+        trace = traces.make(variant, 40, 30, 120, 5)
+        refs = oracle.served_refs(trace, 5)
+        envs = trace["envelopes"]
+        for cap in (20, 80, 300):
+            lru = oracle.run_lru(refs, cap)
+            env, _ = oracle.run_envelope(refs, cap, envs)
+            envp, _ = oracle.run_envelope(refs, cap, envs, prefetch=True)
+            opt = oracle.run_opt(refs, cap)
+            assert opt <= min(lru, env, envp), (variant, cap)
+            if variant == "uninformative":
+                # The control: no tenant is ever outside authority while
+                # requests are served, so the envelope policy is LRU.
+                assert env == lru, cap
+    # With room for every hot page, every policy takes only cold misses.
+    trace = traces.make("informative", 20, 30, 80, 2)
+    refs = oracle.served_refs(trace, 2)
+    cold = len({(t, p) for _, t, p in refs})
+    assert oracle.run_lru(refs, 10_000) == oracle.run_opt(refs, 10_000) == cold
