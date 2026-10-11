@@ -203,10 +203,62 @@ whether it replaces the kernel's mechanism (snapshot policies) or steers it
 (madvise). The governance results are unchanged: authority enforced,
 integrity preserved, in every run.
 
+## Tight budgets, single runs: run `20261011T071126Z`
+
+**Purpose:** find the budget where native starts to miss deadlines, and test
+a third policy, **native-pageout**. It is native-steered without the
+window-open WILLNEED: it only calls PAGEOUT when a window closes.
+
+**Setup:** budgets of 24, 16, 12 and 8 MiB; three policies; both traces;
+one run per cell. Every run had 0 OOM kills, 0 integrity failures, 0
+authority violations and 0 madvise errors. Batch deadlines were met 100% in
+every informative run.
+
+| Budget | Trace | native ≤100 ms (p99 ms) | native-steered ≤100 ms (p99 ms) | native-pageout ≤100 ms (p99 ms) | Swap-ins: native / steered / pageout |
+|---|---|---|---|---|---|
+| 24 | informative | 99.97% (4.3) | 100% (5.5) | 99.95% (3.2) | 3,597 / 160,845 / 3,414 |
+| 24 | control | 100% (3.4) | 99.55% (7.1) | 99.98% (2.6) | 4,396 / 81,198 / 4,166 |
+| 16 | informative | 97.90% (218.9) | 99.57% (57.9) | 99.83% (6.9) | 7,376 / 167,895 / 6,255 |
+| 16 | control | 99.62% (25.7) | 99.39% (10.3) | 99.79% (5.5) | 9,377 / 86,159 / 9,210 |
+| 12 | informative | 99.04% (89.7) | 99.68% (11.9) | 99.30% (35.5) | 11,398 / 183,068 / 11,560 |
+| 12 | control | 99.77% (6.4) | 99.28% (64.0) | 99.55% (5.5) | 16,799 / 93,431 / 16,935 |
+| 8 | informative | 98.59% (180.1) | 98.58% (288.9) | 98.71% (228.1) | 43,387 / 245,855 / 55,664 |
+| 8 | control | 96.60% (452.2) | 97.92% (433.6) | 99.46% (10.8) | 84,480 / 143,169 / 65,474 |
+
+### Single runs here are noise-dominated, so no claim is made from this table
+
+On the control trace, no authority window closes during the run. So
+native-pageout issues no advice at all: the manifest records
+`{"open": 0, "close": 0}`. It is mechanically identical to native. Its
+difference from native in the control rows is therefore pure run-to-run
+variation:
+
+| Budget | native | native-pageout (same mechanism) | Gap in deadlines met | p99 (ms) |
+|---|---|---|---|---|
+| 24 MiB | 100% | 99.98% | 0.02 points | 3.4 vs 2.6 |
+| 16 MiB | 99.62% | 99.79% | 0.17 points | 25.7 vs 5.5 |
+| 12 MiB | 99.77% | 99.55% | 0.22 points | 6.4 vs 5.5 |
+| 8 MiB | 96.60% | 99.46% | 2.9 points | 452 vs 10.8 |
+
+The tail is dominated by occasional stall episodes under reclaim, so
+identical configurations can differ by 40× at p99. Native is also
+non-monotonic in the budget: 97.9% at 16 MiB but 99.04% at 12 MiB.
+
+So the informative-trace gaps cannot be read as effects from single runs,
+even though some are large (native 97.9% against native-pageout 99.83% at
+16 MiB). The sign of the gap between the mechanically identical policies
+also flips from budget to budget, so running first in a cell is not a
+consistent bias. The next run repeats the informative cells at 16, 12 and 8
+MiB over five seeds, with paired comparisons per seed and the policy order
+rotated from cell to cell.
+
+What does hold at every budget: native-steered's WILLNEED drives 1.7 to 45
+times native's swap-in I/O. native-pageout's swap-ins stay within about
+±30% of native's.
+
 ### Still untested
 
-- Budgets below 48 MiB, where native might start to miss deadlines.
-- A steered variant without the window-open WILLNEED (PAGEOUT on close
-  only), which would remove the burst in note 3.
 - Workloads that touch most of their state per request, and authority gaps
   long enough for swap to matter more than reclaim.
+- Other hosts. The noise above may be specific to this VM's storage and
+  reclaim behaviour.
