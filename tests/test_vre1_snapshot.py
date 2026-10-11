@@ -123,5 +123,7 @@ def test_unreadable_header_is_refused():
 def test_committed_runs_have_no_integrity_failures():
     for manifest in sorted((pathlib.Path(__file__).resolve().parents[1] / "vre1" / "runs").glob("*/manifest.json")):
         m = json.loads(manifest.read_text())
-        for row in m["summary"]["vre1a"] + m["summary"]["vre1b"]:
+        rows = [row for phase in m["summary"].values() for row in phase]
+        assert rows, manifest
+        for row in rows:
             assert row["integrity_failures"] == 0, (manifest, row)

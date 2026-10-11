@@ -125,9 +125,42 @@ one at a time.
     28.7 ms cold p95. It does not say how many tenants it can serve at once.
   - The single p99 outlier at N=1 (86.8 ms) is one sample.
 
+## VRE-1C: concurrent materialization (`concurrent.py`)
+
+Run `20261011T052029Z-concurrent` has 64 tenants, the same as in VRE-1B
+(4 MiB logical, 25% density, sparse-zlib1). In each round, K distinct
+tenants are restored cold at the same time, after one page-cache drop.
+There were 10 rounds per K and 310 restores in all, with 0 integrity
+failures.
+
+| K concurrent | Per-tenant cold restore p50 / p95 / p99 (ms) | Batch resident (settled) | Logical live | Logical ÷ resident |
+|---|---|---|---|---|
+| 1 | 19.1 / 24.3 / 24.3 | 3.9 MB | 4.2 MB | 1.08 |
+| 2 | 21.5 / 24.1 / 24.1 | 7.8 MB | 8.4 MB | 1.07 |
+| 4 | 18.3 / 21.8 / 21.8 | 16.1 MB | 16.8 MB | 1.04 |
+| 8 | 29.4 / 36.7 / 39.1 | 32.0 MB | 33.6 MB | 1.05 |
+| 16 | 46.6 / 67.9 / 85.8 | 65.0 MB | 67.1 MB | 1.03 |
+
+1. **Latency holds up to the core count, then grows with CPU contention.**
+   Through K=4 (4 vCPUs), per-tenant latency is flat. At K=16, p95 is
+   67.9 ms, still within a 100 ms target on this host.
+2. **Once tenants are live together, the 331× from VRE-1B is gone.**
+   Logical state divided by resident memory is about 1.0× at every K. Each
+   restored tenant here is its own process, and its runtime overhead
+   (about 3 MB) is about as large as what a 4 MiB, 25%-dense tenant
+   actually touches. The 331× comes entirely from dormancy, with one tenant
+   live at a time. Density from live tenants needs many tenants per runtime
+   process (several stores sharing one engine and compiled module). That is
+   not built or measured yet.
+3. The batch wall time (p50 62 ms at K=1) includes reaping each process
+   after it exits. Read per-tenant latency for restore cost, not batch wall
+   time.
+
 ## Not measured yet
 
-- **VRE-1C** (concurrent materialization) and **VRE-1D** (the collapse
+- **Many tenants per runtime process**, which VRE-1C shows is needed for
+  live density.
+- **VRE-1D** (the collapse
   curve, with active working sets at 0.8× to 2× usable RAM). This host has
   no swap, so pushing past RAM gives OOM kills, not paging. A meaningful
   collapse curve needs either swap or zswap, or a residency scheduler that
@@ -137,5 +170,7 @@ one at a time.
 - **Real tenant data**: the pseudo-random state shows compression at its
   worst case.
 - **VRE-1.5**: whether a policy that knows about the envelope (authority
-  expiry, idle time, deadline class) beats native OS behaviour. Finding 6
-  sets the bar: the runtime already keeps untouched memory off the books.
+  expiry, idle time, deadline class) beats native OS behaviour. VRE-1A
+  finding 6 and VRE-1C finding 2 set the bar together: untouched memory is
+  already non-resident, and live density is bounded by per-process runtime
+  overhead.
