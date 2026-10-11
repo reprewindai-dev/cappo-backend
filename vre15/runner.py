@@ -44,7 +44,8 @@ from vre1.bench import probe
 from vre15 import traces
 
 HERE = pathlib.Path(__file__).resolve().parent
-POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered")
+POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout")
+KERNEL_PAGED = ("native", "native-steered", "native-pageout")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
@@ -128,7 +129,7 @@ def main() -> int:
                 cg = own_memcg() / f"vre15-{run_id}-{budget_mib}-{variant}-{policy}"
                 cg.mkdir()
                 (cg / "memory.limit_in_bytes").write_text(str(budget))
-                kernel_paged = policy in ("native", "native-steered")
+                kernel_paged = policy in KERNEL_PAGED
                 if not kernel_paged:
                     (cg / "memory.memsw.limit_in_bytes").write_text(str(budget))
                 rundir = work / f"{budget_mib}-{variant}-{policy}"

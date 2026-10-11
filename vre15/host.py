@@ -27,6 +27,10 @@ Policies:
               the envelope steering the kernel's own page-granular mechanism:
               madvise(MADV_PAGEOUT) over a tenant's linear memory when its
               authority window closes, madvise(MADV_WILLNEED) when one opens.
+  native-pageout
+              native-steered without the window-open WILLNEED: only
+              madvise(MADV_PAGEOUT) when a window closes. Isolates the cost of
+              the t = 0 WILLNEED burst seen on the control trace.
 
 Authority is enforced before any policy acts, so authority violations are 0
 by construction for every policy. The run reports them anyway.
@@ -53,6 +57,8 @@ import traces as tr  # noqa: E402
 
 MADV_WILLNEED = 3
 MADV_PAGEOUT = 21                       # Linux 5.4+
+KERNEL_PAGED = ("native", "native-steered", "native-pageout")
+STEERED = ("native-steered", "native-pageout")
 _libc = ctypes.CDLL(None, use_errno=True)
 _libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
 
@@ -120,7 +126,7 @@ class Host:
         # Managed policies derive their live cap from the same budget the
         # cgroup enforces: 85% of it, less this process's own baseline,
         # divided by the per-tenant resident cost measured in VRE-1E.
-        if self.policy in ("native", "native-steered"):
+        if self.policy in KERNEL_PAGED:
             self.cap = n
         else:
             self.cap = max(1, int((0.85 * spec["budget_bytes"] - self.base_rss) // spec["per_tenant_bytes"]))
@@ -176,8 +182,10 @@ class Host:
         20261011T053146Z judged expiry at wall-clock time and thrashed."""
         if self.policy == "native":
             return
-        if self.policy == "native-steered":
+        if self.policy in STEERED:
             for t, kind in self.edges.pop_due(horizon):
+                if kind == "open" and self.policy == "native-pageout":
+                    continue
                 store, x = self.live[t]
                 err = advise(store, x, MADV_PAGEOUT if kind == "close" else MADV_WILLNEED)
                 self.advice[kind] += 1
@@ -207,11 +215,11 @@ class Host:
     def run(self):
         n = self.trace["tenants"]
         warm_swap0 = vmstat()
-        if self.policy in ("native", "native-steered"):
+        if self.policy in KERNEL_PAGED:
             for t in range(n):
                 self.materialize(t)
         warm_swap1 = vmstat()
-        self.edges = Edges(self.env) if self.policy == "native-steered" else None
+        self.edges = Edges(self.env) if self.policy in STEERED else None
         self.advice, self.advice_errors = {"open": 0, "close": 0}, 0
         self.restore_ms.clear()
         self.restores = 0
@@ -279,7 +287,7 @@ class Host:
 
 
 class Edges:
-    """Authority window opens and closes, in time order, for native-steered."""
+    """Authority window opens and closes, in time order, for the steered policies."""
 
     def __init__(self, envelopes):
         self.q = sorted([(s, t, "open") for t, e in enumerate(envelopes) for s, _ in e["windows"]]
