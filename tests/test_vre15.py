@@ -49,6 +49,11 @@ def test_committed_runs_are_clean():
                 assert r["oom_kills"] >= 1 and r["policy"] in KERNEL_PAGED, (manifest, r)
                 continue
             assert r["oom_kills"] == 0, (manifest, r["policy"], r["variant"])
+            if r["policy"] in KERNEL_PAGED:
+                # A kernel-paged policy never snapshots or restores a tenant
+                # after warm-up; a fall-through into the snapshot policies'
+                # housekeeping would show up here.
+                assert r["demotions"] == 0 and r["restores"] == 0, (manifest, r["policy"])
             assert r["authority_violations"] == 0 and r["integrity_failures"] == 0, r
 
 

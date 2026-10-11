@@ -31,6 +31,22 @@ Policies:
               native-steered without the window-open WILLNEED: only
               madvise(MADV_PAGEOUT) when a window closes. Isolates the cost of
               the t = 0 WILLNEED burst seen on the control trace.
+  envelope-headroom
+              native, plus a background reclaimer thread that keeps a free
+              band below the cgroup limit, so that request-path faults find
+              free memory instead of reclaiming synchronously. On cgroup v1
+              with the classic LRU, a faulting task that reclaims can wait,
+              with no timeout, for swap writeback it queued itself
+              (folio_wait_writeback in shrink_folio_list); that is the
+              suspected source of native's 200-900 ms stalls. The thread
+              pages out whole tenants with MADV_PAGEOUT, choosing victims by
+              the envelope: outside authority first, furthest next window
+              opening first (Belady with known windows); then LRU.
+  lru-headroom
+              the same background reclaimer, choosing victims by recency
+              alone (least recently requested first). The control: it has
+              background reclaim but no envelope, so any gap between it and
+              envelope-headroom is the envelope's contribution.
 
 Authority is enforced before any policy acts, so authority violations are 0
 by construction for every policy. The run reports them anyway.
@@ -44,6 +60,7 @@ import ctypes
 import json
 import os
 import sys
+import threading
 import time
 
 import wasmtime
@@ -57,8 +74,9 @@ import traces as tr  # noqa: E402
 
 MADV_WILLNEED = 3
 MADV_PAGEOUT = 21                       # Linux 5.4+
-KERNEL_PAGED = ("native", "native-steered", "native-pageout")
+KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom")
 STEERED = ("native-steered", "native-pageout")
+HEADROOM = ("envelope-headroom", "lru-headroom")
 _libc = ctypes.CDLL(None, use_errno=True)
 _libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
 
@@ -117,6 +135,7 @@ class Host:
             self.msha = hashlib.sha256(f.read()).hexdigest()
         n = self.trace["tenants"]
         self.live = {}                                  # t -> (store, exports)
+        self.region = {}                                # t -> (base address, length) of linear memory
         self.path = {t: spec["initial"][t] for t in range(n)}
         self.last = {t: -1e9 for t in range(n)}
         self.steps = [0] * n
@@ -142,6 +161,8 @@ class Host:
         x = wasmtime.Instance(store, self.module, []).exports(store)
         snap.restore_into(store, x, header, runs, self.msha)
         self.live[t] = (store, x)
+        mem = x["memory"]
+        self.region[t] = (ctypes.addressof(mem.data_ptr(store).contents), mem.data_len(store))
         self.restores += 1
         self.restore_ms.append((time.perf_counter() - t0) * 1000)
 
@@ -180,8 +201,8 @@ class Host:
         at wall-clock time: a host that has fallen behind must not demote a
         tenant whose queued requests were authorized when they arrived. Run
         20261011T053146Z judged expiry at wall-clock time and thrashed."""
-        if self.policy == "native":
-            return
+        if self.policy == "native" or self.policy in HEADROOM:
+            return                                      # kernel-paged; the reclaimer runs on its own thread
         if self.policy in STEERED:
             for t, kind in self.edges.pop_due(horizon):
                 if kind == "open" and self.policy == "native-pageout":
@@ -214,6 +235,13 @@ class Host:
     # -- run -------------------------------------------------------------------
     def run(self):
         n = self.trace["tenants"]
+        self.reclaimer = None
+        if self.policy in HEADROOM:
+            # Started before warm-up: a real deployment would run it always.
+            budget = self.spec["budget_bytes"]
+            band = self.spec.get("headroom_band_bytes") or max(2 << 20, budget // 8)
+            self.reclaimer = Reclaimer(self, budget, band)
+            self.reclaimer.start()
         warm_swap0 = vmstat()
         if self.policy in KERNEL_PAGED:
             for t in range(n):
@@ -229,6 +257,8 @@ class Host:
         cg_path = memcg_usage_path()
         swap0, maj0 = vmstat(), majflt()
         start = time.perf_counter()
+        if self.reclaimer:
+            self.reclaimer.t0 = start
         for at, t, _intended in self.trace["requests"]:
             while True:
                 now = time.perf_counter() - start
@@ -249,6 +279,8 @@ class Host:
                 self.make_room(at, protect=t)
                 self.materialize(t)
             store, x = self.live[t]
+            if self.reclaimer:
+                self.reclaimer.paged.discard(t)
             x["step"](store, 1)
             self.steps[t] += 1
             done = time.perf_counter() - start
@@ -256,13 +288,18 @@ class Host:
             results.append([t, round((done - at) * 1000, 3), self.env[t]["class"], True])
         wall = time.perf_counter() - start
         swap1, maj1 = vmstat(), majflt()
+        reclaim = None
+        if self.reclaimer:
+            self.reclaimer.halt.set()
+            self.reclaimer.join()
+            reclaim = self.reclaimer.stats()
         failures = self.integrity()
         return {"results": results, "rss_samples": rss_samples, "memcg_samples": cg_samples, "wall_s": wall,
                 "restores": self.restores, "restore_ms": self.restore_ms, "demotions": self.demotions,
                 "snapshot_bytes_written": self.snapshot_bytes, "major_faults": maj1 - maj0,
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
-                "advice": self.advice, "advice_errors": self.advice_errors,
+                "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim,
                 "base_rss": self.base_rss, "integrity_failures": failures,
                 "authority_violations": sum(1 for (t, lat, cls, ok), (at, _, _) in
                                             zip(results, self.trace["requests"])
@@ -284,6 +321,88 @@ class Host:
                 rx["step"](ref_store, self.steps[t])
             failures += got != rx["digest"](ref_store)
         return failures
+
+
+class Reclaimer(threading.Thread):
+    """Background headroom keeper for the *-headroom policies.
+
+    Every `period` seconds it reads the cgroup's charge. Above `high` (limit
+    minus one band) it pages out whole tenants with MADV_PAGEOUT, in victim
+    order, until the charge is at or below `low` (limit minus two bands). The
+    reclaim and its swap writeback happen on this thread; ctypes releases
+    the GIL during madvise, so request handling continues meanwhile.
+
+    Both victim orders share two safety rules, so they differ only in the
+    order itself:
+    - a tenant requested within the last `protect_s` seconds of trace time
+      is never a victim (the first version had no such rule and paged out
+      the hot set thousands of times per run, because the process's
+      non-tenant memory alone sits near the low mark);
+    - at most `per_pass` tenants are paged out per pass, so background
+      writeback is paced rather than bursty.
+    A tenant paged out once is skipped until it is requested again.
+    """
+
+    def __init__(self, host, limit, band, period=0.005, protect_s=2.0, per_pass=4):
+        super().__init__(daemon=True)
+        self.h, self.high, self.low, self.period = host, limit - band, limit - 2 * band, period
+        self.band, self.protect_s, self.per_pass = band, protect_s, per_pass
+        # Diagnostic levels: 1 = choose victims but page out nothing;
+        # 2 = only read the cgroup charge; 3 = only sleep.
+        self.dry_run = int(host.spec.get("reclaim_dry_run") or 0)
+        self.path = memcg_usage_path()
+        self.halt = threading.Event()
+        self.paged = set()
+        self.t0 = None                                  # trace start, set when the trace begins
+        self.passes = self.pageouts = self.errors = 0
+        self.pass_ms = []
+
+    def now(self):
+        return 0.0 if self.t0 is None else time.perf_counter() - self.t0
+
+    def order(self):
+        h, now = self.h, self.now()
+        cands = [t for t in list(h.region) if t not in self.paged and now - h.last[t] > self.protect_s]
+        if h.policy == "lru-headroom":
+            return sorted(cands, key=lambda t: h.last[t])
+
+        def key(t):
+            env = h.env[t]
+            if not tr.authorized(env, now):
+                nxt = min((s for s, _ in env["windows"] if s > now), default=float("inf"))
+                return (0, -nxt, h.last[t])
+            return (1, 0, h.last[t])
+        return sorted(cands, key=key)
+
+    def run(self):
+        while not self.halt.wait(self.period):
+            if self.dry_run == 3:
+                continue
+            if memcg_bytes(self.path) <= self.high or self.dry_run == 2:
+                continue
+            t0 = time.perf_counter()
+            self.passes += 1
+            for t in self.order()[:self.per_pass]:
+                base, length = self.h.region[t]
+                if self.dry_run:
+                    pass
+                elif _libc.madvise(base, length, MADV_PAGEOUT) != 0:
+                    self.errors += 1
+                self.paged.add(t)
+                self.pageouts += 1
+                if memcg_bytes(self.path) <= self.low:
+                    break
+            self.pass_ms.append((time.perf_counter() - t0) * 1000)
+
+    def stats(self):
+        ms = sorted(self.pass_ms)
+
+        def q(f):
+            return round(ms[min(len(ms) - 1, int(f * len(ms)))], 3) if ms else None
+        return {"band_bytes": self.band, "protect_s": self.protect_s, "per_pass": self.per_pass,
+                "passes": self.passes, "pageouts": self.pageouts,
+                "errors": self.errors, "pass_ms_p50": q(.5), "pass_ms_p99": q(.99),
+                "pass_ms_max": round(ms[-1], 3) if ms else None}
 
 
 class Edges:

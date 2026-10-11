@@ -44,8 +44,9 @@ from vre1.bench import probe
 from vre15 import traces
 
 HERE = pathlib.Path(__file__).resolve().parent
-POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout")
-KERNEL_PAGED = ("native", "native-steered", "native-pageout")
+POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout",
+            "envelope-headroom", "lru-headroom")
+KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
@@ -87,7 +88,7 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "demotions": raw.get("demotions"), "snapshot_bytes_written": raw.get("snapshot_bytes_written"),
         "swap_pages_in": raw.get("swap_pages_in"), "swap_pages_out": raw.get("swap_pages_out"),
         "warmup_swap_pages_out": raw.get("warmup_swap_pages_out"),
-        "advice": raw.get("advice"), "advice_errors": raw.get("advice_errors"),
+        "advice": raw.get("advice"), "advice_errors": raw.get("advice_errors"), "reclaim": raw.get("reclaim"),
         "major_faults": raw.get("major_faults"), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 
@@ -99,6 +100,11 @@ def main() -> int:
     ap.add_argument("--rate", type=float, default=250, help="mean requests per second")
     ap.add_argument("--budget-mib", type=int, nargs="+", default=[160])
     ap.add_argument("--idle-s", type=float, default=5.0)
+    ap.add_argument("--headroom-kib", type=int, default=0,
+                    help="background reclaimer band for the *-headroom policies (0 = host default)")
+    ap.add_argument("--reclaim-dry-run", type=int, default=0,
+                    help="diagnostic: 1 = reclaimer chooses victims but pages nothing out; "
+                         "2 = only reads the cgroup charge; 3 = only sleeps")
     ap.add_argument("--seed", type=int, nargs="+", default=[7],
                     help="trace seeds; several give paired repeats of every cell")
     ap.add_argument("--variants", nargs="*", default=["informative", "uninformative"])
@@ -147,6 +153,7 @@ def main() -> int:
                 spec = {"policy": policy, "trace": str(tpath), "cwasm": str(work / "m.cwasm"),
                         "initial": initial, "workdir": str(rundir), "idle_s": args.idle_s,
                         "budget_bytes": budget, "per_tenant_bytes": PER_TENANT_BYTES,
+                        "headroom_band_bytes": args.headroom_kib * 1024, "reclaim_dry_run": args.reclaim_dry_run,
                         "out": str(rundir / "result.json")}
                 proc = subprocess.run(
                     [sys.executable, "-I", str(HERE / "host.py"), json.dumps(spec)],
