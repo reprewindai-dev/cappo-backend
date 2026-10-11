@@ -92,8 +92,12 @@ def test_oracle_bound_properties():
             lru = oracle.run_lru(refs, cap)
             env, _ = oracle.run_envelope(refs, cap, envs)
             envp, _ = oracle.run_envelope(refs, cap, envs, prefetch=True)
+            envw, _ = oracle.run_envelope(refs, cap, envs, prefetch=True, ws_only=True)
             opt = oracle.run_opt(refs, cap)
             assert opt <= min(lru, env, envp), (variant, cap)
+            if variant == "uninformative":
+                # one window per tenant: no previous window, so no prefetch
+                assert envw == env, cap
             if variant == "uninformative":
                 # The control: no tenant is ever outside authority while
                 # requests are served, so the envelope policy is LRU.

@@ -563,6 +563,61 @@ trace and 201–203 on the control. The raw rows are in
   non-tenant memory shares the budget, and swap-in counts include
   readahead, so the mapping is not calibrated.
 
+### What a runtime can actually prefetch
+
+The prefetch row above fetches each tenant's full hot set at every window
+opening, including its first. A runtime cannot know a first window's pages
+without reading the guest. `oracle.py` therefore adds
+**envelope+ws-prefetch**: at an opening, fetch only the pages the tenant
+touched in its previous window, and nothing for a first window. This is
+what the `envelope-prefetch` policy in `host.py` does, recording the
+working set with `mincore` at window close.
+
+| Capacity | Envelope eviction | + previous-window prefetch (reads) | + full hot-set prefetch |
+|---|---|---|---|
+| 5% | −1.7% | −1.6% (+55) | −2.2% |
+| 10% | −4.7% | −4.4% (+162) | −6.8% |
+| 25% | −10.4% | −14.9% (+543) | −35.1% |
+| 50% | −4.1% | −4.1% (+0) | −97.6% |
+
+The figures are demand misses against LRU, as means over seeds 201–210.
+The raw rows are in `vre15/oracle_runs/20261011-seeds201-210-ws.json`.
+
+**Claim classes:**
+- **Observed (model):** what a runtime can learn from history gains little
+  over envelope eviction alone. The full hot-set prefetch gains are first
+  touches in a tenant's first window. History cannot predict those, and
+  the envelope as specified does not carry them. At 50% capacity the
+  previous window's pages are still cached, so there is nothing left to
+  fetch.
+- **Observed (smoke run, development seed 104, 40 s):**
+  - `envelope-prefetch` works mechanically: 0 errors, 0 late prefetches,
+    about 0.5 ms per tenant.
+  - It fired on only 15 of about 600 openings, at about 4 pages each. Most
+    openings were first windows, and at 16 MiB the kernel had already
+    evicted most of a tenant's hot set before its window closed.
+- **Decision:** `envelope-prefetch` is **not given a pre-registered run**.
+  Its oracle bound is at most a 15% cut in demand misses at one capacity.
+  Native's deadline misses come from rare reclaim stalls, not from fault
+  counts: about 4,000 faults per run still meet 99.7% of deadlines. A
+  15% fault cut is not expected to show up as a deadline gain at this
+  sample size. Recorded here so it is not mistaken for an untested idea.
+- **Aspirational thesis:** the envelope as a working-set declaration.
+  - The large gains need to know what state an operation will touch
+    before it first runs. CAPPO already grants one bounded operation per
+    envelope.
+  - If the grant also carried the tenant's recorded working set from its
+    previous execution (as REAP stores a working-set file alongside a
+    snapshot), first-window misses would become prefetchable. The model
+    puts that at 35–98% fewer demand misses at moderate capacity.
+  - Conditions:
+    - the working set must be recorded by the runtime, for example with
+      soft-dirty bits during execution, and stored with the governed state;
+    - it must be signed or bound to the snapshot like the rest of the
+      state;
+    - stale working sets must cost no more than they save.
+  - Not built, not measured.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps

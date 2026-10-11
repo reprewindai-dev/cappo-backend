@@ -45,8 +45,9 @@ from vre15 import traces
 
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout",
-            "envelope-headroom", "lru-headroom")
-KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom")
+            "envelope-headroom", "lru-headroom", "envelope-prefetch")
+KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
+                "envelope-prefetch")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
@@ -88,7 +89,7 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "demotions": raw.get("demotions"), "snapshot_bytes_written": raw.get("snapshot_bytes_written"),
         "swap_pages_in": raw.get("swap_pages_in"), "swap_pages_out": raw.get("swap_pages_out"),
         "warmup_swap_pages_out": raw.get("warmup_swap_pages_out"),
-        "advice": raw.get("advice"), "advice_errors": raw.get("advice_errors"), "reclaim": raw.get("reclaim"),
+        "advice": raw.get("advice"), "advice_errors": raw.get("advice_errors"), "reclaim": raw.get("reclaim"), "prefetch": raw.get("prefetch"),
         "major_faults": raw.get("major_faults"), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 

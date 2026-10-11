@@ -30,6 +30,12 @@ Policies:
              set is fetched ahead of its first request (prefetch reads are
              counted separately, not as misses). A prefetch may evict only
              pages of tenants outside authority.
+  envelope+ws-prefetch
+             the realistic version of the above: at a window opening, fetch
+             only the pages the tenant touched in its previous window; a
+             tenant's first window gets no prefetch. This is what a runtime
+             can know without reading the guest (vre15 envelope-prefetch
+             records the working set with mincore at window close).
   opt        Belady: evict the page whose next use is furthest away, with
              full knowledge of every future request. No real policy can
              beat it; it is the ceiling.
@@ -119,21 +125,30 @@ class EnvelopeCache:
         return True
 
 
-def run_envelope(refs, capacity, envs, prefetch=False):
+def run_envelope(refs, capacity, envs, prefetch=False, ws_only=False):
+    """prefetch: fetch the hot set at each window opening. ws_only: fetch
+    only the pages touched in the tenant's previous window instead."""
     cache, misses, prefetched = EnvelopeCache(envs, capacity), 0, 0
     opens = sorted((s, t) for t, e in enumerate(envs) for s, _ in e["windows"]) if prefetch else []
+    seen, prev_ws = {}, {}                          # pages touched in the current / previous window
     i = 0
     for now, t, p in refs:
         while i < len(opens) and opens[i][0] <= now:
             s, u = opens[i]
             i += 1
-            for q in range(HOT_PAGES):
+            if ws_only:
+                prev_ws[u], seen[u] = seen.get(u, set()), set()
+                pages = sorted(prev_ws[u])
+            else:
+                pages = range(HOT_PAGES)
+            for q in pages:
                 k = (u, q)
                 if k in cache:
                     continue
                 if not cache.insert(k, s, outside_only=True):
                     break
                 prefetched += 1
+        seen.setdefault(t, set()).add(p)
         k = (t, p)
         if k in cache:
             cache.touch(k)
@@ -175,11 +190,13 @@ def bound(variant, seed, tenants=300, duration=90, rate=250, fractions=(0.1, 0.2
         lru = run_lru(refs, cap)
         env, _ = run_envelope(refs, cap, envs)
         envp, pre = run_envelope(refs, cap, envs, prefetch=True)
+        envw, prew = run_envelope(refs, cap, envs, prefetch=True, ws_only=True)
         opt = run_opt(refs, cap)
         gap = lru - opt
         out.append({"variant": variant, "seed": seed, "capacity_fraction": f, "capacity_pages": cap,
                     "refs": len(refs), "lru": lru, "envelope": env, "envelope_prefetch": envp,
-                    "prefetch_reads": pre, "opt": opt,
+                    "prefetch_reads": pre, "envelope_ws_prefetch": envw, "ws_prefetch_reads": prew,
+                    "opt": opt,
                     "closed_by_envelope": round((lru - env) / gap, 3) if gap else None,
                     "closed_by_envelope_prefetch": round((lru - envp) / gap, 3) if gap else None})
     return out

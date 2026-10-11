@@ -47,6 +47,19 @@ Policies:
               alone (least recently requested first). The control: it has
               background reclaim but no envelope, so any gap between it and
               envelope-headroom is the envelope's contribution.
+  envelope-prefetch
+              native-pageout, plus a working-set-targeted prefetch. When a
+              window closes, before the page-out, the host records which of
+              the tenant's pages are resident (mincore): its recent working
+              set, capped at WS_CAP pages. A background thread then faults
+              exactly those pages back in with MADV_POPULATE_READ,
+              PREFETCH_LEAD_S before the tenant's next window opens. Only
+              runtime-observable state is used, never the guest code. A
+              tenant's first window has no recorded working set and gets no
+              prefetch. The only difference from native-pageout is the
+              prefetch; the oracle bound (oracle.py) located the envelope's
+              non-redundant information in window openings, and
+              native-steered's whole-region WILLNEED over-fetched 30-50x.
 
 Authority is enforced before any policy acts, so authority violations are 0
 by construction for every policy. The run reports them anyway.
@@ -74,11 +87,38 @@ import traces as tr  # noqa: E402
 
 MADV_WILLNEED = 3
 MADV_PAGEOUT = 21                       # Linux 5.4+
-KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom")
-STEERED = ("native-steered", "native-pageout")
+MADV_POPULATE_READ = 22                 # Linux 5.14+
+PAGE = 4096
+WS_CAP = 64                             # pages recorded per tenant (256 KiB)
+PREFETCH_LEAD_S = 0.5
+KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
+                "envelope-prefetch")
+STEERED = ("native-steered", "native-pageout", "envelope-prefetch")
 HEADROOM = ("envelope-headroom", "lru-headroom")
 _libc = ctypes.CDLL(None, use_errno=True)
 _libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+_libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p]
+
+
+def resident_pages(base, length, cap=WS_CAP):
+    """Indices of resident pages in [base, base+length), at most `cap`."""
+    n = (length + PAGE - 1) // PAGE
+    vec = ctypes.create_string_buffer(n)
+    if _libc.mincore(base, length, vec) != 0:
+        return None
+    raw = vec.raw
+    return [i for i in range(n) if raw[i] & 1][:cap]
+
+
+def runs_of(pages):
+    """Contiguous runs [(first, count)] of sorted page indices."""
+    out = []
+    for i in pages:
+        if out and out[-1][0] + out[-1][1] == i:
+            out[-1][1] += 1
+        else:
+            out.append([i, 1])
+    return out
 
 
 def advise(store, exports, advice):
@@ -205,8 +245,10 @@ class Host:
             return                                      # kernel-paged; the reclaimer runs on its own thread
         if self.policy in STEERED:
             for t, kind in self.edges.pop_due(horizon):
-                if kind == "open" and self.policy == "native-pageout":
+                if kind == "open" and self.policy in ("native-pageout", "envelope-prefetch"):
                     continue
+                if kind == "close" and self.prefetcher:
+                    self.prefetcher.record(t)
                 store, x = self.live[t]
                 err = advise(store, x, MADV_PAGEOUT if kind == "close" else MADV_WILLNEED)
                 self.advice[kind] += 1
@@ -236,6 +278,7 @@ class Host:
     def run(self):
         n = self.trace["tenants"]
         self.reclaimer = None
+        self.prefetcher = Prefetcher(self) if self.policy == "envelope-prefetch" else None
         if self.policy in HEADROOM:
             # Started before warm-up: a real deployment would run it always.
             budget = self.spec["budget_bytes"]
@@ -259,6 +302,9 @@ class Host:
         start = time.perf_counter()
         if self.reclaimer:
             self.reclaimer.t0 = start
+        if self.prefetcher:
+            self.prefetcher.t0 = start
+            self.prefetcher.start()
         for at, t, _intended in self.trace["requests"]:
             while True:
                 now = time.perf_counter() - start
@@ -288,7 +334,11 @@ class Host:
             results.append([t, round((done - at) * 1000, 3), self.env[t]["class"], True])
         wall = time.perf_counter() - start
         swap1, maj1 = vmstat(), majflt()
-        reclaim = None
+        reclaim = prefetch = None
+        if self.prefetcher:
+            self.prefetcher.halt.set()
+            self.prefetcher.join()
+            prefetch = self.prefetcher.stats()
         if self.reclaimer:
             self.reclaimer.halt.set()
             self.reclaimer.join()
@@ -299,7 +349,7 @@ class Host:
                 "snapshot_bytes_written": self.snapshot_bytes, "major_faults": maj1 - maj0,
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
-                "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim,
+                "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim, "prefetch": prefetch,
                 "base_rss": self.base_rss, "integrity_failures": failures,
                 "authority_violations": sum(1 for (t, lat, cls, ok), (at, _, _) in
                                             zip(results, self.trace["requests"])
@@ -403,6 +453,74 @@ class Reclaimer(threading.Thread):
                 "passes": self.passes, "pageouts": self.pageouts,
                 "errors": self.errors, "pass_ms_p50": q(.5), "pass_ms_p99": q(.99),
                 "pass_ms_max": round(ms[-1], 3) if ms else None}
+
+
+class Prefetcher(threading.Thread):
+    """Working-set-targeted prefetch for envelope-prefetch.
+
+    `record(t)` (main thread, at window close) stores the tenant's resident
+    pages. The thread walks window openings in time order and, at
+    PREFETCH_LEAD_S before each, faults the recorded pages in with
+    MADV_POPULATE_READ, one contiguous run per call. ctypes releases the GIL
+    during each call, so requests are served meanwhile.
+    """
+
+    def __init__(self, host):
+        super().__init__(daemon=True)
+        self.h = host
+        self.ws = {}
+        self.opens = sorted((s, t) for t, e in enumerate(host.env) for s, _ in e["windows"])
+        self.halt = threading.Event()
+        self.t0 = None
+        self.calls = self.pages = self.errors = self.skipped = self.late = 0
+        self.recorded = self.record_errors = 0
+        self.call_ms = []
+
+    def record(self, t):
+        base, length = self.h.region[t]
+        ws = resident_pages(base, length)
+        if ws is None:
+            self.record_errors += 1
+            return
+        self.ws[t] = ws
+        self.recorded += 1
+
+    def run(self):
+        i = 0
+        while i < len(self.opens) and not self.halt.is_set():
+            if self.t0 is None:
+                self.halt.wait(0.01)
+                continue
+            due, t = self.opens[i]
+            wait = due - PREFETCH_LEAD_S - (time.perf_counter() - self.t0)
+            if wait > 0:
+                self.halt.wait(min(wait, 0.05))
+                continue
+            i += 1
+            ws = self.ws.get(t)
+            if not ws:
+                self.skipped += 1
+                continue
+            base, _ = self.h.region[t]
+            t1 = time.perf_counter()
+            for first, count in runs_of(ws):
+                if _libc.madvise(base + first * PAGE, count * PAGE, MADV_POPULATE_READ) != 0:
+                    self.errors += 1
+                self.calls += 1
+                self.pages += count
+            self.call_ms.append((time.perf_counter() - t1) * 1000)
+            if time.perf_counter() - self.t0 > due:
+                self.late += 1
+
+    def stats(self):
+        ms = sorted(self.call_ms)
+
+        def q(f):
+            return round(ms[min(len(ms) - 1, int(f * len(ms)))], 3) if ms else None
+        return {"lead_s": PREFETCH_LEAD_S, "ws_cap": WS_CAP, "recorded": self.recorded,
+                "record_errors": self.record_errors, "prefetches": len(ms), "skipped_no_ws": self.skipped,
+                "calls": self.calls, "pages": self.pages, "errors": self.errors, "late": self.late,
+                "tenant_ms_p50": q(.5), "tenant_ms_p99": q(.99), "tenant_ms_max": round(ms[-1], 3) if ms else None}
 
 
 class Edges:
