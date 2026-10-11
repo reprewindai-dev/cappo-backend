@@ -162,5 +162,40 @@ def restore(spec):
                       "bytes_written": bytes_written}))
 
 
+def pack(spec):
+    """Restore K tenants into K stores that share one engine and one module,
+    all live at once in this process. Separate stores keep each tenant's
+    linear memory and globals separate; only the runtime and code are shared."""
+    engine = wasmtime.Engine()
+    msha = module_sha()
+    module = wasmtime.Module.deserialize_file(engine, spec["cwasm"])
+    base = rss_kib()
+    live, restore_ms, failures = [], [], 0
+    for t in spec["tenants"]:
+        t0 = time.perf_counter()
+        with open(t["path"], "rb") as f:
+            blob = bytearray(os.fstat(f.fileno()).st_size)
+            f.readinto(blob)
+        header, runs = snap.decode(blob)
+        store = wasmtime.Store(engine)
+        x = wasmtime.Instance(store, module, []).exports(store)
+        snap.restore_into(store, x, header, runs, msha)
+        restore_ms.append(ms(t0))
+        del blob, runs
+        live.append((store, x, t))
+    resident_kib = rss_kib() - base                     # all K live, buffers freed
+    request_us = []
+    for store, x, t in live:                            # one request each, then check it
+        t0 = time.perf_counter()
+        x["step"](store, 1)
+        request_us.append(ms(t0) * 1000)
+        failures += not (x["digest"](store) == t["digest_after_next"]
+                         and snap.memory_sha256(store, x) == t["memory_sha256_after_next"])
+    print(json.dumps({"k": len(live), "resident_kib_all_live": resident_kib,
+                      "restore_ms": restore_ms, "request_us": request_us,
+                      "integrity_failures": failures}))
+
+
 if __name__ == "__main__":
-    {"make": make, "make-many": make_many, "restore": restore}[sys.argv[1]](json.loads(sys.argv[2]))
+    {"make": make, "make-many": make_many, "restore": restore, "pack": pack}[sys.argv[1]](
+        json.loads(sys.argv[2]))

@@ -156,10 +156,51 @@ failures.
    after it exits. Read per-tenant latency for restore cost, not batch wall
    time.
 
+## VRE-1E: many live tenants per runtime process (`pack.py`)
+
+Run `20261011T052157Z-pack` uses the same tenants (4 MiB logical, 25%
+density). K tenants are restored into K separate wasmtime stores in one
+process, sharing one engine and one compiled module, and stay live at once.
+The page cache was dropped before each round, with 3 rounds per K. All
+2,007 tenant restores passed integrity.
+
+| K live in one process | Resident, all live | Per tenant | Logical ÷ resident | Restore p50 / p95 (ms) | Request on a live tenant p50 / p95 (µs) |
+|---|---|---|---|---|---|
+| 1 | 2.3 MB | 2.27 MB | 1.85 | 12.5 / 12.7 | 848 / 872 |
+| 8 | 12.8 MB | 1.60 MB | 2.63 | 8.8 / 12.1 | 217 / 966 |
+| 32 | 38.2 MB | 1.19 MB | 3.52 | 8.9 / 11.6 | 209 / 994 |
+| 128 | 143.6 MB | 1.12 MB | 3.74 | 9.1 / 12.1 | 197 / 287 |
+| 500 | 552.3 MB | 1.10 MB | **3.80** | 9.9 / 33.8 | 204 / 295 |
+
+1. **Packing removes the per-process overhead VRE-1C found.** Resident
+   memory per live tenant fell from about 3.9 MB (one process each) to
+   1.10 MB at K=500.
+2. **Live density is now capped by touched state, and it reaches that cap.**
+   A 4 MiB, 25%-dense tenant touches 1.05 MB, so the ceiling for live
+   logical ÷ resident is about 4.0× (1 ÷ density). The measured figure was
+   3.80× at K=500. Past this point, more live density can only come from
+   touching less state. That means demoting cold state while a tenant stays
+   live, which is the VRE-1.5 question.
+3. **Restore inside a running host costs about 9–10 ms p50** (no process
+   start, module already loaded). p95 rises to 33.8 ms at K=500 as the
+   process grows.
+4. **A request to a live tenant costs about 0.2 ms p50.** The cold 1 ms at
+   K=1 is the first call into newly mapped code.
+5. **The isolation is weaker.** Tenants packed into one process share its
+   address space, and Wasm's sandbox is the only boundary between them.
+   VRE-0's per-execution cgroup boundary does not apply inside a pack. This
+   trades isolation for density, and an envelope would need to state it
+   (one possible field: the isolation class).
+
+**The density picture so far, on this host:**
+- **Dormant:** 331×. Entitlement over one live tenant's resident memory
+  (VRE-1B).
+- **Live, one process each:** about 1.0× (VRE-1C).
+- **Live, packed:** about 3.8×, the touched-state ceiling at 25% density
+  (VRE-1E).
+
 ## Not measured yet
 
-- **Many tenants per runtime process**, which VRE-1C shows is needed for
-  live density.
 - **VRE-1D** (the collapse
   curve, with active working sets at 0.8× to 2× usable RAM). This host has
   no swap, so pushing past RAM gives OOM kills, not paging. A meaningful
