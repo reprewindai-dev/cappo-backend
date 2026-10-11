@@ -872,6 +872,43 @@ Written and committed before any run with these seeds.
   (warm-up and during the trace), request-thread major faults, and
   integrity.
 
+### Result: run `20261011T170547Z`
+
+**Neither hypothesis is confirmed.** The run followed the pre-registration
+exactly. All 28 completed runs had 0 integrity failures and 0 authority
+violations.
+
+| Hypothesis | Result | Test | p | Outcome |
+|---|---|---|---|---|
+| H11: lower warm-up kill rate | native 2/15 killed, mapped 0/15 | Fisher exact, two-sided | 0.483 | **not confirmed** |
+| H12: fewer missed interactive deadlines | mapped fewer in 7 of 13 pairs, more in 6, 0 ties | sign test | 1.000 | **not confirmed** |
+
+Missed interactive deadlines per seed, as (seed, native, mapped):
+(601, 5, 13), (602, 24, 1), (603, 24, 9), (604, 2, 4), (606, 45, 10),
+(607, 3, 4), (608, 21, 66), (609, 24, 3), (610, 7, 15), (611, 28, 7),
+(612, 5, 41), (614, 35, 21), (615, 16, 10).
+
+| Arm | Completed | Interactive ≤100 ms, mean (min) | p99 median (max), ms | Warm-up swap-outs, median | Trace swap-outs, median | Request-thread major faults, median |
+|---|---|---|---|---|---|---|
+| native | 13 | 99.79% (99.49%) | 4.3 (11.6) | 79,019 | 8,107 | 8,328 |
+| mapped | 15 | 99.84% (99.31%) | 3.9 (69.8) | 2,287 | 7,268 | 8,347 |
+
+**Claim classes:**
+- **Observed, holding in every run:** mapping cuts warm-up swap writes
+  about 35-fold (median 79,019 to 2,287 pages).
+- **Observed:** native's warm-up kill rate on these seeds was 2 of 15,
+  much lower than the 2 of 5 in the smoke run. Fifteen runs per arm
+  cannot separate 13% from 0%, so the admission-robustness benefit stays
+  unconfirmed.
+- **Observed:** during the trace, mapped and native are
+  indistinguishable on missed deadlines (7–6), p99, swap-ins and request
+  faults. Trace-time swap-outs are about 10% lower.
+- **Inferred:** the mapped state model, as built, changes warm-up rather
+  than steady state. During the trace the swap traffic is modified pages
+  and heap, which mapping does not make clean. The remaining step that
+  could change steady state is checkpoint on revocation (mapped-ckpt):
+  it remaps revoked tenants clean.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
