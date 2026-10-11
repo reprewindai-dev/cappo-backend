@@ -11,6 +11,11 @@ worse than plain idle-LRU, not better. The governance thesis (authority
 enforced, integrity preserved) is untouched: 0 authority violations and 0
 integrity failures in every run.
 
+A follow-up (below) let the envelope steer the kernel's own paging with
+`madvise` instead of replacing it. Across budgets from 160 down to 48 MiB it
+did not improve deadlines either, cost 37–50× the swap-in I/O, and hurt the
+control trace.
+
 ## Setup (`runner.py`, `host.py`, `traces.py`)
 
 - **Load:** 300 tenants, each 4 MiB logical at 25% density (about 1 MiB of
@@ -117,10 +122,91 @@ pass before any full run.
   - dropping state outright when authority ends for good.
 
   None of these is a latency win, and none was measured here.
-- **The next fair test:** keep the kernel's page-granular mechanism and let
-  the envelope steer it. On authority expiry, call `madvise(MADV_PAGEOUT)`
-  on the tenant's linear memory; when a window opens, call
-  `madvise(MADV_WILLNEED)`. Compare that against plain native at the same
-  budget, including a budget tight enough that native starts to miss
-  deadlines. That tests the brief's own position: *make OS mechanisms
-  subordinate to the contract*, instead of replacing them.
+- **The next fair test,** run below: keep the kernel's page-granular
+  mechanism and let the envelope steer it, which is the brief's own position
+  (*make OS mechanisms subordinate to the contract*).
+
+## Envelope-steered kernel paging: run `20261011T064045Z`
+
+**Policy `native-steered`:** native (every tenant live, kernel paging, swap
+allowed), plus:
+- `madvise(MADV_PAGEOUT)` over a tenant's linear memory when its authority
+  window closes;
+- `madvise(MADV_WILLNEED)` when a window opens.
+
+Everything else (trace, seed, tenants, cgroup limit, swap) is identical to
+native. The sweep runs both policies at budgets of 160, 96, 64 and 48 MiB.
+
+**Resident figure:** the table uses the cgroup's own charge
+(`memory.usage_in_bytes`), not process RSS. Under PAGEOUT, RSS falls (to
+20–46 MiB) while the cgroup charge stays at the limit: the pages sit in swap
+cache and are still charged. A trial showed that the RSS "saving" was
+therefore not a saving, so RSS is not used here.
+
+| Budget | Trace | Policy | Interactive ≤100 ms | Interactive p50 / p95 / p99 (ms) | Mean / peak cgroup charge (MiB) | Swap pages in / out during run | Major faults | madvise open / close |
+|---|---|---|---|---|---|---|---|---|
+| 160 | informative | native | 100% | 0.34 / 0.69 / 3.07 | 159.9 / 160.0 | 2,624 / 4,980 | 1,656 | — |
+| 160 | informative | native-steered | 100% | 0.29 / 0.69 / 2.37 | 159.9 / 160.0 | 97,999 / 40,611 | 1,552 | 605 / 604 |
+| 160 | control | native | 99.99% | 0.31 / 0.63 / 1.99 | 159.9 / 160.0 | 2,662 / 5,122 | 1,598 | — |
+| 160 | control | native-steered | 99.32% | 0.32 / 0.68 / 19.16 | 159.9 / 160.0 | 78,922 / 36,465 | 1,853 | 300 / 0 |
+| 96 | informative | native | 100% | 0.34 / 0.72 / 1.90 | 95.9 / 96.0 | 2,860 / 5,525 | 1,842 | — |
+| 96 | informative | native-steered | 100% | 0.33 / 0.95 / 3.44 | 95.9 / 96.0 | 125,831 / 26,038 | 2,176 | 605 / 604 |
+| 96 | control | native | 100% | 0.37 / 0.74 / 3.17 | 95.9 / 96.0 | 2,832 / 8,568 | 1,787 | — |
+| 96 | control | native-steered | 99.27% | 0.37 / 0.80 / 11.35 | 95.9 / 96.0 | 79,236 / 20,524 | 2,099 | 300 / 0 |
+| 64 | informative | native | 100% | 0.32 / 0.77 / 2.78 | 63.9 / 64.0 | 2,831 / 5,429 | 1,990 | — |
+| 64 | informative | native-steered | 100% | 0.34 / 0.96 / 2.40 | 63.9 / 64.0 | 139,966 / 19,250 | 3,173 | 605 / 604 |
+| 64 | control | native | 99.98% | 0.36 / 0.74 / 2.63 | 63.9 / 64.0 | 2,863 / 6,830 | 1,841 | — |
+| 64 | control | native-steered | 99.16% | 0.35 / 0.77 / 42.20 | 63.9 / 64.0 | 79,336 / 12,590 | 2,263 | 300 / 0 |
+| 48 | informative | native | 100% | 0.32 / 0.69 / 1.89 | 47.9 / 48.0 | 2,952 / 5,956 | 1,891 | — |
+| 48 | informative | native-steered | 100% | 0.33 / 0.99 / 2.52 | 47.9 / 48.0 | 147,629 / 16,489 | 4,274 | 605 / 604 |
+| 48 | control | native | 100% | 0.37 / 0.77 / 2.71 | 47.9 / 48.0 | 2,781 / 5,486 | 2,098 | — |
+| 48 | control | native-steered | 99.33% | 0.32 / 0.69 / 10.19 | 47.9 / 48.0 | 79,335 / 8,731 | 2,297 | 300 / 0 |
+
+Notes on the runs:
+- Batch deadlines were met 100% in every informative run.
+- Every run: 0 OOM kills, 0 integrity failures, 0 authority violations, 0
+  madvise errors.
+- Warm-up swap-out before the trace grows as the budget shrinks (about
+  43,000 pages at 160 MiB, 71,000 at 48 MiB), the same for both policies.
+
+### What it shows
+
+1. **Steering did not improve deadlines at any budget.** On the informative
+   trace, both policies met 100% of interactive and batch deadlines at every
+   budget. The p99 moved in both directions (lower at 160 and 64 MiB,
+   higher at 96 and 48 MiB) by about a millisecond. With one run per cell,
+   a difference that small and inconsistent cannot be told apart from noise,
+   so no claim is made from it.
+2. **Steering costs a lot of I/O for nothing measurable.** Steered runs
+   swapped in 37 to 50 times as many pages (98,000–148,000 against
+   2,600–3,000). PAGEOUT at window close evicts pages the kernel would
+   have kept, and WILLNEED at the next open reads them back. The kernel's
+   own reclaim, which sees actual access, needed far less.
+3. **On the control, steering hurts.** There, every window opens at t = 0,
+   so WILLNEED asks for all 300 tenants at once, about 79,000 pages, under a
+   limit that cannot hold them. The misses sit at the start of the run:
+   - at 160 MiB, all 152 misses arrive in the first 0.6 s;
+   - at 48 MiB, 137 of 148 arrive in the first 5 s.
+
+   Native met 99.98–100% of control deadlines; steered met 99.16–99.33%.
+4. **This sweep never reached the budget where native fails.** Native met
+   at least 99.98% of interactive deadlines even at 48 MiB, against a
+   logical population of 1.2 GiB and about 300 MiB of touched state.
+   Requests touch one or two pages of a Zipf-popular tenant, so the hot
+   working set is small and the kernel keeps it resident. So the case where
+   steering was meant to help (native degrading under a tight budget) did
+   not arise at these budgets.
+
+**Verdict, extended:** on this host and workload, envelope awareness has not
+improved a defined metric over native OS behaviour at the same budget,
+whether it replaces the kernel's mechanism (snapshot policies) or steers it
+(madvise). The governance results are unchanged: authority enforced,
+integrity preserved, in every run.
+
+### Still untested
+
+- Budgets below 48 MiB, where native might start to miss deadlines.
+- A steered variant without the window-open WILLNEED (PAGEOUT on close
+  only), which would remove the burst in note 3.
+- Workloads that touch most of their state per request, and authority gaps
+  long enough for swap to matter more than reclaim.
