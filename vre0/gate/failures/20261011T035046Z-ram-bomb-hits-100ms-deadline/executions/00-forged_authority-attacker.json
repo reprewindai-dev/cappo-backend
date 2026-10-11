@@ -1,0 +1,70 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "481cb3a6cc128de0",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "c3347ca0-c1d1-41c4-9daa-c8abb63d9faf",
+   "execution_id": "637581d8-7f46-45a1-876c-4a96e19b2373",
+   "scenario": "forged_authority",
+   "role": "attacker",
+   "issued_at": 1791690648,
+   "expires_at": 1791690948,
+   "workload": {
+    "module": "normal_ok",
+    "module_sha256": "1668aba740f5041447b86aceb3bc1825e5fdc6e1369d433d8267f3611e1f809c",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 67108864,
+    "compute_fuel": 50000000,
+    "wall_deadline_ms": 100,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "61Z7m0KXzHtVx9sNh5v7+vhN+e6gUAtD6zzZh/yLNPK60cSzdhIS9JQbhxK1tZIQPgyZC+L1gr2kYiyZhEZ3Ag=="
+ },
+ "boundary": null,
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "637581d8-7f46-45a1-876c-4a96e19b2373",
+  "boundary_digest": null,
+  "refusal": {
+   "stage": "authority",
+   "reasons": [
+    "signature_not_trusted"
+   ]
+  },
+  "released": false,
+  "released_at_ns": null,
+  "deadline_at_ns": null,
+  "reaped_at_ns": null,
+  "counters_before": null,
+  "counters_after": null,
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": null,
+   "signal": null
+  },
+  "runtime_report": null,
+  "untrusted_guest_output": null,
+  "residual_procs": [],
+  "teardown": null,
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "c5c47bfd1a253bb7",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "637581d8-7f46-45a1-876c-4a96e19b2373",
+   "envelope_digest": "fc6f6db01b39476d305a43e9ebc9be57573c0c4381eab230c912032f94742561",
+   "boundary_digest": null,
+   "evidence_digest": "8ccd1aea414ff8493d1081d2243c0f38392c3b967659cad32c0c7d71a98fdef8",
+   "outcome": "AUTHORITY_REFUSED",
+   "evidence_level": "E2"
+  },
+  "sig": "l2MblbfwIu4ElPc0dnfEBka6oYsIWQE6/+/9YZrB1fPriXmbFHexB1q4KOnq5je1imUy1aZE9UGfym/dDlgeBw=="
+ }
+}
