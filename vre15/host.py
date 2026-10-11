@@ -68,6 +68,14 @@ Policies:
               included, is prefetched. Tests the oracle's large prefetch
               gains, which history alone cannot supply.
 
+  lru-pageout
+              the control for native-pageout. Same number of page-outs, at
+              the same moments (each window close), on the same thread; only
+              the victim differs: the least recently requested tenant not
+              paged out since its last request, which is what a recency-only
+              system would choose. If it matches native-pageout, the gain is
+              idle-time eviction, not the envelope's information.
+
 record_ws (spec flag, applied identically to every policy in a run): after
 warm-up, each tenant is paged out (MADV_PAGEOUT), runs RECORD_STEPS real
 requests, and its working set is read from /proc/self/pagemap: pages whose
@@ -109,8 +117,8 @@ WS_CAP = 64                             # pages recorded per tenant (256 KiB)
 PREFETCH_LEAD_S = 0.5
 RECORD_STEPS = 32
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
-                "envelope-prefetch", "envelope-declared")
-STEERED = ("native-steered", "native-pageout", "envelope-prefetch", "envelope-declared")
+                "envelope-prefetch", "envelope-declared", "lru-pageout")
+STEERED = ("native-steered", "native-pageout", "envelope-prefetch", "envelope-declared", "lru-pageout")
 PREFETCHING = ("envelope-prefetch", "envelope-declared")
 HEADROOM = ("envelope-headroom", "lru-headroom")
 _libc = ctypes.CDLL(None, use_errno=True)
@@ -277,8 +285,14 @@ class Host:
             return                                      # kernel-paged; the reclaimer runs on its own thread
         if self.policy in STEERED:
             for t, kind in self.edges.pop_due(horizon):
-                if kind == "open" and self.policy in ("native-pageout",) + PREFETCHING:
+                if kind == "open" and self.policy in ("native-pageout", "lru-pageout") + PREFETCHING:
                     continue
+                if self.policy == "lru-pageout":
+                    cands = [u for u in self.live if u not in self.lru_paged]
+                    if not cands:
+                        continue
+                    t = min(cands, key=lambda u: self.last[u])
+                    self.lru_paged.add(t)
                 if kind == "close" and self.prefetcher and self.policy == "envelope-prefetch":
                     self.prefetcher.record(t)
                 store, x = self.live[t]
@@ -312,6 +326,7 @@ class Host:
         self.reclaimer = None
         self.prefetcher = Prefetcher(self) if self.policy in PREFETCHING else None
         self.declared_ws = {}
+        self.lru_paged = set()                          # lru-pageout: paged out since last request
         if self.policy in HEADROOM:
             # Started before warm-up: a real deployment would run it always.
             budget = self.spec["budget_bytes"]
@@ -376,6 +391,7 @@ class Host:
             store, x = self.live[t]
             if self.reclaimer:
                 self.reclaimer.paged.discard(t)
+            self.lru_paged.discard(t)
             x["step"](store, 1)
             self.steps[t] += 1
             done = time.perf_counter() - start

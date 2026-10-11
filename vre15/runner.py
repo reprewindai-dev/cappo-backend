@@ -45,9 +45,10 @@ from vre15 import traces
 
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout",
-            "envelope-headroom", "lru-headroom", "envelope-prefetch", "envelope-declared")
+            "envelope-headroom", "lru-headroom", "envelope-prefetch", "envelope-declared",
+            "lru-pageout")
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
-                "envelope-prefetch", "envelope-declared")
+                "envelope-prefetch", "envelope-declared", "lru-pageout")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
