@@ -103,6 +103,8 @@ def main() -> int:
                     help="trace seeds; several give paired repeats of every cell")
     ap.add_argument("--variants", nargs="*", default=["informative", "uninformative"])
     ap.add_argument("--policies", nargs="*", default=list(POLICIES))
+    ap.add_argument("--rotate-order", action="store_true",
+                    help="rotate the policy order from one cell to the next, so no policy always runs first")
     ap.add_argument("--out", type=pathlib.Path, default=HERE / "runs")
     args = ap.parse_args()
     if os.geteuid() != 0:
@@ -122,13 +124,14 @@ def main() -> int:
         os.chmod(swapfile, 0o600)
         subprocess.run(["mkswap", str(swapfile)], check=True, capture_output=True)
         cells = [(b, v, s) for b in args.budget_mib for s in args.seed for v in args.variants]
-        for budget_mib, variant, seed in cells:
+        for i, (budget_mib, variant, seed) in enumerate(cells):
             budget = budget_mib * 2**20
             trace = traces.make(variant, args.tenants, args.duration, args.rate, seed)
             tag = f"{budget_mib}-{variant}" + (f"-s{seed}" if len(args.seed) > 1 else "")
             tpath = work / f"trace-{variant}-{seed}.json"
             tpath.write_text(json.dumps(trace))
-            for policy in args.policies:
+            k = i % len(args.policies) if args.rotate_order else 0
+            for pos, policy in enumerate(args.policies[k:] + args.policies[:k]):
                 cg = own_memcg() / f"vre15-{run_id}-{tag}-{policy}"
                 cg.mkdir()
                 (cg / "memory.limit_in_bytes").write_text(str(budget))
@@ -155,7 +158,7 @@ def main() -> int:
                     subprocess.run(["swapoff", str(swapfile)], check=True)
                 raw = json.loads((rundir / "result.json").read_text()) if (rundir / "result.json").exists() else {}
                 row = summarize(raw, trace, policy, oom, proc.returncode)
-                row["budget_mib"], row["seed"] = budget_mib, seed
+                row["budget_mib"], row["seed"], row["order_in_cell"] = budget_mib, seed, pos
                 if proc.returncode != 0:
                     row["stderr_tail"] = proc.stderr[-600:]
                 rows.append(row)
