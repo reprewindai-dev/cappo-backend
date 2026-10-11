@@ -107,3 +107,22 @@ def test_oracle_bound_properties():
     refs = oracle.served_refs(trace, 2)
     cold = len({(t, p) for _, t, p in refs})
     assert oracle.run_lru(refs, 10_000) == oracle.run_opt(refs, 10_000) == cold
+
+
+def test_window_analysis_finds_onset_and_window():
+    from vre15 import window
+
+    def row(budget, seed, policy, pct, faults=0):
+        return {"budget_mib": budget, "seed": seed, "policy": policy, "exit_code": 0, "oom_kills": 0,
+                "request_thread_major_faults": faults,
+                "by_class": {"interactive": {"within_deadline_pct": pct, "p99_ms": 1.0}}}
+
+    rows = []
+    for s in (1, 2, 3):
+        rows += [row(32, s, "native", 100.0), row(32, s, "x", 100.0),
+                 row(16, s, "native", 99.5), row(16, s, "x", 99.8),
+                 row(8, s, "native", 98.0), row(8, s, "x", 97.0)]
+    rows.append(row(8, 4, "native", 0.0) | {"exit_code": -9, "oom_kills": 1})   # killed: ignored
+    res = window.analyse(rows)
+    assert res["onset_budget_mib"] == 16
+    assert res["window"] == {"x": [16]}
