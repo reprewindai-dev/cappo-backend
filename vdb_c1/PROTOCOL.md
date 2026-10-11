@@ -183,3 +183,36 @@ finalizer, by scope). A finalizer that lies consistently in every record
 it signs and journals cannot be caught from the bundle. The bundle proves
 internal consistency, authority, and binding to signed records; it does
 not prove that the disk under SQLite honours fsync.
+
+## W1: witnessed finality (`witness.py`)
+
+A witness is a separate role with its own Ed25519 key and durable state
+`{genesis_hash, seq, head_hash}`. On each observation it:
+
+1. reads the journal file itself, read-only; a torn tail is a refusal, never
+   a repair;
+2. re-checks the full hash chain;
+3. requires the same genesis, a journal at least as long as its last seq, and
+   the record at its last seq still hashing to the head it signed. Otherwise
+   it refuses (`E_DIFFERENT_JOURNAL`, `E_ROLLBACK`, `E_FORK`) and writes
+   signed fork evidence;
+4. runs the offline verifier on every new FINALIZED record; any failure is
+   `E_INVALID_FINALITY` and nothing is signed;
+5. signs a checkpoint (`veklom.vdb.c1.checkpoint/v1`):
+   `{journal_genesis_hash, seq, head_hash, witnessed_at, witness_kid}`.
+
+A W1 bundle adds `witness: {checkpoint, journal_suffix}`, where
+`journal_suffix` holds the records after the intent's FINALIZED record up to
+the checkpoint's head. The verifier then checks:
+- the checkpoint is signed by a pinned `witness_keys` entry;
+- the suffix chains on from the bundle's journal;
+- the suffix holds no further record for this intent
+  (otherwise `REJECTED_DUPLICATE_FINALITY`);
+- the checkpoint's head is exactly the end of that history
+  (otherwise `REJECTED_FORK`).
+
+Verdicts carry `profile: L1 | W1`. With `--require-witness`, an L1 bundle
+fails `REJECTED_NOT_WITNESSED`.
+
+W1 makes history the witness has seen unforgeable after the fact. It does
+not let the witness see the SQLite store.

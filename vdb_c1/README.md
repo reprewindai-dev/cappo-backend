@@ -35,12 +35,13 @@ and Python's `sqlite3`. No root or network is needed.
 | `coordinator.py` | the one trusted finalizer: admission, preconditions, ordered execution, crash points, recovery, bundle export |
 | `cli.py` | command line |
 | `verify.py` | offline verifier; imports nothing from this package |
+| `witness.py` | W1 witness: countersigns journal heads only forward; refuses forks, rollbacks and invalid finality |
 | `prove.py` | recorded proof run |
 | `evidence/20261011T044036Z/` | committed run: two bundles, trust store, clean-room verdicts, manifest |
 
 ## What was shown (this container: Linux 6.18, Python 3.13.16, SQLite 3.45.1)
 
-`pytest`: 60 tests pass. That is 16 state-machine tests, 40 consequence
+`pytest`: 60 tests pass for C1.0 (70 with W1). That is 16 state-machine tests, 40 consequence
 tests and 4 evidence tests. Crashes are real process deaths: `os._exit`
 in a subprocess at the named point, with nothing flushed that was not
 already fsynced.
@@ -75,12 +76,35 @@ The recorded run (`evidence/20261011T044036Z`):
 - `tests/test_vdb_c1_evidence.py` re-verifies both against keys pinned in
   the test.
 
+## W1 witness (added after C1.0)
+
+`tests/test_vdb_c1_witness.py` has 10 tests. They cover:
+- a witnessed bundle verifies `VALID_FINALIZED`, profile `W1`, in a clean
+  room with `--require-witness`;
+- a checkpoint taken after later intents still covers an earlier finality;
+- an unwitnessed bundle fails when a witness is required;
+- after the finalizer rewrites its own head and re-chains, the witness
+  refuses `E_FORK` and leaves signed fork evidence;
+- rollback is refused (`E_ROLLBACK`), as is a different journal
+  (`E_DIFFERENT_JOURNAL`);
+- an invalid finality is never countersigned;
+- a torn journal is refused and left byte-for-byte untouched;
+- a re-chained history after the finality, shown with the old checkpoint,
+  is `REJECTED_FORK`;
+- an untrusted or edited checkpoint is rejected;
+- witness state survives restarts and only moves forward.
+
+Planting a bug that skips the witness's fork check, and separately one that
+skips the verifier's head-hash check, each failed exactly the test meant to
+catch it.
+
 ## What this does not show
 
-- **The finalizer is trusted.** One trusted finalizer is in scope. A
-  finalizer that lies consistently in everything it journals and signs
-  passes the verifier. Catching that needs an independent witness, which is
-  the W1 profile and out of scope here.
+- **The finalizer is still trusted for what it has not yet shown the
+  witness.** W1 (added after C1.0, see below) makes history the witness has
+  countersigned unforgeable. The witness does not see the SQLite store,
+  though, so a finalizer that lies consistently about the store before
+  the witness sees the journal is not caught.
 - **Power loss was not tested.** The crashes are process kills, which
   exercise SQLite's transaction semantics and the protocol's recovery. They
   do not test whether the disk honours `fsync`; that needs a power-cut rig.

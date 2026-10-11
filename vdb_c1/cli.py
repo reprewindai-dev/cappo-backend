@@ -6,8 +6,10 @@
   python -m vdb_c1.cli sign-intent --key authority.key --home H --set KEY VALUE --out intent.json
   python -m vdb_c1.cli submit --home H --intent intent.json [--crash-at POINT]
   python -m vdb_c1.cli recover --home H
-  python -m vdb_c1.cli export --home H --intent-id ID --out bundle.json
-  python vdb_c1/verify.py bundle.json H/trust_store.json
+  python -m vdb_c1.cli export --home H --intent-id ID --out bundle.json [--witness-dir W]
+  python -m vdb_c1.cli witness-init --dir W --home H     (pins H's keys; adds W's key to H/trust_store.json)
+  python -m vdb_c1.cli witness-observe --dir W --home H  (countersign the journal head, or refuse)
+  python vdb_c1/verify.py bundle.json H/trust_store.json [--require-witness]
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from vdb_c1 import canon
 from vdb_c1.coordinator import CRASH_POINTS, Coordinator, init_home, load_key, make_intent, save_key
+from vdb_c1.witness import Witness, WitnessRefused
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--home", type=pathlib.Path, required=True)
     e.add_argument("--intent-id", required=True)
     e.add_argument("--out", type=pathlib.Path, required=True)
+    e.add_argument("--witness-dir", type=pathlib.Path)
+    for name in ("witness-init", "witness-observe"):
+        w = sub.add_parser(name)
+        w.add_argument("--dir", type=pathlib.Path, required=True)
+        w.add_argument("--home", type=pathlib.Path, required=True)
     a = ap.parse_args(argv)
 
     if a.cmd == "keygen":
@@ -76,7 +84,27 @@ def main(argv: list[str] | None = None) -> int:
         signed = json.loads(a.intent.read_text())
         print(json.dumps(Coordinator.open(a.home, crash_at=a.crash_at).submit(signed)))
     elif a.cmd == "export":
-        a.out.write_text(json.dumps(Coordinator.open(a.home).export_bundle(a.intent_id), indent=1))
+        c = Coordinator.open(a.home)
+        cp = None
+        if a.witness_dir:
+            fin = next(r for r in c.journal.for_intent(a.intent_id) if r["kind"] == "FINALIZED")
+            cp = Witness(a.witness_dir).covering(fin["seq"])
+            if cp is None:
+                print("no witness checkpoint covers this finality yet", file=sys.stderr)
+                return 1
+        a.out.write_text(json.dumps(c.export_bundle(a.intent_id, checkpoint=cp), indent=1))
+    elif a.cmd == "witness-init":
+        trust_path = a.home / "trust_store.json"
+        trust = json.loads(trust_path.read_text())
+        trust.setdefault("witness_keys", {}).update(Witness.create(a.dir, trust))
+        trust_path.write_text(json.dumps(trust, indent=1))
+        print(json.dumps(trust["witness_keys"]))
+    elif a.cmd == "witness-observe":
+        try:
+            print(json.dumps(Witness(a.dir).observe(a.home / "journal.jsonl")))
+        except WitnessRefused as e:
+            print(json.dumps({"refused": e.reason, "detail": str(e)}))
+            return 3
     return 0
 
 

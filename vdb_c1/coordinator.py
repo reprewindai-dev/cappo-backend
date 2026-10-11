@@ -411,12 +411,22 @@ class Coordinator:
             self._confirm_commit(iid, recovered=True)
 
     # -- export ------------------------------------------------------------------
-    def export_bundle(self, intent_id: str) -> dict:
+    def export_bundle(self, intent_id: str, checkpoint: dict | None = None) -> dict:
+        """The journal prefix through the intent's FINALIZED record. With a
+        witness checkpoint at or after it, also the records up to the
+        checkpoint's head, so a verifier can check the countersigned head."""
         with self._locked():
             fin = [r for r in self.journal.for_intent(intent_id) if r["kind"] == S.FINALIZED]
             if len(fin) != 1:
                 raise ValueError(f"{intent_id} has {len(fin)} FINALIZED records")
             cert = fin[0]["body"]["certificate"]
+            witness = None
+            if checkpoint is not None:
+                cp_seq = checkpoint["payload"]["seq"]
+                if not fin[0]["seq"] <= cp_seq < len(self.journal.records):
+                    raise ValueError(f"checkpoint seq {cp_seq} does not cover seq {fin[0]['seq']}")
+                witness = {"checkpoint": checkpoint,
+                           "journal_suffix": self.journal.records[fin[0]["seq"] + 1: cp_seq + 1]}
             # Round-trip through JSON, as a bundle file would be: the receipt
             # must not alias the journal's FINALIZED record. (copy.deepcopy
             # keeps internal aliases, so it is not enough.)
@@ -425,4 +435,5 @@ class Coordinator:
                 "intent_id": intent_id,
                 "journal": self.journal.records[: fin[0]["seq"] + 1],
                 "receipt": {"certificate": cert, "certificate_digest": canon.digest(cert)},
+                **({"witness": witness} if witness else {}),
             }))
