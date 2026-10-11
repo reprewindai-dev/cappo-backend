@@ -909,6 +909,74 @@ Missed interactive deadlines per seed, as (seed, native, mapped):
   could change steady state is checkpoint on revocation (mapped-ckpt):
   it remaps revoked tenants clean.
 
+## Checkpoint on revocation: smoke run `20261011T180001Z`
+
+**Setup:** 16 MiB, seed 402, 3 repeats each of mapped-ckpt, mapped and
+native, rotated order, `--record-ws`, `--sample`, `--probe-revoked`. A
+smoke test: no claims. All 9 runs had 0 integrity failures, so checkpoint
+and remap preserve state exactly.
+
+An earlier attempt, `20261011T175453Z`, was aborted on a harness defect:
+images were shared across runs. Its diagnosis is in that run's
+`ABORTED.md`.
+
+| Arm | Missed interactive deadlines | Where they fall (trace second: misses) | p99 (ms) | Revoked tenants with no resident pages at 0 / 1 / 5 s | Mean resident pages of a revoked tenant at 5 s | Swap-ins |
+|---|---|---|---|---|---|---|
+| native | 17, 30, 13 | all in second 36 | 2.8, 3.8, 3.2 | 4–5% / 5–6% / 11–14% | 5.7 | 9,401–10,063 |
+| mapped | 19, 57, 11 | all in second 41 | 3.5, 10.0, 3.5 | 4–5% / 4–6% / 11–13% | 5.8–6.1 | 8,739–9,579 |
+| **mapped-ckpt** | **10, 14, 2** | **scattered, 1–5 each; no burst second** | 28.8, 20.1, 6.1 | 4–6% / **54–56%** / **88–91%** | **1.4–2.0** | 10,583–12,300 |
+
+There were 381 revocation probes per run.
+
+**Checkpoints:**
+- 415 per run, writing 5,433 pages in total; p50 3.1–3.4 ms, max 35–108
+  ms (fdatasync on the request thread).
+- Identical in every repeat: the same count, the same pages and the same
+  first digest. Checkpoint evidence is deterministic and replayable.
+
+**Claim classes (smoke, one seed):**
+- **Observed:**
+  - mapped-ckpt has no burst collapse. Native and mapped lose all their
+    misses in one second, where the three hot tenants' windows open
+    together; mapped-ckpt's misses are a handful, spread out.
+  - Its total misses were lower in all 3 repeats.
+- **Observed, governance:** with mapped-ckpt, 88–91% of revoked tenants
+  have no state resident 5 s after authority ends, against 11–14% for
+  native and mapped. Residency follows authority, measured.
+- **Inferred:** by the time of the burst, tenants whose authority had
+  ended were already checkpointed and released clean. The burst's faults
+  find free memory instead of forcing reclaim with swap writes.
+- **Costs:**
+  - more swap-ins: pages are re-read from the image when a tenant returns;
+  - a longer tail in 2 of 3 runs, because checkpoint fdatasync runs on the
+    request thread.
+
+## Pre-registered: checkpoint on revocation (fixed before the run)
+
+Written and committed before any run with these seeds.
+
+- **Arms:** native, mapped and mapped-ckpt. 16 MiB, informative trace,
+  `--record-ws`, `--sample`, `--probe-revoked`, `--rotate-order`.
+- **Seeds:** fresh, 701–715, one run per arm per seed (45 runs).
+- **Hypotheses:** each is an exact two-sided sign test on per-seed paired
+  values, over seeds where both arms completed, with ties excluded.
+
+  | Hypothesis | Claim | Metric |
+  |---|---|---|
+  | H13 | mapped-ckpt misses fewer interactive deadlines than native | missed interactive deadlines |
+  | H14 | mapped-ckpt misses fewer interactive deadlines than mapped (the checkpoint's own contribution) | missed interactive deadlines |
+  | H15, governance | mapped-ckpt leaves less revoked state resident than native | mean resident pages per revoked tenant, 5 s after authority ends |
+
+- **Threshold:** α = 0.05 / 3 ≈ 0.0167 per hypothesis (Bonferroni).
+  Confirmed only if the direction favours mapped-ckpt and p < 0.0167;
+  with all 15 seeds usable, that needs at least 13 of 15.
+- **Reported, not deciding:**
+  - within-deadline share and p99;
+  - swap I/O and request-thread major faults;
+  - checkpoint count, pages and latency, and whether digests are
+    identical across arms;
+  - integrity, and warm-up kills.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
