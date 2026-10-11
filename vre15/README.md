@@ -707,6 +707,65 @@ envelope-declared; `--record-ws` for every arm; rotated order. Read with
 2. The sampler, to test whether collapses follow swap writeback.
 3. A smoke test of the mapped policy.
 
+## A/A at the window centre: run `20261011T163029Z`
+
+**Setup:** native, 16 MiB, informative trace, seed 402 (native's worst
+seed in the sweep), 10 identical repeats, with the sidecar sampler on.
+
+| Repeat | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Interactive ≤100 ms | **96.96%** | 99.92% | 99.73% | 99.92% | 99.55% | 99.77% | 99.64% | 99.91% | 99.43% | 99.88% |
+| p99 (ms) | **688** | 4.0 | 9.1 | 2.9 | 22.0 | 4.8 | 12.8 | 3.4 | 42.7 | 5.0 |
+| Missed interactive deadlines | 338 | 9 | 30 | 9 | 50 | 25 | 40 | 10 | 63 | 13 |
+
+**Spread:** mean 99.47%, standard deviation 0.90 points. 1 of 10 runs
+fell below 99%, and 2 of 10 below 99.5%.
+
+**Severity is run-driven:** identical inputs gave anything from 9 to 338
+missed deadlines.
+
+**The trigger is trace-driven:**
+- In 9 of 10 repeats the stall falls in the same second of the trace,
+  t = 43.
+- At t = 41.0–41.5 s the three most popular tenants all open their
+  windows within half a second: t278 (interactive, 471 requests in 5 s),
+  t199 and t28 (both batch).
+- Their state starts cold, and requests jump from about 180/s to about
+  380/s.
+
+**The stall seconds coincide with reclaim and swap in both directions.**
+Comparing the 14 stall seconds with the 896 calm ones:
+
+| Signal | Stall seconds (mean / median) | Calm seconds (mean / median) |
+|---|---|---|
+| PSI memory "full" stall time, ms per second | 128.5 / 50.2 | 6.5 / 1.1 |
+| Swap-outs per second | 1,377 / 1,948 | 350 / 61 |
+| Swap-ins per second | 1,700 / 2,096 | 252 / 75 |
+| Cgroup limit hits (failcnt) per second | 4,331 / 2,809 | 685 / 79 |
+
+Instantaneous `nr_writeback` is similar in both: a 100 ms sample is too
+coarse to see the queue.
+
+**Claim classes:**
+- **Observed:**
+  - Collapse severity varies run to run on identical input, so seed
+    pairing alone cannot separate policies.
+  - The collapse is triggered by a known trace event: several hot
+    tenants' windows opening at once.
+  - It coincides with memory-pressure stalls, swap-outs, swap-ins and
+    limit hits all rising together.
+- **Inferred:** H-mech is supported but not isolated. During the burst
+  the request thread reclaims under the limit while swap writes and reads
+  are both heavy, and swap-in versus swap-out cannot be separated from
+  these counters.
+- **Design consequences:**
+  - A test needs repeated runs per arm; comparing rates or means beats
+    seed pairing.
+  - The burst is an event the envelope knows in advance (signed window
+    starts).
+  - The mapped state model makes the reclaim it forces write-free for
+    clean pages.
+
 ## State as a mapped snapshot: feasibility probe
 
 So far every tenant's state has been copied into anonymous memory, and
