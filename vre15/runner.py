@@ -46,10 +46,10 @@ from vre15 import traces
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout",
             "envelope-headroom", "lru-headroom", "envelope-prefetch", "envelope-declared",
-            "lru-pageout", "native-cold", "pageout-delay", "pageout-bg")
+            "lru-pageout", "native-cold", "pageout-delay", "pageout-bg", "mapped")
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
                 "envelope-prefetch", "envelope-declared", "lru-pageout", "native-cold", "pageout-delay",
-                "pageout-bg")
+                "pageout-bg", "mapped")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
@@ -62,6 +62,30 @@ def own_memcg() -> pathlib.Path:
 def pct(xs, q):
     xs = sorted(xs)
     return round(xs[min(len(xs) - 1, int(q * len(xs)))], 3) if xs else None
+
+
+def make_images(snapshots, outdir):
+    """Page-aligned raw image of each snapshot for the mapped policy, built
+    outside the measured cgroup. All-zero blocks stay holes. Each run drops
+    the page cache first, so the run's cgroup faults image pages in and is
+    charged for them."""
+    sys.path.insert(0, str(HERE.parent / "vre1"))
+    import snapshot as snap
+    outdir.mkdir()
+    paths = []
+    for i, sp in enumerate(snapshots):
+        header, runs = snap.decode(bytearray(pathlib.Path(sp).read_bytes()))
+        path = outdir / f"t{i}.img"
+        fd = os.open(path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+        try:
+            os.ftruncate(fd, header["pages"] * snap.PAGE)
+            for off, data in runs:
+                os.pwrite(fd, bytes(data), off)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        paths.append(str(path))
+    return paths
 
 
 def stall_stats(results, trace, deadline_ms=traces.DEADLINE_MS["interactive"]):
@@ -158,6 +182,7 @@ def main() -> int:
         made = probe("make-many", {"dir": str(work), "cwasm": str(work / "m.cwasm"), "tenants": args.tenants,
                                    "pages": 64, "density": 250, "steps": 0, "codec": "sparse"})
         initial = [t["path"] for t in made["tenants"]]
+        images = make_images(initial, work / "images") if "mapped" in args.policies else None
         subprocess.run(["fallocate", "-l", "2G", str(swapfile)], check=True)
         os.chmod(swapfile, 0o600)
         subprocess.run(["mkswap", str(swapfile)], check=True, capture_output=True)
@@ -188,7 +213,7 @@ def main() -> int:
                         "initial": initial, "workdir": str(rundir), "idle_s": args.idle_s,
                         "budget_bytes": budget, "per_tenant_bytes": PER_TENANT_BYTES,
                         "headroom_band_bytes": args.headroom_kib * 1024, "reclaim_dry_run": args.reclaim_dry_run,
-                        "record_ws": args.record_ws, "probe_revoked": args.probe_revoked,
+                        "record_ws": args.record_ws, "probe_revoked": args.probe_revoked, "images": images,
                         "out": str(rundir / "result.json")}
                 sampler = None
                 if args.sample:

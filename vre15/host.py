@@ -76,6 +76,14 @@ Policies:
               system would choose. If it matches native-pageout, the gain is
               idle-time eviction, not the envelope's information.
 
+  mapped        native, except each tenant's linear memory is a copy-on-write
+                mapping (MAP_PRIVATE|MAP_FIXED) of a page-aligned image of its
+                snapshot instead of an anonymous copy. Clean pages are evicted
+                without any write; only pages modified since the image need
+                swap. The runner builds the images outside the cgroup and drops
+                the page cache before each run, so the tenant cgroup faults
+                them in and is charged for them (same budget; see
+                vre15/mapped_probe.py).
   Release-on-revocation variants (each changes one thing from
   native-pageout; exploration, see the README):
   native-cold   MADV_COLD instead of MADV_PAGEOUT at window close: the pages
@@ -138,7 +146,7 @@ PREFETCH_LEAD_S = 0.5
 RECORD_STEPS = 32
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
                 "envelope-prefetch", "envelope-declared", "lru-pageout", "native-cold", "pageout-delay",
-                "pageout-bg")
+                "pageout-bg", "mapped")
 RELEASE_ONLY = ("native-pageout", "lru-pageout", "native-cold", "pageout-delay", "pageout-bg")
 STEERED = ("native-steered", "envelope-prefetch", "envelope-declared") + RELEASE_ONLY
 PREFETCHING = ("envelope-prefetch", "envelope-declared")
@@ -146,6 +154,9 @@ HEADROOM = ("envelope-headroom", "lru-headroom")
 _libc = ctypes.CDLL(None, use_errno=True)
 _libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
 _libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p]
+_libc.mmap.restype = ctypes.c_void_p
+_libc.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long]
+PROT_RW, MAP_PRIVATE, MAP_FIXED = 0x3, 0x02, 0x10
 
 
 def resident_pages(base, length, cap=WS_CAP):
@@ -249,6 +260,7 @@ class Host:
         n = self.trace["tenants"]
         self.live = {}                                  # t -> (store, exports)
         self.region = {}                                # t -> (base address, length) of linear memory
+        self.mapped_once = set()                        # mapped: tenants mapped from their image
         self.path = {t: spec["initial"][t] for t in range(n)}
         self.last = {t: -1e9 for t in range(n)}
         self.steps = [0] * n
@@ -264,7 +276,37 @@ class Host:
             self.cap = max(1, int((0.85 * spec["budget_bytes"] - self.base_rss) // spec["per_tenant_bytes"]))
 
     # -- residency mechanics --------------------------------------------------
+    def materialize_mapped(self, t):
+        """mapped policy: map the tenant's image copy-on-write over its memory."""
+        t0 = time.perf_counter()
+        with open(self.path[t], "rb") as f:
+            header, _ = snap.split(bytearray(f.read()))
+        if header["module_sha256"] != self.msha:
+            raise snap.SnapshotRejected("snapshot is for a different module")
+        store = wasmtime.Store(self.engine)
+        x = wasmtime.Instance(store, self.module, []).exports(store)
+        mem = x["memory"]
+        mem.grow(store, header["pages"] - mem.size(store))
+        base, length = ctypes.addressof(mem.data_ptr(store).contents), mem.data_len(store)
+        fd = os.open(self.spec["images"][t], os.O_RDONLY)
+        try:
+            if os.fstat(fd).st_size != length:
+                raise snap.SnapshotRejected("image size does not match linear memory")
+            if _libc.mmap(base, length, PROT_RW, MAP_PRIVATE | MAP_FIXED, fd, 0) != base:
+                raise OSError(ctypes.get_errno(), "mmap MAP_FIXED failed")
+        finally:
+            os.close(fd)
+        for g in snap.GLOBALS:
+            x[g].set_value(store, header["globals"][g])
+        self.live[t] = (store, x)
+        self.region[t] = (base, length)
+        self.restores += 1
+        self.restore_ms.append((time.perf_counter() - t0) * 1000)
+
     def materialize(self, t):
+        if self.policy == "mapped" and t not in self.mapped_once:
+            self.mapped_once.add(t)
+            return self.materialize_mapped(t)
         t0 = time.perf_counter()
         with open(self.path[t], "rb") as f:
             blob = bytearray(os.fstat(f.fileno()).st_size)
@@ -344,7 +386,7 @@ class Host:
         tenant whose queued requests were authorized when they arrived. Run
         20261011T053146Z judged expiry at wall-clock time and thrashed."""
         self.probe_revoked(horizon)
-        if self.policy == "native" or self.policy in HEADROOM:
+        if self.policy in ("native", "mapped") or self.policy in HEADROOM:
             return                                      # kernel-paged; the reclaimer runs on its own thread
         if self.policy in STEERED:
             while self.delayed and self.delayed[0][0] <= horizon:   # pageout-delay
