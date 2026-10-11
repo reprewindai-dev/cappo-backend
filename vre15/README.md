@@ -14,7 +14,9 @@ integrity failures in every run.
 A follow-up (below) let the envelope steer the kernel's own paging with
 `madvise` instead of replacing it. Across budgets from 160 down to 48 MiB it
 did not improve deadlines either, cost 37–50× the swap-in I/O, and hurt the
-control trace.
+control trace. At tight budgets (16–8 MiB), where native itself degrades, the
+one consistent signal (16 MiB) failed a pre-registered confirmation on fresh
+seeds. See **VRE-1.5 verdict** at the end.
 
 ## Setup (`runner.py`, `host.py`, `traces.py`)
 
@@ -348,6 +350,72 @@ Written and committed before any run with these seeds.
   not confirmed, with the numbers.
 - **Not a criterion:** p99, swap I/O and memory are reported but do not
   decide the outcome.
+
+## Confirmation result: run `20261011T092300Z`
+
+**Neither hypothesis is confirmed.** The run followed the pre-registration
+exactly: 16 MiB, informative trace, seeds 101–110, three policies, rotated
+order. All 30 runs completed, with 0 OOM kills, 0 integrity failures and 0
+authority violations. Batch deadlines were met 100% in every run except
+native on seed 104 (98.8%).
+
+Recompute with:
+`python -m vre15.paired vre15/runs/20261011T092300Z/manifest.json`
+
+| Hypothesis | Wins / losses / ties | Sign test p | Required | Outcome | Median Δ deadlines met | Median Δ p99 |
+|---|---|---|---|---|---|---|
+| H1: native-pageout > native | 8 / 2 / 0 | 0.109 | ≥ 9 wins, p < 0.025 | **not confirmed** | +0.16 pts | −1.2 ms |
+| H2: native-steered > native | 6 / 3 / 1 | 0.508 | p < 0.025 | **not confirmed** | +0.16 pts | +1.0 ms |
+
+| Policy | Interactive ≤100 ms, mean (min) over 10 seeds | p99 median (max), ms | Median swap-ins |
+|---|---|---|---|
+| native | 99.59% (97.95%) | 4.3 (780.5) | 6,764 |
+| native-pageout | 99.76% (98.79%) | 3.2 (138.4) | 6,595 |
+| native-steered | 99.87% (99.37%) | 5.0 (34.8) | 167,343 |
+
+**What it shows:**
+- Both steered policies lean the same way as in the five-seed repeat, but
+  less consistently. Each lost to native on some fresh seeds:
+  - native-pageout on seeds 103, 104 and 107;
+  - native-steered on 105, 106 and 109.
+- The gain in mean is about 0.2–0.3 points. It comes mostly from removing
+  native's rare collapse episodes, as on seed 104, where native met 97.95%
+  at a p99 of 780 ms.
+- native-steered again buys a better worst case (min 99.37%, max p99 35 ms)
+  with about 25× native's swap-in I/O.
+- The mean within-deadline share by position in cell was 99.65%, 99.91% and
+  99.67% (first, second, third). That shows no consistent order effect.
+
+## VRE-1.5 verdict
+
+The brief's falsifier asks whether VRE-aware residency control can
+**materially** improve a defined metric over native OS behaviour at the
+same physical budget. On this host and workload, across every experiment
+here, it has not:
+
+- **Replacing the kernel's mechanism** (snapshot demotion: idle-LRU,
+  envelope, predictive) is far worse than native at every budget tested.
+  Envelope awareness made it worse still.
+- **Steering the kernel's mechanism** (`madvise` PAGEOUT and WILLNEED)
+  shows no improvement where native already meets its deadlines (160–24
+  MiB). It costs up to 50× the swap-in I/O, and hurts the control trace.
+- **At the tight budgets where native degrades** (16, 12, 8 MiB):
+  - The only consistent direction was at 16 MiB.
+  - It did not pass the pre-registered confirmation (H1 p = 0.109, H2
+    p = 0.508 against α = 0.025).
+  - It does not hold at 12 MiB, and reverses for native-pageout at 8 MiB.
+
+**The performance thesis therefore fails this falsifier as measured.** What
+remains is a narrow, unconfirmed hypothesis: that envelope-timed PAGEOUT
+trims native's rare reclaim collapses near one specific budget. That would
+need a larger, separately pre-registered study, on more than one host,
+before anyone relies on it.
+
+**The governance thesis is untouched.** The six committed runs hold 131
+policy runs. All 130 that completed enforced authority exactly (0
+violations) and preserved tenant state exactly (0 integrity failures); the
+other was the one OOM-killed in warm-up before serving any request. That holds for snapshot
+demotion, kernel paging and steering alike.
 
 ### Still untested
 
