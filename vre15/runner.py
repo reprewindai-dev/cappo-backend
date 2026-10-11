@@ -46,9 +46,10 @@ from vre15 import traces
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout",
             "envelope-headroom", "lru-headroom", "envelope-prefetch", "envelope-declared",
-            "lru-pageout")
+            "lru-pageout", "native-cold", "pageout-delay", "pageout-bg")
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
-                "envelope-prefetch", "envelope-declared", "lru-pageout")
+                "envelope-prefetch", "envelope-declared", "lru-pageout", "native-cold", "pageout-delay",
+                "pageout-bg")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
@@ -93,7 +94,8 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "advice": raw.get("advice"), "advice_errors": raw.get("advice_errors"), "reclaim": raw.get("reclaim"), "prefetch": raw.get("prefetch"),
         "major_faults": raw.get("major_faults"),
         "request_thread_major_faults": raw.get("request_thread_major_faults"),
-        "recording": raw.get("recording"), "revoked_residency": raw.get("revoked_residency"), "wall_s": round(raw.get("wall_s", 0), 1),
+        "recording": raw.get("recording"), "revoked_residency": raw.get("revoked_residency"),
+        "release": raw.get("release"), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 
 
@@ -106,6 +108,8 @@ def main() -> int:
     ap.add_argument("--idle-s", type=float, default=5.0)
     ap.add_argument("--headroom-kib", type=int, default=0,
                     help="background reclaimer band for the *-headroom policies (0 = host default)")
+    ap.add_argument("--page-cluster", type=int, default=None,
+                    help="set vm.page-cluster (swap readahead, 2^N pages) for the whole run, restored after")
     ap.add_argument("--probe-revoked", action="store_true",
                     help="every policy measures resident pages of tenants 0/1/5 s after authority ends")
     ap.add_argument("--record-ws", action="store_true",
@@ -131,6 +135,10 @@ def main() -> int:
     work = pathlib.Path(tempfile.mkdtemp(prefix="vre15-"))
     swapfile = work / "swapfile"
     rows = []
+    pc_path = pathlib.Path("/proc/sys/vm/page-cluster")
+    pc_saved = pc_path.read_text().strip()
+    if args.page_cluster is not None:
+        pc_path.write_text(str(args.page_cluster))
     try:
         made = probe("make-many", {"dir": str(work), "cwasm": str(work / "m.cwasm"), "tenants": args.tenants,
                                    "pages": 64, "density": 250, "steps": 0, "codec": "sparse"})
@@ -189,13 +197,16 @@ def main() -> int:
                       f"swapin={row['swap_pages_in']} integrity_fail={row['integrity_failures']}", flush=True)
     finally:
         subprocess.run(["swapoff", str(swapfile)], capture_output=True)
+        pc_path.write_text(pc_saved)
         shutil.rmtree(work, ignore_errors=True)
     from importlib.metadata import version
     (out / "manifest.json").write_text(json.dumps({
         "run_id": run_id, "finished_at": datetime.now(timezone.utc).isoformat(),
         "host": {"kernel": platform.release(), "nproc": os.cpu_count(), "python": sys.version.split()[0],
                  "wasmtime_py": version("wasmtime")},
-        "params": vars(args) | {"out": str(args.out), "per_tenant_bytes": PER_TENANT_BYTES},
+        "params": vars(args) | {"out": str(args.out), "per_tenant_bytes": PER_TENANT_BYTES,
+                                "page_cluster_in_effect": args.page_cluster if args.page_cluster is not None
+                                else int(pc_saved)},
         "summary": {"vre15": rows}}, indent=1))
     print(f"run written to {out}")
     return 0

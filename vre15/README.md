@@ -618,6 +618,45 @@ The raw rows are in `vre15/oracle_runs/20261011-seeds201-210-ws.json`.
     - stale working sets must cost no more than they save.
   - Not built, not measured.
 
+## Release on revocation: explore wide, then confirm narrow
+
+The only envelope action with a consistent direction so far is releasing a
+tenant's memory when its authority ends. Two results point that way:
+- native-pageout won 4/0 at 16 MiB in the five-seed repeat;
+- it won 8/2 in the confirmation, at p = 0.109, which is not confirmed.
+
+Acquiring early has made things worse every time: WILLNEED, headroom
+reclaim, and the declared-working-set prefetch.
+
+A single design failing tests that design only, so the next step tries
+every reasonable variant of release on revocation. With many variants and
+few seeds, one will look good by chance, so the two stages are kept apart.
+
+**Stage 1, exploration (no claims):**
+- The release variants:
+
+  | Variant | Change from native-pageout |
+  |---|---|
+  | native-pageout | Baseline of the idea |
+  | native-cold | `MADV_COLD`: deactivate without writing, so no swap writes stay in flight |
+  | pageout-delay | Release 2 s after close; skip if authority resumes |
+  | pageout-bg | The same release, on a background thread |
+  | lru-pageout | The control: same timing, recency-chosen victim |
+
+- A kernel factor, `vm.page-cluster` 0 against 3, applied to native too.
+  If tuning readahead alone closes the gap, the envelope is not needed.
+- **Budgets:** those inside the window found by the threshold sweep
+  (`vre15.window`).
+- **Seeds:** a small set, not reused anywhere else.
+
+**Stage 2, confirmation:**
+- **Pre-registration:** written and committed before the run.
+- **What is tested:** the best variant from stage 1 against native, and
+  against its matched recency control. The control decides whether the
+  envelope's information matters, as opposed to doing eviction work at an
+  idle moment.
+- **Run:** fresh seeds, sign test, α = 0.025 per hypothesis.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps

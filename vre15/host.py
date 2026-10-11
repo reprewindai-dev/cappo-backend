@@ -76,6 +76,16 @@ Policies:
               system would choose. If it matches native-pageout, the gain is
               idle-time eviction, not the envelope's information.
 
+  Release-on-revocation variants (each changes one thing from
+  native-pageout; exploration, see the README):
+  native-cold   MADV_COLD instead of MADV_PAGEOUT at window close: the pages
+                move to the inactive list and are written only if reclaim
+                later needs them, so no swap writes are left in flight.
+  pageout-delay MADV_PAGEOUT RELEASE_DELAY_S after window close, skipped if
+                the tenant is authorized again by then.
+  pageout-bg    MADV_PAGEOUT at window close, issued by a background thread
+                so the write cost never runs on the request loop.
+
 probe_revoked (spec flag, applied identically to every policy in a run):
 at 0, 1 and 5 s after each window close, if the tenant is then outside
 authority, count its linear-memory pages still resident (mincore). This is
@@ -101,6 +111,7 @@ restored fresh plus the same number of steps, with no demotion.
 import ctypes
 import json
 import os
+import queue
 import resource
 import struct
 import sys
@@ -117,6 +128,8 @@ sys.path.insert(0, HERE)
 import traces as tr  # noqa: E402
 
 MADV_WILLNEED = 3
+MADV_COLD = 20                          # Linux 5.4+
+RELEASE_DELAY_S = 2.0
 MADV_PAGEOUT = 21                       # Linux 5.4+
 MADV_POPULATE_READ = 22                 # Linux 5.14+
 PAGE = 4096
@@ -124,8 +137,10 @@ WS_CAP = 64                             # pages recorded per tenant (256 KiB)
 PREFETCH_LEAD_S = 0.5
 RECORD_STEPS = 32
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
-                "envelope-prefetch", "envelope-declared", "lru-pageout")
-STEERED = ("native-steered", "native-pageout", "envelope-prefetch", "envelope-declared", "lru-pageout")
+                "envelope-prefetch", "envelope-declared", "lru-pageout", "native-cold", "pageout-delay",
+                "pageout-bg")
+RELEASE_ONLY = ("native-pageout", "lru-pageout", "native-cold", "pageout-delay", "pageout-bg")
+STEERED = ("native-steered", "envelope-prefetch", "envelope-declared") + RELEASE_ONLY
 PREFETCHING = ("envelope-prefetch", "envelope-declared")
 HEADROOM = ("envelope-headroom", "lru-headroom")
 _libc = ctypes.CDLL(None, use_errno=True)
@@ -293,6 +308,16 @@ class Host:
                 break
             self.demote(v)
 
+    def release_worker(self):
+        """pageout-bg: page out tenants queued at window close, off the request loop."""
+        while True:
+            t = self.release_q.get()
+            if t is None:
+                return
+            base, length = self.region[t]
+            if _libc.madvise(base, length, MADV_PAGEOUT) != 0:
+                self.release_errors += 1
+
     def probe_revoked(self, horizon):
         while self.revoke_i < len(self.revoke_probes) and self.revoke_probes[self.revoke_i][0] <= horizon:
             at, t, d = self.revoke_probes[self.revoke_i]
@@ -322,8 +347,24 @@ class Host:
         if self.policy == "native" or self.policy in HEADROOM:
             return                                      # kernel-paged; the reclaimer runs on its own thread
         if self.policy in STEERED:
+            while self.delayed and self.delayed[0][0] <= horizon:   # pageout-delay
+                due, t = self.delayed.pop(0)
+                if tr.authorized(self.env[t], due):
+                    self.release_skipped += 1
+                    continue
+                store, x = self.live[t]
+                err = advise(store, x, MADV_PAGEOUT)
+                self.advice["close"] += 1
+                self.advice_errors += err != 0
             for t, kind in self.edges.pop_due(horizon):
-                if kind == "open" and self.policy in ("native-pageout", "lru-pageout") + PREFETCHING:
+                if kind == "open" and self.policy in RELEASE_ONLY + PREFETCHING:
+                    continue
+                if self.policy == "pageout-delay":
+                    self.delayed.append((horizon + RELEASE_DELAY_S, t))
+                    continue
+                if self.policy == "pageout-bg":
+                    self.release_q.put(t)
+                    self.advice["close"] += 1
                     continue
                 if self.policy == "lru-pageout":
                     cands = [u for u in self.live if u not in self.lru_paged]
@@ -334,7 +375,8 @@ class Host:
                 if kind == "close" and self.prefetcher and self.policy == "envelope-prefetch":
                     self.prefetcher.record(t)
                 store, x = self.live[t]
-                err = advise(store, x, MADV_PAGEOUT if kind == "close" else MADV_WILLNEED)
+                close_advice = MADV_COLD if self.policy == "native-cold" else MADV_PAGEOUT
+                err = advise(store, x, close_advice if kind == "close" else MADV_WILLNEED)
                 self.advice[kind] += 1
                 self.advice_errors += err != 0
             return
@@ -365,6 +407,11 @@ class Host:
         self.prefetcher = Prefetcher(self) if self.policy in PREFETCHING else None
         self.declared_ws = {}
         self.lru_paged = set()                          # lru-pageout: paged out since last request
+        self.delayed, self.release_skipped = [], 0      # pageout-delay: [(due, tenant)], in time order
+        self.release_q = queue.Queue() if self.policy == "pageout-bg" else None
+        self.release_errors = 0
+        if self.release_q:
+            threading.Thread(target=self.release_worker, daemon=True).start()
         self.revoke_probes = sorted((e + d, t, d) for t, env in enumerate(self.env) for _, e in env["windows"]
                                     for d in REVOKE_PROBE_S) if self.spec.get("probe_revoked") else []
         self.revoke_i, self.revoke_samples = 0, {d: [] for d in REVOKE_PROBE_S}
@@ -441,6 +488,8 @@ class Host:
         wall = time.perf_counter() - start
         swap1, maj1, tmaj1 = vmstat(), majflt(), thread_majflt()
         reclaim = prefetch = None
+        if self.release_q:
+            self.release_q.put(None)
         if self.prefetcher:
             self.prefetcher.halt.set()
             self.prefetcher.join()
@@ -457,6 +506,7 @@ class Host:
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
                 "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim, "prefetch": prefetch,
+                "release": {"skipped_reauthorized": self.release_skipped, "worker_errors": self.release_errors},
                 "revoked_residency": self.revoked_residency(),
                 "base_rss": self.base_rss, "integrity_failures": failures,
                 "authority_violations": sum(1 for (t, lat, cls, ok), (at, _, _) in
