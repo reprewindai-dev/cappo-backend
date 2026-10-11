@@ -144,6 +144,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "vre1"))
 import snapshot as snap  # noqa: E402
 
 sys.path.insert(0, HERE)
+import revoke  # noqa: E402
 import traces as tr  # noqa: E402
 
 MADV_WILLNEED = 3
@@ -364,38 +365,12 @@ class Host:
             self.demote(v)
 
     def checkpoint(self, t):
-        """mapped-ckpt: write modified pages into the image, remap clean, page out."""
-        t0 = time.perf_counter()
-        base, length = self.region[t]
-        n = length // PAGE
-        with open("/proc/self/pagemap", "rb") as f:
-            f.seek((base // PAGE) * 8)
-            raw = f.read(n * 8)
-        dirty = []
-        for i in range(n):
-            e = struct.unpack_from("<Q", raw, 8 * i)[0]
-            present, swapped, file_page = e >> 63 & 1, e >> 62 & 1, e >> 61 & 1
-            if swapped or (present and not file_page):
-                dirty.append(i)
-        h = hashlib.sha256()
-        fd = os.open(self.spec["images"][t], os.O_RDWR)
-        try:
-            for first, count in runs_of(dirty):
-                data = ctypes.string_at(base + first * PAGE, count * PAGE)
-                os.pwrite(fd, data, first * PAGE)
-                h.update(struct.pack("<II", first, count))
-                h.update(data)
-            if dirty:
-                os.fdatasync(fd)
-            if _libc.mmap(base, length, PROT_RW, MAP_PRIVATE | MAP_FIXED, fd, 0) != base:
-                raise OSError(ctypes.get_errno(), "remap after checkpoint failed")
-        finally:
-            os.close(fd)
-        _libc.madvise(base, length, MADV_PAGEOUT)
+        """mapped-ckpt: residency follows authority (vre15/revoke.py)."""
+        r = revoke.revoke(*self.region[t], self.spec["images"][t])
         self.ckpt["count"] += 1
-        self.ckpt["pages"] += len(dirty)
-        self.ckpt["ms"].append((time.perf_counter() - t0) * 1000)
-        self.ckpt["digests"].append([t, len(dirty), h.hexdigest()])
+        self.ckpt["pages"] += r.pages
+        self.ckpt["ms"].append(r.ms)
+        self.ckpt["digests"].append([t, r.pages, r.digest])
 
     def checkpoint_stats(self):
         if self.policy != "mapped-ckpt":

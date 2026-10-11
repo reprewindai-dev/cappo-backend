@@ -1032,7 +1032,7 @@ p50 3.3 ms, max 110 ms (fdatasync on the request thread).
 | Authority | enforced exactly: 0 authority violations | every run in this directory |
 | Integrity | state preserved exactly: 0 integrity failures in every completed run | every run, including runs where state is checkpointed and remapped |
 | **Residency follows authority (H15)** | with checkpoint on revocation, a revoked tenant's state leaves memory: 89% of revoked tenants have nothing resident 5 s after authority ends, against 9% under native (13/0, p = 0.0002) | pre-registered H15 |
-| Evidence | each revocation produces a deterministic checkpoint digest of exactly the state modified under that authority, identical across repeats | smoke run |
+| Evidence | each revocation produces a deterministic checkpoint digest of exactly the state modified under that authority: all 415 digests in the same order across 4 runs of seed 402 (3 repeats, plus a rerun through the `revoke.py` host) | `20261011T180001Z` and the rerun below |
 
 **Measured mechanism facts, holding in every run (not deadline claims):**
 - Mapping the governed snapshot instead of copying it cuts warm-up swap
@@ -1041,11 +1041,38 @@ p50 3.3 ms, max 110 ms (fdatasync on the request thread).
   tenants' authority windows opening together.
 
 **What survives into implementation:** checkpoint on revocation, as a
-governance mechanism and not a performance one. See
-`vre15/revoke.py` and its tests. It is the confirmed result. Its
-measured costs are recorded with it:
-- more swap-ins when revoked tenants return;
-- a longer p99 while fdatasync runs on the request thread.
+governance mechanism and not a performance one.
+- `vre15/revoke.py` is the mechanism as a library: `map_image`, `revoke`
+  (returns a `Receipt`), `modified_pages` and `held_privately`.
+  `host.py`'s mapped-ckpt policy now calls it, so there is one
+  implementation.
+- The invariant is tested in `tests/test_vre15_revoke.py` on real
+  mappings, without privilege. After `revoke`:
+  - no page of the region is present in or swapped from the process;
+  - the image holds exactly the state;
+  - the state faults back unchanged.
+  The tests also check that:
+  - the digest is deterministic and covers both page position and
+    content;
+  - each authority window is receipted separately;
+  - a page already in swap is written back and leaves swap (this test
+    needs an active swap device and skips without one);
+  - mismatched or unaligned regions are refused.
+- Page-cache residency after revocation is best-effort, not invariant.
+  The invariant tested is the page-table one. Page-cache residency is the
+  H15 measurement.
+- **Refactor check:** seed 402, 16 MiB, mapped-ckpt, rerun through the
+  refactored host (local run `20261011T194553Z`, not committed):
+  - 415 checkpoints, digest sequence identical to `20261011T180001Z`;
+  - 0 integrity failures, 0 authority violations;
+  - revoked tenants with nothing resident: 53% at 1 s, 91% at 5 s.
+- Measured costs, recorded with the mechanism:
+  - more swap-ins when revoked tenants return;
+  - a longer p99 while fdatasync runs on the request thread.
+- Not yet shown on WSL2 / cgroup v2, where production runs. This host is
+  a cgroup v1 VM. The mechanism uses only mmap, madvise and pagemap, none
+  of which depends on the cgroup version, but that is unverified until
+  run there.
 
 ### Still untested
 
