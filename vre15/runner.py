@@ -83,6 +83,7 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "restores": raw.get("restores"), "restore_p95_ms": pct(raw.get("restore_ms", []), .95),
         "demotions": raw.get("demotions"), "snapshot_bytes_written": raw.get("snapshot_bytes_written"),
         "swap_pages_in": raw.get("swap_pages_in"), "swap_pages_out": raw.get("swap_pages_out"),
+        "warmup_swap_pages_out": raw.get("warmup_swap_pages_out"),
         "major_faults": raw.get("major_faults"), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 

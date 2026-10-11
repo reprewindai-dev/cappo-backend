@@ -130,12 +130,17 @@ class Host:
                 break
             self.demote(v)
 
-    def housekeeping(self, now):
+    def housekeeping(self, now, horizon):
+        """`horizon` is the trace time of the oldest request still waiting
+        (or now, if none is waiting). Idle and expiry are judged at it, never
+        at wall-clock time: a host that has fallen behind must not demote a
+        tenant whose queued requests were authorized when they arrived. Run
+        20261011T053146Z judged expiry at wall-clock time and thrashed."""
         if self.policy == "native":
             return
         for t in list(self.live):
-            idle = now - self.last[t] > self.spec["idle_s"]
-            expired = self.policy in ("envelope", "predictive") and not self.authorized_now(t, now)
+            idle = horizon - self.last[t] > self.spec["idle_s"]
+            expired = self.policy in ("envelope", "predictive") and not self.authorized_now(t, horizon)
             if idle or expired:
                 self.demote(t)
         if self.policy == "predictive":
@@ -143,22 +148,24 @@ class Host:
             # room), at most one per pass so it cannot stall real requests.
             # A first version that evicted and prefetched every opening
             # window at once caused a prefetch storm; see the README.
-            self.pending.extend(self.opening.pop_due(now))
+            self.pending.extend(self.opening.pop_due(horizon))
             while self.pending:
                 t = self.pending.pop(0)
                 if (t not in self.live and self.env[t]["class"] == "interactive"
-                        and self.authorized_now(t, now)):
+                        and self.authorized_now(t, horizon)):
                     if len(self.live) < self.cap:
                         self.materialize(t)
-                        self.last[t] = now
+                        self.last[t] = horizon
                     break
 
     # -- run -------------------------------------------------------------------
     def run(self):
         n = self.trace["tenants"]
+        warm_swap0 = vmstat()
         if self.policy == "native":
             for t in range(n):
                 self.materialize(t)
+        warm_swap1 = vmstat()
         self.restore_ms.clear()
         self.restores = 0
         self.opening = Openings(self.env) if self.policy == "predictive" else None
@@ -172,7 +179,7 @@ class Host:
                 if now >= next_sample:
                     rss_samples.append(rss_bytes())
                     next_sample += 0.5
-                self.housekeeping(now)
+                self.housekeeping(now, min(now, at))
                 wait = at - (time.perf_counter() - start)
                 if wait <= 0:
                     break
@@ -182,13 +189,13 @@ class Host:
                 results.append([t, None, "denied", False])
                 continue
             if t not in self.live:
-                self.make_room(now, protect=t)
+                self.make_room(at, protect=t)
                 self.materialize(t)
             store, x = self.live[t]
             x["step"](store, 1)
             self.steps[t] += 1
             done = time.perf_counter() - start
-            self.last[t] = done
+            self.last[t] = max(at, self.last[t])
             results.append([t, round((done - at) * 1000, 3), self.env[t]["class"], True])
         wall = time.perf_counter() - start
         swap1, maj1 = vmstat(), majflt()
@@ -197,6 +204,7 @@ class Host:
                 "restores": self.restores, "restore_ms": self.restore_ms, "demotions": self.demotions,
                 "snapshot_bytes_written": self.snapshot_bytes, "major_faults": maj1 - maj0,
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
+                "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
                 "base_rss": self.base_rss, "integrity_failures": failures,
                 "authority_violations": sum(1 for (t, lat, cls, ok), (at, _, _) in
                                             zip(results, self.trace["requests"])
