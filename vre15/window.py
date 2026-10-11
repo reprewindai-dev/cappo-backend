@@ -33,7 +33,8 @@ def cells(rows):
     out = defaultdict(dict)                         # (budget, seed) -> policy -> row
     for r in rows:
         if r.get("exit_code") == 0 and not r.get("oom_kills") and r["by_class"].get("interactive"):
-            out[(r["budget_mib"], r.get("seed"))][r["policy"]] = r
+            seed = (r.get("seed"), r["rep"]) if "rep" in r else r.get("seed")
+            out[(r["budget_mib"], seed)][r["policy"]] = r
     return out
 
 

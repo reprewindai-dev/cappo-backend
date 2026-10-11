@@ -452,6 +452,7 @@ class Host:
         cg_path = memcg_usage_path()
         swap0, maj0, tmaj0 = vmstat(), majflt(), thread_majflt()
         start = time.perf_counter()
+        start_wall = time.time()
         if self.reclaimer:
             self.reclaimer.t0 = start
         if self.prefetcher:
@@ -505,7 +506,7 @@ class Host:
                 "request_thread_major_faults": tmaj1 - tmaj0, "recording": recording,
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
-                "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim, "prefetch": prefetch,
+                "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim, "prefetch": prefetch, "trace_start_wall": start_wall,
                 "release": {"skipped_reauthorized": self.release_skipped, "worker_errors": self.release_errors},
                 "revoked_residency": self.revoked_residency(),
                 "base_rss": self.base_rss, "integrity_failures": failures,

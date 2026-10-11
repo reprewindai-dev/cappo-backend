@@ -126,3 +126,19 @@ def test_window_analysis_finds_onset_and_window():
     res = window.analyse(rows)
     assert res["onset_budget_mib"] == 16
     assert res["window"] == {"x": [16]}
+
+
+def test_stall_episodes_count_runs_of_stall_seconds():
+    from vre15.runner import stall_stats
+
+    trace = {"requests": [[0.2, 0, True], [0.7, 1, True], [1.5, 0, True], [3.1, 2, True],
+                          [4.0, 1, True], [4.9, 0, True]]}
+    results = [[0, 5.0, "interactive", True],          # second 0: fine
+               [1, 150.0, "interactive", True],        # second 0: stall
+               [0, 101.0, "interactive", True],        # second 1: stall (same episode)
+               [2, 900.0, "batch", True],              # batch, not counted
+               [1, None, "denied", False],             # denied, not counted
+               [0, 120.0, "interactive", True]]        # second 4: new episode
+    s = stall_stats(results, trace)
+    assert s["stall_buckets"] == [0, 1, 4]
+    assert (s["stall_seconds"], s["stall_episodes"]) == (3, 2)

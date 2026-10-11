@@ -64,6 +64,16 @@ def pct(xs, q):
     return round(xs[min(len(xs) - 1, int(q * len(xs)))], 3) if xs else None
 
 
+def stall_stats(results, trace, deadline_ms=traces.DEADLINE_MS["interactive"]):
+    """Stall seconds: 1 s buckets of trace time in which any served
+    interactive request exceeded its deadline. Episodes: maximal runs of
+    consecutive stall seconds. Results and trace requests align by index."""
+    buckets = sorted({int(req[0]) for r, req in zip(results, trace["requests"])
+                      if r[3] and r[2] == "interactive" and r[1] > deadline_ms})
+    episodes = sum(1 for i, b in enumerate(buckets) if i == 0 or buckets[i - 1] != b - 1)
+    return {"stall_seconds": len(buckets), "stall_episodes": episodes, "stall_buckets": buckets}
+
+
 def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: int) -> dict:
     served = [r for r in raw.get("results", []) if r[3]]
     by = {}
@@ -95,7 +105,8 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "major_faults": raw.get("major_faults"),
         "request_thread_major_faults": raw.get("request_thread_major_faults"),
         "recording": raw.get("recording"), "revoked_residency": raw.get("revoked_residency"),
-        "release": raw.get("release"), "wall_s": round(raw.get("wall_s", 0), 1),
+        "release": raw.get("release"), "trace_start_wall": raw.get("trace_start_wall"),
+        **(stall_stats(raw["results"], trace) if raw.get("results") else {}), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 
 
@@ -108,6 +119,10 @@ def main() -> int:
     ap.add_argument("--idle-s", type=float, default=5.0)
     ap.add_argument("--headroom-kib", type=int, default=0,
                     help="background reclaimer band for the *-headroom policies (0 = host default)")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="run every (budget, seed, variant) cell this many times (A/A repeats)")
+    ap.add_argument("--sample", action="store_true",
+                    help="run vre15/sampler.py beside each run (PSI, vmstat, memcg failcnt every 100 ms)")
     ap.add_argument("--page-cluster", type=int, default=None,
                     help="set vm.page-cluster (swap readahead, 2^N pages) for the whole run, restored after")
     ap.add_argument("--probe-revoked", action="store_true",
@@ -146,11 +161,13 @@ def main() -> int:
         subprocess.run(["fallocate", "-l", "2G", str(swapfile)], check=True)
         os.chmod(swapfile, 0o600)
         subprocess.run(["mkswap", str(swapfile)], check=True, capture_output=True)
-        cells = [(b, v, s) for b in args.budget_mib for s in args.seed for v in args.variants]
-        for i, (budget_mib, variant, seed) in enumerate(cells):
+        cells = [(b, v, s, r) for b in args.budget_mib for s in args.seed for r in range(args.repeat)
+                 for v in args.variants]
+        for i, (budget_mib, variant, seed, rep) in enumerate(cells):
             budget = budget_mib * 2**20
             trace = traces.make(variant, args.tenants, args.duration, args.rate, seed)
-            tag = f"{budget_mib}-{variant}" + (f"-s{seed}" if len(args.seed) > 1 else "")
+            tag = (f"{budget_mib}-{variant}" + (f"-s{seed}" if len(args.seed) > 1 else "")
+                   + (f"-r{rep}" if args.repeat > 1 else ""))
             tpath = work / f"trace-{variant}-{seed}.json"
             tpath.write_text(json.dumps(trace))
             k = i % len(args.policies) if args.rotate_order else 0
@@ -173,10 +190,17 @@ def main() -> int:
                         "headroom_band_bytes": args.headroom_kib * 1024, "reclaim_dry_run": args.reclaim_dry_run,
                         "record_ws": args.record_ws, "probe_revoked": args.probe_revoked,
                         "out": str(rundir / "result.json")}
+                sampler = None
+                if args.sample:
+                    sampler = subprocess.Popen([sys.executable, "-I", str(HERE / "sampler.py"),
+                                                str(out / f"{tag}-{policy}.samples.jsonl"), str(cg)])
                 proc = subprocess.run(
                     [sys.executable, "-I", str(HERE / "host.py"), json.dumps(spec)],
                     preexec_fn=lambda cg=cg: (cg / "cgroup.procs").write_text(str(os.getpid())),
                     capture_output=True, text=True, timeout=args.duration * 6 + 600)
+                if sampler:
+                    sampler.terminate()
+                    sampler.wait(timeout=10)
                 oom = next(int(line.split()[1]) for line in (cg / "memory.oom_control").read_text().splitlines()
                            if line.startswith("oom_kill "))
                 if kernel_paged:
@@ -184,6 +208,8 @@ def main() -> int:
                 raw = json.loads((rundir / "result.json").read_text()) if (rundir / "result.json").exists() else {}
                 row = summarize(raw, trace, policy, oom, proc.returncode)
                 row["budget_mib"], row["seed"], row["order_in_cell"] = budget_mib, seed, pos
+                if args.repeat > 1:
+                    row["rep"] = rep
                 if proc.returncode != 0:
                     row["stderr_tail"] = proc.stderr[-600:]
                 rows.append(row)

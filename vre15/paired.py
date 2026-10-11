@@ -46,7 +46,8 @@ def table(rows, baseline):
     for r in rows:
         ic = r["by_class"].get("interactive", {})
         ok = r.get("exit_code") == 0 and not r.get("oom_kills") and ic.get("within_deadline_pct") is not None
-        cells[(r["budget_mib"], r["variant"], r.get("seed"))][r["policy"]] = (
+        seed = (r.get("seed"), r["rep"]) if "rep" in r else r.get("seed")
+        cells[(r["budget_mib"], r["variant"], seed)][r["policy"]] = (
             (ic.get("within_deadline_pct"), ic.get("p99_ms"), r.get("swap_pages_in")) if ok
             else ("failed", r.get("exit_code"), r.get("oom_kills")))
     out = []
