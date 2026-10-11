@@ -817,6 +817,61 @@ built on it. Report: `vre15/probes/20261011-mapped-snapshot.json` (kernel
   written into a new governed snapshot and the tenant is remapped clean,
   so the evidence trail and the memory release are one act.
 
+### Mapped vs native smoke run: `20261011T164919Z`
+
+**Setup:** 16 MiB, seed 402, 5 repeats per arm, rotated order,
+`--record-ws`, sampler on. A smoke test: no claims.
+
+| Arm | Completed | Warm-up OOM kills | Missed interactive deadlines | Warm-up swap-outs | Swap-outs during trace | Request-thread major faults |
+|---|---|---|---|---|---|---|
+| native | 3 / 5 | **2** | 38, 75, 100 | about 79,000 | 8,106–8,590 | 8,904–10,866 |
+| mapped | 5 / 5 | **0** | 11, 35, 19, 17, 31 | 2,221–2,846 | 6,733–8,162 | 6,901–9,587 |
+
+All completed runs had 0 integrity failures.
+
+**Claim classes:**
+- **Observed:**
+  - Mapping instead of copying cuts warm-up swap writes about 30-fold.
+  - mapped survived warm-up 5 of 5 times; native was killed 2 of 5 times.
+  - Across today's runs, the anonymous-copy policies have had 9 warm-up
+    OOM kills at 10–16 MiB in total.
+- **Observed:** during the trace, swap-outs fall only about 12%.
+  Trace-time writes are dominated by modified pages (hot sets, the
+  recording phase's steps) and the process's anonymous heap, which
+  mapping does not make clean.
+  - mapped's misses look lower than these three native runs.
+  - But native's 10-run A/A on the same seed and settings ranged from 9
+    to 338 misses (median about 28), against mapped's median of 19.
+  - A trace-time benefit is not established.
+  - The stall still follows the same burst; in mapped it lands at trace
+    second 46.
+- **Hypothesis:** checkpoint on revocation would carry the benefit into
+  the trace. It writes a revoked tenant's modified pages into a new image
+  and remaps the tenant clean, which would make evicting the pages most
+  worth evicting write-free. Not built.
+
+## Pre-registered: mapped vs native (fixed before the run)
+
+Written and committed before any run with these seeds.
+
+- **Arms:** native and mapped. 16 MiB, informative trace, `--record-ws`,
+  `--sample`, `--rotate-order`.
+- **Seeds:** fresh, 601–615, one run per arm per seed (30 runs).
+- **H11, admission robustness:** mapped has a lower warm-up OOM-kill rate
+  than native.
+  - The test is a two-sided Fisher exact test on killed versus completed
+    runs.
+- **H12, request-path latency:** mapped misses fewer interactive deadlines
+  than native.
+  - The test is an exact two-sided sign test on per-seed paired miss
+    counts.
+  - It uses seeds where both arms completed; ties are excluded.
+- **Threshold:** α = 0.025 per hypothesis (Bonferroni over the two).
+  Confirmed only if the direction favours mapped and p < 0.025.
+- **Reported, not deciding:** within-deadline share, p99, swap I/O
+  (warm-up and during the trace), request-thread major faults, and
+  integrity.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
