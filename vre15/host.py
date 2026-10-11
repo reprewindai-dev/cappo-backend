@@ -76,6 +76,13 @@ Policies:
               system would choose. If it matches native-pageout, the gain is
               idle-time eviction, not the envelope's information.
 
+probe_revoked (spec flag, applied identically to every policy in a run):
+at 0, 1 and 5 s after each window close, if the tenant is then outside
+authority, count its linear-memory pages still resident (mincore). This is
+the governance measurement "residency follows authority": how much revoked
+state stays in RAM, and for how long. The 0 s probe runs before any
+page-out at that close.
+
 record_ws (spec flag, applied identically to every policy in a run): after
 warm-up, each tenant is paged out (MADV_PAGEOUT), runs RECORD_STEPS real
 requests, and its working set is read from /proc/self/pagemap: pages whose
@@ -134,6 +141,17 @@ def resident_pages(base, length, cap=WS_CAP):
         return None
     raw = vec.raw
     return [i for i in range(n) if raw[i] & 1][:cap]
+
+
+def resident_count(base, length):
+    n = (length + PAGE - 1) // PAGE
+    vec = ctypes.create_string_buffer(n)
+    if _libc.mincore(base, length, vec) != 0:
+        return None
+    return sum(b & 1 for b in vec.raw)
+
+
+REVOKE_PROBE_S = (0.0, 1.0, 5.0)
 
 
 def mapped_pages(base, length, cap=WS_CAP):
@@ -275,12 +293,32 @@ class Host:
                 break
             self.demote(v)
 
+    def probe_revoked(self, horizon):
+        while self.revoke_i < len(self.revoke_probes) and self.revoke_probes[self.revoke_i][0] <= horizon:
+            at, t, d = self.revoke_probes[self.revoke_i]
+            self.revoke_i += 1
+            if t in self.region and not tr.authorized(self.env[t], at):
+                c = resident_count(*self.region[t])
+                if c is not None:
+                    self.revoke_samples[d].append(c)
+
+    def revoked_residency(self):
+        if not self.revoke_probes:
+            return None
+        out = {}
+        for d, xs in self.revoke_samples.items():
+            out[str(d)] = {"n": len(xs), "mean_pages": round(sum(xs) / len(xs), 2) if xs else None,
+                           "max_pages": max(xs) if xs else None,
+                           "zero_fraction": round(sum(x == 0 for x in xs) / len(xs), 3) if xs else None}
+        return out
+
     def housekeeping(self, now, horizon):
         """`horizon` is the trace time of the oldest request still waiting
         (or now, if none is waiting). Idle and expiry are judged at it, never
         at wall-clock time: a host that has fallen behind must not demote a
         tenant whose queued requests were authorized when they arrived. Run
         20261011T053146Z judged expiry at wall-clock time and thrashed."""
+        self.probe_revoked(horizon)
         if self.policy == "native" or self.policy in HEADROOM:
             return                                      # kernel-paged; the reclaimer runs on its own thread
         if self.policy in STEERED:
@@ -327,6 +365,9 @@ class Host:
         self.prefetcher = Prefetcher(self) if self.policy in PREFETCHING else None
         self.declared_ws = {}
         self.lru_paged = set()                          # lru-pageout: paged out since last request
+        self.revoke_probes = sorted((e + d, t, d) for t, env in enumerate(self.env) for _, e in env["windows"]
+                                    for d in REVOKE_PROBE_S) if self.spec.get("probe_revoked") else []
+        self.revoke_i, self.revoke_samples = 0, {d: [] for d in REVOKE_PROBE_S}
         if self.policy in HEADROOM:
             # Started before warm-up: a real deployment would run it always.
             budget = self.spec["budget_bytes"]
@@ -416,6 +457,7 @@ class Host:
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
                 "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim, "prefetch": prefetch,
+                "revoked_residency": self.revoked_residency(),
                 "base_rss": self.base_rss, "integrity_failures": failures,
                 "authority_violations": sum(1 for (t, lat, cls, ok), (at, _, _) in
                                             zip(results, self.trace["requests"])

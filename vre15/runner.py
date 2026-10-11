@@ -93,7 +93,7 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "advice": raw.get("advice"), "advice_errors": raw.get("advice_errors"), "reclaim": raw.get("reclaim"), "prefetch": raw.get("prefetch"),
         "major_faults": raw.get("major_faults"),
         "request_thread_major_faults": raw.get("request_thread_major_faults"),
-        "recording": raw.get("recording"), "wall_s": round(raw.get("wall_s", 0), 1),
+        "recording": raw.get("recording"), "revoked_residency": raw.get("revoked_residency"), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 
 
@@ -106,6 +106,8 @@ def main() -> int:
     ap.add_argument("--idle-s", type=float, default=5.0)
     ap.add_argument("--headroom-kib", type=int, default=0,
                     help="background reclaimer band for the *-headroom policies (0 = host default)")
+    ap.add_argument("--probe-revoked", action="store_true",
+                    help="every policy measures resident pages of tenants 0/1/5 s after authority ends")
     ap.add_argument("--record-ws", action="store_true",
                     help="every policy runs the working-set recording phase after warm-up "
                          "(envelope-declared requires it)")
@@ -161,7 +163,7 @@ def main() -> int:
                         "initial": initial, "workdir": str(rundir), "idle_s": args.idle_s,
                         "budget_bytes": budget, "per_tenant_bytes": PER_TENANT_BYTES,
                         "headroom_band_bytes": args.headroom_kib * 1024, "reclaim_dry_run": args.reclaim_dry_run,
-                        "record_ws": args.record_ws,
+                        "record_ws": args.record_ws, "probe_revoked": args.probe_revoked,
                         "out": str(rundir / "result.json")}
                 proc = subprocess.run(
                     [sys.executable, "-I", str(HERE / "host.py"), json.dumps(spec)],
