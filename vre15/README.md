@@ -474,6 +474,95 @@ Written and committed before any run with these seeds.
 - **Reported, not deciding:** lru-headroom against native, p99, swap I/O,
   cgroup memory and reclaimer statistics.
 
+## Headroom result: run `20261011T125629Z`
+
+**Neither hypothesis is confirmed.** The run followed the pre-registration
+exactly.
+- **Clean:** all 30 runs completed, with 0 OOM kills, 0 integrity
+  failures, 0 authority violations, and 0 demotions or restores in any
+  run.
+- **Batch:** deadlines were met 100% except envelope-headroom on seed 205
+  (98.6%).
+
+| Hypothesis | Wins / losses / ties | Sign test p | Outcome | Median Δ deadlines met | Median Δ p99 |
+|---|---|---|---|---|---|
+| H3: envelope-headroom > native | 4 / 6 / 0 | 0.754 | **not confirmed** | −0.22 pts | +2.8 ms |
+| H4: envelope-headroom > lru-headroom | 3 / 7 / 0 | 0.344 | **not confirmed** | −0.05 pts | +2.4 ms |
+| (reported) lru-headroom vs native | 3 / 7 / 0 | 0.344 | — | −0.29 pts | +17.2 ms |
+
+| Policy | Interactive ≤100 ms, mean (min) | p99 median (max), ms | Median swap-ins | Mean cgroup charge |
+|---|---|---|---|---|
+| native | 99.73% (99.29%) | 5.6 (58.1) | 6,483 | 15.9 MiB |
+| envelope-headroom | 99.22% (96.44%) | 6.0 (1,293) | 7,107 | 15.9 MiB |
+| lru-headroom | 99.44% (98.84%) | 23.6 (165) | 6,907 | 15.9 MiB |
+
+**What it shows:**
+- **The precondition was never reached.** The cgroup charge sat at the
+  limit (15.9 MiB) in every headroom run. The reclaimer issued about 1,850
+  tenant page-outs per run, yet never opened a free band.
+- Likely reasons, not isolated:
+  - the charge includes page cache, which refills freed space and which
+    tenant page-outs cannot reclaim;
+  - `MADV_PAGEOUT` queues swap writes and returns, and a request thread
+    that later reclaims can meet those pages still under writeback and
+    wait on them. That would be the very stall the policy was meant to
+    remove.
+- Background page-out made both policies worse than native, with longer
+  tails and a 1.3 s p99 on one seed.
+
+## Oracle bound: how much does the envelope know beyond recency?
+
+`vre15/oracle.py` replays the same seeded traces through a page-granular
+cache model (16 hot pages per tenant, one page per request) and counts
+demand misses under four policies:
+- LRU, the stand-in for the kernel;
+- envelope eviction, which uses window times only;
+- envelope eviction plus hot-set prefetch at window open;
+- Belady OPT, which knows every future request.
+
+No timing, kernel or root is involved. Seeds 201–210 are on the informative
+trace and 201–203 on the control. The raw rows are in
+`vre15/oracle_runs/20261011-seeds201-210.json`.
+
+| Capacity (share of 4,800 hot pages) | LRU misses | Envelope | Envelope + prefetch (prefetch reads) | OPT | Gap closed by envelope, mean [min, max] | Demand-miss cut, env + prefetch vs LRU |
+|---|---|---|---|---|---|---|
+| 5% | 8,547 | 8,398 | 8,358 (+365) | 5,135 | 0.04 [0.04, 0.05] | 2.2% |
+| 10% | 6,150 | 5,860 | 5,733 (+880) | 3,926 | 0.13 [0.12, 0.15] | 6.8% |
+| 25% | 4,132 | 3,702 | 2,681 (+3,013) | 3,394 | 0.58 [0.53, 0.66] | 35.1% |
+| 50% | 3,538 | 3,394 | 85 (+6,047) | 3,394 | 1.00 | 97.6% |
+| control, 25% | 5,957 | 5,957 | 5,792 | 3,835 | 0.00 | 2.8% |
+
+**Claim classes:**
+- **Observed (model):**
+  - At tight capacity (≤10% of the hot set), envelope eviction closes only
+    4–15% of the LRU-to-OPT gap. There, the envelope's eviction knowledge
+    is nearly redundant with recency.
+  - At 25% it closes 53–66%.
+  - The control closes 0.00 at every capacity, as it must.
+- **Observed (model):** at moderate capacity most remaining misses are
+  first touches after a window opens.
+  - Recency cannot anticipate them; the envelope can.
+  - Prefetching the hot set at window open removes 35% of demand misses at
+    25% capacity and 98% at 50%.
+  - The cost is extra reads: +38% and +73% total I/O respectively.
+- **Inferred:** native-steered failed on mechanism, not information.
+  - Its window-open WILLNEED covered each tenant's whole 4 MiB region,
+    about 256 resident pages.
+  - The model's prefetch needs only the 16-page hot set: about 3,000 reads
+    per run, against the 98,000–160,000 swap-ins measured.
+  - That over-fetch is 30–50×.
+- **Hypothesis (next test):** a working-set-targeted prefetch captures
+  the envelope's real advantage without the I/O storm.
+  - At window close, record which of the tenant's pages are resident with
+    `mincore`; that is its recent working set.
+  - Ahead of the next window opening, fault exactly those pages back in on
+  a background thread with `MADV_POPULATE_READ`, paced.
+  - It uses only what the runtime can observe. It does not read the guest
+    code.
+- **Unverified:** where 16 MiB sits on this capacity axis. The process's
+  non-tenant memory shares the budget, and swap-in counts include
+  readahead, so the mapping is not calibrated.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
