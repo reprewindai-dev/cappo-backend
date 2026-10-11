@@ -977,6 +977,76 @@ Written and committed before any run with these seeds.
     identical across arms;
   - integrity, and warm-up kills.
 
+### Result: run `20261011T181835Z`
+
+The run followed the pre-registration exactly.
+- 43 of 45 runs completed, all with 0 integrity failures and 0 authority
+  violations.
+- Native was OOM-killed in warm-up on seeds 701 and 715; mapped and
+  mapped-ckpt were never killed.
+
+| Hypothesis | Pairs | mapped-ckpt better / worse / ties | Sign test p | Outcome | Medians |
+|---|---|---|---|---|---|
+| H13: fewer missed interactive deadlines than native | 13 | 8 / 5 / 0 | 0.581 | **not confirmed** | 7 vs 10 |
+| H14: fewer missed interactive deadlines than mapped | 15 | 6 / 8 / 1 | 0.791 | **not confirmed** | 10 vs 8 |
+| **H15: less revoked state resident 5 s after authority ends than native** | 13 | **13 / 0 / 0** | **0.0002** | **confirmed** | **1.96 vs 5.75 pages** |
+
+| Arm | Completed | Interactive ≤100 ms, mean (min) | p99 median (max), ms | Revoked tenants with nothing resident at 1 s / 5 s (median) | Swap-ins, median | Swap-outs, median | Warm-up swap-outs, median |
+|---|---|---|---|---|---|---|---|
+| native | 13 | 99.67% (98.20%) | 4.3 (355) | 4% / 9% | 8,901 | 8,127 | 78,840 |
+| mapped | 15 | 99.88% (99.53%) | 3.5 (9.9) | 4% / 9% | 8,318 | 7,337 | 2,445 |
+| mapped-ckpt | 15 | 99.85% (99.68%) | 8.5 (49.7) | **54% / 89%** | 10,940 | 6,498 | 2,223 |
+
+**Checkpoints:** about 429 per run (median), writing about 5,546 pages;
+p50 3.3 ms, max 110 ms (fdatasync on the request thread).
+
+**Observed, not pre-registered, so no claim:**
+- Native collapsed on two seeds: 167 misses (p99 355 ms) and 112.
+- Neither mapped arm went below 99.5% on any seed. The worst seeds were
+  mapped 38 misses and mapped-ckpt 29.
+- Pooled over today's runs at 16 MiB, native's warm-up kills keep
+  recurring, while the mapped arms have had none. No single pre-registered
+  test has had the power to confirm that.
+
+## VRE-1.5 final verdict
+
+**The performance thesis fails, as measured.**
+- No envelope-aware policy beat native on interactive deadlines in a
+  pre-registered test.
+- That held for every approach tried:
+  - snapshot demotion;
+  - madvise steering;
+  - background headroom;
+  - working-set prefetch;
+  - the mapped state model;
+  - checkpoint on revocation.
+- On this host and workload, the information the envelope carries is
+  largely redundant with recency (oracle bound). Native's tail collapses
+  are run-to-run random in severity, so 10–15 seeds cannot confirm a small
+  advantage.
+
+**The governance thesis is confirmed, and now measured rather than assumed:**
+
+| | Result | Where shown |
+|---|---|---|
+| Authority | enforced exactly: 0 authority violations | every run in this directory |
+| Integrity | state preserved exactly: 0 integrity failures in every completed run | every run, including runs where state is checkpointed and remapped |
+| **Residency follows authority (H15)** | with checkpoint on revocation, a revoked tenant's state leaves memory: 89% of revoked tenants have nothing resident 5 s after authority ends, against 9% under native (13/0, p = 0.0002) | pre-registered H15 |
+| Evidence | each revocation produces a deterministic checkpoint digest of exactly the state modified under that authority, identical across repeats | smoke run |
+
+**Measured mechanism facts, holding in every run (not deadline claims):**
+- Mapping the governed snapshot instead of copying it cuts warm-up swap
+  writes about 35-fold.
+- Native's collapse is triggered by a known trace event: several hot
+  tenants' authority windows opening together.
+
+**What survives into implementation:** checkpoint on revocation, as a
+governance mechanism and not a performance one. See
+`vre15/revoke.py` and its tests. It is the confirmed result. Its
+measured costs are recorded with it:
+- more swap-ins when revoked tenants return;
+- a longer p99 while fdatasync runs on the request thread.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
