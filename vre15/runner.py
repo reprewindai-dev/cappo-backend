@@ -44,7 +44,7 @@ from vre1.bench import probe
 from vre15 import traces
 
 HERE = pathlib.Path(__file__).resolve().parent
-POLICIES = ("native", "idle-lru", "envelope", "predictive")
+POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
@@ -79,11 +79,14 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
         "integrity_failures": raw.get("integrity_failures"),
         "by_class": by,
         "mean_resident_mib": round(mean_res / 2**20, 1), "peak_resident_mib": round(max(rss) / 2**20, 1),
+        "mean_memcg_mib": round(sum(cg) / len(cg) / 2**20, 1) if (cg := raw.get("memcg_samples")) else None,
+        "peak_memcg_mib": round(max(cg) / 2**20, 1) if (cg := raw.get("memcg_samples")) else None,
         "useful_work_per_gib": round(within / (mean_res / 2**30), 1) if mean_res else None,
         "restores": raw.get("restores"), "restore_p95_ms": pct(raw.get("restore_ms", []), .95),
         "demotions": raw.get("demotions"), "snapshot_bytes_written": raw.get("snapshot_bytes_written"),
         "swap_pages_in": raw.get("swap_pages_in"), "swap_pages_out": raw.get("swap_pages_out"),
         "warmup_swap_pages_out": raw.get("warmup_swap_pages_out"),
+        "advice": raw.get("advice"), "advice_errors": raw.get("advice_errors"),
         "major_faults": raw.get("major_faults"), "wall_s": round(raw.get("wall_s", 0), 1),
     }
 
@@ -93,7 +96,7 @@ def main() -> int:
     ap.add_argument("--tenants", type=int, default=300)
     ap.add_argument("--duration", type=float, default=90)
     ap.add_argument("--rate", type=float, default=250, help="mean requests per second")
-    ap.add_argument("--budget-mib", type=int, default=160)
+    ap.add_argument("--budget-mib", type=int, nargs="+", default=[160])
     ap.add_argument("--idle-s", type=float, default=5.0)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--variants", nargs="*", default=["informative", "uninformative"])
@@ -108,7 +111,6 @@ def main() -> int:
     out.mkdir(parents=True)
     work = pathlib.Path(tempfile.mkdtemp(prefix="vre15-"))
     swapfile = work / "swapfile"
-    budget = args.budget_mib * 2**20
     rows = []
     try:
         made = probe("make-many", {"dir": str(work), "cwasm": str(work / "m.cwasm"), "tenants": args.tenants,
@@ -117,19 +119,21 @@ def main() -> int:
         subprocess.run(["fallocate", "-l", "2G", str(swapfile)], check=True)
         os.chmod(swapfile, 0o600)
         subprocess.run(["mkswap", str(swapfile)], check=True, capture_output=True)
-        for variant in args.variants:
+        for budget_mib, variant in [(b, v) for b in args.budget_mib for v in args.variants]:
+            budget = budget_mib * 2**20
             trace = traces.make(variant, args.tenants, args.duration, args.rate, args.seed)
             tpath = work / f"trace-{variant}.json"
             tpath.write_text(json.dumps(trace))
             for policy in args.policies:
-                cg = own_memcg() / f"vre15-{run_id}-{variant}-{policy}"
+                cg = own_memcg() / f"vre15-{run_id}-{budget_mib}-{variant}-{policy}"
                 cg.mkdir()
                 (cg / "memory.limit_in_bytes").write_text(str(budget))
-                if policy != "native":
+                kernel_paged = policy in ("native", "native-steered")
+                if not kernel_paged:
                     (cg / "memory.memsw.limit_in_bytes").write_text(str(budget))
-                rundir = work / f"{variant}-{policy}"
+                rundir = work / f"{budget_mib}-{variant}-{policy}"
                 rundir.mkdir()
-                if policy == "native":
+                if kernel_paged:
                     subprocess.run(["swapon", str(swapfile)], check=True)
                 os.sync()
                 pathlib.Path("/proc/sys/vm/drop_caches").write_text("3")
@@ -143,20 +147,21 @@ def main() -> int:
                     capture_output=True, text=True, timeout=args.duration * 6 + 600)
                 oom = next(int(line.split()[1]) for line in (cg / "memory.oom_control").read_text().splitlines()
                            if line.startswith("oom_kill "))
-                if policy == "native":
+                if kernel_paged:
                     subprocess.run(["swapoff", str(swapfile)], check=True)
                 raw = json.loads((rundir / "result.json").read_text()) if (rundir / "result.json").exists() else {}
                 row = summarize(raw, trace, policy, oom, proc.returncode)
+                row["budget_mib"] = budget_mib
                 if proc.returncode != 0:
                     row["stderr_tail"] = proc.stderr[-600:]
                 rows.append(row)
-                (out / f"{variant}-{policy}.json").write_text(json.dumps(raw.get("results", [])))
+                (out / f"{budget_mib}-{variant}-{policy}.json").write_text(json.dumps(raw.get("results", [])))
                 cg.rmdir()
                 shutil.rmtree(rundir, ignore_errors=True)
                 ic = row["by_class"].get("interactive", {})
-                print(f"{variant:<13} {policy:<10} exit={proc.returncode} oom={oom} served={row['served']} "
+                print(f"{budget_mib:>4}MiB {variant:<13} {policy:<14} exit={proc.returncode} oom={oom} served={row['served']} "
                       f"interactive<=100ms={ic.get('within_deadline_pct')}% p99={ic.get('p99_ms')} "
-                      f"mean_res={row['mean_resident_mib']}MiB work/GiB={row['useful_work_per_gib']} "
+                      f"mean_res={row['mean_resident_mib']}MiB memcg={row['mean_memcg_mib']}MiB work/GiB={row['useful_work_per_gib']} "
                       f"swapin={row['swap_pages_in']} integrity_fail={row['integrity_failures']}", flush=True)
     finally:
         subprocess.run(["swapoff", str(swapfile)], capture_output=True)

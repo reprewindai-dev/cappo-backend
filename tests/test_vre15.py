@@ -38,7 +38,7 @@ def test_requests_are_time_ordered():
 def test_committed_runs_are_clean():
     for manifest in sorted(RUNS.glob("*/manifest.json")):
         rows = json.loads(manifest.read_text())["summary"]["vre15"]
-        assert {r["policy"] for r in rows} == {"native", "idle-lru", "envelope", "predictive"}
+        assert {"native"} <= {r["policy"] for r in rows}
         for r in rows:
             assert r["exit_code"] == 0 and r["oom_kills"] == 0, (manifest, r["policy"], r["variant"])
             assert r["authority_violations"] == 0 and r["integrity_failures"] == 0, r

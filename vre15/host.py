@@ -22,6 +22,11 @@ Policies:
               each).
   predictive  envelope plus pre-materializing interactive tenants when an
               authority window opens, before the first request arrives.
+  native-steered
+              native (every tenant live, kernel paging, swap allowed), plus
+              the envelope steering the kernel's own page-granular mechanism:
+              madvise(MADV_PAGEOUT) over a tenant's linear memory when its
+              authority window closes, madvise(MADV_WILLNEED) when one opens.
 
 Authority is enforced before any policy acts, so authority violations are 0
 by construction for every policy. The run reports them anyway.
@@ -31,6 +36,7 @@ each tenant's final digest must equal a reference: the initial snapshot
 restored fresh plus the same number of steps, with no demotion.
 """
 
+import ctypes
 import json
 import os
 import sys
@@ -44,6 +50,38 @@ import snapshot as snap  # noqa: E402
 
 sys.path.insert(0, HERE)
 import traces as tr  # noqa: E402
+
+MADV_WILLNEED = 3
+MADV_PAGEOUT = 21                       # Linux 5.4+
+_libc = ctypes.CDLL(None, use_errno=True)
+_libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+
+
+def advise(store, exports, advice):
+    """madvise over a tenant's whole linear memory; returns errno (0 = ok)."""
+    mem = exports["memory"]
+    base = ctypes.addressof(mem.data_ptr(store).contents)
+    if _libc.madvise(base, mem.data_len(store), advice) != 0:
+        return ctypes.get_errno()
+    return 0
+
+
+def memcg_usage_path():
+    for line in open("/proc/self/cgroup").read().splitlines():
+        _, ctrls, path = line.split(":", 2)
+        if "memory" in ctrls.split(","):
+            return os.path.join("/sys/fs/cgroup/memory", path.lstrip("/"), "memory.usage_in_bytes")
+    return None
+
+
+def memcg_bytes(path):
+    """What the cgroup charges (anon, page cache and swap cache), which is
+    what the budget limits. RSS alone misses pages held in swap cache."""
+    try:
+        with open(path) as f:
+            return int(f.read())
+    except (OSError, TypeError, ValueError):
+        return 0
 
 
 def rss_bytes():
@@ -82,7 +120,7 @@ class Host:
         # Managed policies derive their live cap from the same budget the
         # cgroup enforces: 85% of it, less this process's own baseline,
         # divided by the per-tenant resident cost measured in VRE-1E.
-        if self.policy == "native":
+        if self.policy in ("native", "native-steered"):
             self.cap = n
         else:
             self.cap = max(1, int((0.85 * spec["budget_bytes"] - self.base_rss) // spec["per_tenant_bytes"]))
@@ -138,6 +176,13 @@ class Host:
         20261011T053146Z judged expiry at wall-clock time and thrashed."""
         if self.policy == "native":
             return
+        if self.policy == "native-steered":
+            for t, kind in self.edges.pop_due(horizon):
+                store, x = self.live[t]
+                err = advise(store, x, MADV_PAGEOUT if kind == "close" else MADV_WILLNEED)
+                self.advice[kind] += 1
+                self.advice_errors += err != 0
+            return
         for t in list(self.live):
             idle = horizon - self.last[t] > self.spec["idle_s"]
             expired = self.policy in ("envelope", "predictive") and not self.authorized_now(t, horizon)
@@ -162,15 +207,18 @@ class Host:
     def run(self):
         n = self.trace["tenants"]
         warm_swap0 = vmstat()
-        if self.policy == "native":
+        if self.policy in ("native", "native-steered"):
             for t in range(n):
                 self.materialize(t)
         warm_swap1 = vmstat()
+        self.edges = Edges(self.env) if self.policy == "native-steered" else None
+        self.advice, self.advice_errors = {"open": 0, "close": 0}, 0
         self.restore_ms.clear()
         self.restores = 0
         self.opening = Openings(self.env) if self.policy == "predictive" else None
         self.pending = []
-        results, rss_samples, next_sample = [], [], 0.0
+        results, rss_samples, cg_samples, next_sample = [], [], [], 0.0
+        cg_path = memcg_usage_path()
         swap0, maj0 = vmstat(), majflt()
         start = time.perf_counter()
         for at, t, _intended in self.trace["requests"]:
@@ -178,6 +226,7 @@ class Host:
                 now = time.perf_counter() - start
                 if now >= next_sample:
                     rss_samples.append(rss_bytes())
+                    cg_samples.append(memcg_bytes(cg_path))
                     next_sample += 0.5
                 self.housekeeping(now, min(now, at))
                 wait = at - (time.perf_counter() - start)
@@ -200,11 +249,12 @@ class Host:
         wall = time.perf_counter() - start
         swap1, maj1 = vmstat(), majflt()
         failures = self.integrity()
-        return {"results": results, "rss_samples": rss_samples, "wall_s": wall,
+        return {"results": results, "rss_samples": rss_samples, "memcg_samples": cg_samples, "wall_s": wall,
                 "restores": self.restores, "restore_ms": self.restore_ms, "demotions": self.demotions,
                 "snapshot_bytes_written": self.snapshot_bytes, "major_faults": maj1 - maj0,
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
+                "advice": self.advice, "advice_errors": self.advice_errors,
                 "base_rss": self.base_rss, "integrity_failures": failures,
                 "authority_violations": sum(1 for (t, lat, cls, ok), (at, _, _) in
                                             zip(results, self.trace["requests"])
@@ -226,6 +276,22 @@ class Host:
                 rx["step"](ref_store, self.steps[t])
             failures += got != rx["digest"](ref_store)
         return failures
+
+
+class Edges:
+    """Authority window opens and closes, in time order, for native-steered."""
+
+    def __init__(self, envelopes):
+        self.q = sorted([(s, t, "open") for t, e in enumerate(envelopes) for s, _ in e["windows"]]
+                        + [(e_, t, "close") for t, e in enumerate(envelopes) for _, e_ in e["windows"]])
+        self.i = 0
+
+    def pop_due(self, now):
+        due = []
+        while self.i < len(self.q) and self.q[self.i][0] <= now:
+            due.append((self.q[self.i][1], self.q[self.i][2]))
+            self.i += 1
+        return due
 
 
 class Openings:
