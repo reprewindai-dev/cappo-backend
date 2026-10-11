@@ -99,7 +99,8 @@ def main() -> int:
     ap.add_argument("--rate", type=float, default=250, help="mean requests per second")
     ap.add_argument("--budget-mib", type=int, nargs="+", default=[160])
     ap.add_argument("--idle-s", type=float, default=5.0)
-    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--seed", type=int, nargs="+", default=[7],
+                    help="trace seeds; several give paired repeats of every cell")
     ap.add_argument("--variants", nargs="*", default=["informative", "uninformative"])
     ap.add_argument("--policies", nargs="*", default=list(POLICIES))
     ap.add_argument("--out", type=pathlib.Path, default=HERE / "runs")
@@ -120,19 +121,21 @@ def main() -> int:
         subprocess.run(["fallocate", "-l", "2G", str(swapfile)], check=True)
         os.chmod(swapfile, 0o600)
         subprocess.run(["mkswap", str(swapfile)], check=True, capture_output=True)
-        for budget_mib, variant in [(b, v) for b in args.budget_mib for v in args.variants]:
+        cells = [(b, v, s) for b in args.budget_mib for s in args.seed for v in args.variants]
+        for budget_mib, variant, seed in cells:
             budget = budget_mib * 2**20
-            trace = traces.make(variant, args.tenants, args.duration, args.rate, args.seed)
-            tpath = work / f"trace-{variant}.json"
+            trace = traces.make(variant, args.tenants, args.duration, args.rate, seed)
+            tag = f"{budget_mib}-{variant}" + (f"-s{seed}" if len(args.seed) > 1 else "")
+            tpath = work / f"trace-{variant}-{seed}.json"
             tpath.write_text(json.dumps(trace))
             for policy in args.policies:
-                cg = own_memcg() / f"vre15-{run_id}-{budget_mib}-{variant}-{policy}"
+                cg = own_memcg() / f"vre15-{run_id}-{tag}-{policy}"
                 cg.mkdir()
                 (cg / "memory.limit_in_bytes").write_text(str(budget))
                 kernel_paged = policy in KERNEL_PAGED
                 if not kernel_paged:
                     (cg / "memory.memsw.limit_in_bytes").write_text(str(budget))
-                rundir = work / f"{budget_mib}-{variant}-{policy}"
+                rundir = work / f"{tag}-{policy}"
                 rundir.mkdir()
                 if kernel_paged:
                     subprocess.run(["swapon", str(swapfile)], check=True)
@@ -152,15 +155,15 @@ def main() -> int:
                     subprocess.run(["swapoff", str(swapfile)], check=True)
                 raw = json.loads((rundir / "result.json").read_text()) if (rundir / "result.json").exists() else {}
                 row = summarize(raw, trace, policy, oom, proc.returncode)
-                row["budget_mib"] = budget_mib
+                row["budget_mib"], row["seed"] = budget_mib, seed
                 if proc.returncode != 0:
                     row["stderr_tail"] = proc.stderr[-600:]
                 rows.append(row)
-                (out / f"{budget_mib}-{variant}-{policy}.json").write_text(json.dumps(raw.get("results", [])))
+                (out / f"{tag}-{policy}.json").write_text(json.dumps(raw.get("results", [])))
                 cg.rmdir()
                 shutil.rmtree(rundir, ignore_errors=True)
                 ic = row["by_class"].get("interactive", {})
-                print(f"{budget_mib:>4}MiB {variant:<13} {policy:<14} exit={proc.returncode} oom={oom} served={row['served']} "
+                print(f"{budget_mib:>4}MiB s{seed:<3} {variant:<13} {policy:<14} exit={proc.returncode} oom={oom} served={row['served']} "
                       f"interactive<=100ms={ic.get('within_deadline_pct')}% p99={ic.get('p99_ms')} "
                       f"mean_res={row['mean_resident_mib']}MiB memcg={row['mean_memcg_mib']}MiB work/GiB={row['useful_work_per_gib']} "
                       f"swapin={row['swap_pages_in']} integrity_fail={row['integrity_failures']}", flush=True)
