@@ -417,6 +417,63 @@ violations) and preserved tenant state exactly (0 integrity failures); the
 other was the one OOM-killed in warm-up before serving any request. That holds for snapshot
 demotion, kernel paging and steering alike.
 
+## Second attempt: keep request threads out of reclaim
+
+After the confirmation failed, a research pass surveyed what could still
+beat native at the same budget. The report is kept outside the repository
+as "Envelope aware paging mechanisms". Its main point, reasoned from the
+kernel source:
+- On cgroup v1 with the classic LRU (this host has no MGLRU), the task
+  that hits the memcg limit reclaims synchronously.
+- That task can wait, with no timeout, for swap writeback it queued itself
+  (`folio_wait_writeback` in `shrink_folio_list`).
+- That fits native's 200–900 ms collapses.
+- The published p99 wins over stock swap (Hermit, Canvas, REAP, FaaSnap)
+  come from taking that work off the fault path, not from better
+  prediction.
+
+**Policies** (`host.py`, `Reclaimer`): native kernel paging, plus a
+background thread that keeps a free band below the limit.
+- The band is the larger of 2 MiB and 1/8 of the budget.
+- The thread pages out whole tenants with `MADV_PAGEOUT`, at most 4 per
+  pass.
+- It never touches a tenant requested in the last 2 s.
+
+| Policy | Victim order |
+|---|---|
+| **envelope-headroom** | Outside authority first, furthest next window opening first (Belady with known windows), then LRU |
+| **lru-headroom** | Recency only. The control: background reclaim without the envelope |
+
+Development smoke runs (20 s, 16 MiB) used seed 104 only. They also caught
+a fall-through bug: the new policies ran the snapshot policies' idle
+demotion and thrashed. It is fixed, and the committed-runs test now fails
+any kernel-paged run that demotes or restores.
+
+## Pre-registered test of the headroom policies (fixed before the run)
+
+Written and committed before any run with these seeds.
+
+- **Hypotheses:**
+  - **H3:** at 16 MiB on the informative trace, envelope-headroom meets
+    more interactive deadlines than native.
+  - **H4:** at 16 MiB on the informative trace, envelope-headroom meets
+    more interactive deadlines than lru-headroom. This isolates what the
+    envelope adds over background reclaim alone.
+- **Seeds:** fresh, 201–210 (10 seeds). Nothing else changes: 300 tenants,
+  90 s, 250 req/s, the policies native, envelope-headroom and
+  lru-headroom, `--rotate-order`, and the default band.
+- **Test:** for each hypothesis, an exact two-sided sign test on paired
+  per-seed within-deadline shares from `vre15/paired.py` (with
+  `--baseline lru-headroom` for H4).
+  - Failed runs are excluded and reported.
+  - Ties are excluded.
+  - The threshold is α = 0.025 per hypothesis (Bonferroni over the two).
+- **Decision:** confirmed only if the policy wins more seeds than it loses
+  and p < 0.025. With all 10 seeds usable, that means at least 9 wins.
+  Anything else is reported as not confirmed, with the numbers.
+- **Reported, not deciding:** lru-headroom against native, p99, swap I/O,
+  cgroup memory and reclaimer statistics.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
