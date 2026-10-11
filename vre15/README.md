@@ -657,6 +657,57 @@ few seeds, one will look good by chance, so the two stages are kept apart.
   idle moment.
 - **Run:** fresh seeds, sign test, α = 0.025 per hypothesis.
 
+## State as a mapped snapshot: feasibility probe
+
+So far every tenant's state has been copied into anonymous memory, and
+anonymous pages can only be evicted by writing them to swap. That
+assumption sits under both loss sources seen so far:
+- the warm-up OOM kills, which come from copying all 300 tenants in at
+  once;
+- the collapses, if request threads wait on swap writes (H-mech, not yet
+  tested).
+
+The alternative treats the governed snapshot as the state and memory as a
+cache of it. The tenant's linear memory is a copy-on-write mapping
+(`MAP_PRIVATE | MAP_FIXED`) of a page-aligned image of its snapshot. Clean
+pages can then be dropped with no write at all.
+
+`vre15/mapped_probe.py` checked whether that works before any policy is
+built on it. Report: `vre15/probes/20261011-mapped-snapshot.json` (kernel
+6.18.44, wasmtime-py 44.0.0).
+
+| Check | Result |
+|---|---|
+| A. Map a 4 MiB image over a live instance; guest digest equals the original's | **pass** |
+| A. After 500 more steps on both, digests still equal | **pass** |
+| B. Image file unchanged after guest writes (copy-on-write stays private) | **pass** |
+| C. Mapped pages are charged to the faulting cgroup: a 64 MiB image (16 MiB of real state) read end to end peaks at 87 MiB, all as page cache | **pass**: same budget |
+| D. That 64 MiB tenant read end to end inside a 16 MiB cgroup with swap forbidden (memsw = limit) | **pass**: digest correct, 0 OOM kills, 0 swap, 0.41 s |
+| D. Control: the same state as an anonymous copy, same cgroup | **OOM-killed**, as expected |
+
+**Claim classes:**
+- **Observed:**
+  - A wasmtime instance's linear memory can be a private file mapping of
+    its snapshot, with exact state and private writes.
+  - The mapping is charged to the tenant's cgroup.
+  - Under a limit a quarter the size of its state, it runs with no swap at
+    all, where the anonymous copy is killed.
+- **Inferred:** an eviction under this state model writes nothing unless
+  the page was modified since the image was taken. In this workload that
+  is the 16-page hot set per tenant, against about 256 touched pages, so
+  swap writes should shrink by roughly an order of magnitude. Warm-up
+  becomes mapping, not copying.
+- **Hypothesis (to test with H-mech):** if native's collapses are request
+  threads waiting on swap writes, this state model removes most of the
+  cause.
+- **Honest framing:** if this wins, the win comes from the VRE's state
+  model (governed snapshots that the runtime maps), not from envelope
+  timing. A conventional application that maps its data files gets part
+  of the same effect. The VEKLOM-specific part, still to build, is
+  checkpoint on revocation: when authority ends, the modified pages are
+  written into a new governed snapshot and the tenant is remapped clean,
+  so the evidence trail and the memory release are one act.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
