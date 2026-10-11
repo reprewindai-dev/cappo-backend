@@ -28,6 +28,7 @@ from cappo_backend.api.routers.audit_router import router as audit_router
 from cappo_backend.api.routers.authorization_router import router as authorization_router
 from cappo_backend.api.routers.benchmarks_router import router as benchmarks_router
 from cappo_backend.api.routers.capability_beacon_router import issuer_key_router
+from cappo_backend.api.routers.evidence_key_router import evidence_key_router
 from cappo_backend.api.routers.capability_beacon_router import router as capability_beacon_router
 from cappo_backend.api.routers.capability_mount_router import router as capability_mount_router
 from cappo_backend.api.routers.exec_router import router as exec_router
@@ -208,6 +209,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(capability_mount_router)
     app.include_router(capability_beacon_router)
     app.include_router(issuer_key_router)
+    app.include_router(evidence_key_router)
     app.include_router(gpc_router)
     app.include_router(api_x402_router, prefix="/api")
     app.include_router(root_discovery_router)
