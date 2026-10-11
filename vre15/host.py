@@ -60,6 +60,20 @@ Policies:
               prefetch; the oracle bound (oracle.py) located the envelope's
               non-redundant information in window openings, and
               native-steered's whole-region WILLNEED over-fetched 30-50x.
+  envelope-declared
+              envelope-prefetch with a declared working set instead of one
+              observed at window close: the working set recorded for each
+              tenant during warm-up (see record_ws) travels with it, as a
+              grant could carry it, so every window opening, the first
+              included, is prefetched. Tests the oracle's large prefetch
+              gains, which history alone cannot supply.
+
+record_ws (spec flag, applied identically to every policy in a run): after
+warm-up, each tenant is paged out (MADV_PAGEOUT), runs RECORD_STEPS real
+requests, and its working set is read from /proc/self/pagemap: pages whose
+present bit is set were mapped back by a touch. Pages brought in by swap
+readahead stay unmapped in swap cache and are not counted. The steps count
+toward the tenant's step total, so the integrity check covers them.
 
 Authority is enforced before any policy acts, so authority violations are 0
 by construction for every policy. The run reports them anyway.
@@ -72,6 +86,8 @@ restored fresh plus the same number of steps, with no demotion.
 import ctypes
 import json
 import os
+import resource
+import struct
 import sys
 import threading
 import time
@@ -91,9 +107,11 @@ MADV_POPULATE_READ = 22                 # Linux 5.14+
 PAGE = 4096
 WS_CAP = 64                             # pages recorded per tenant (256 KiB)
 PREFETCH_LEAD_S = 0.5
+RECORD_STEPS = 32
 KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom", "lru-headroom",
-                "envelope-prefetch")
-STEERED = ("native-steered", "native-pageout", "envelope-prefetch")
+                "envelope-prefetch", "envelope-declared")
+STEERED = ("native-steered", "native-pageout", "envelope-prefetch", "envelope-declared")
+PREFETCHING = ("envelope-prefetch", "envelope-declared")
 HEADROOM = ("envelope-headroom", "lru-headroom")
 _libc = ctypes.CDLL(None, use_errno=True)
 _libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
@@ -108,6 +126,20 @@ def resident_pages(base, length, cap=WS_CAP):
         return None
     raw = vec.raw
     return [i for i in range(n) if raw[i] & 1][:cap]
+
+
+def mapped_pages(base, length, cap=WS_CAP):
+    """Indices of pages in [base, base+length) that are mapped in this
+    process's page tables (pagemap bit 63), at most `cap`."""
+    n = (length + PAGE - 1) // PAGE
+    with open("/proc/self/pagemap", "rb") as f:
+        f.seek((base // PAGE) * 8)
+        raw = f.read(n * 8)
+    return [i for i in range(n) if struct.unpack_from("<Q", raw, 8 * i)[0] >> 63 & 1][:cap]
+
+
+def thread_majflt():
+    return resource.getrusage(resource.RUSAGE_THREAD).ru_majflt
 
 
 def runs_of(pages):
@@ -245,9 +277,9 @@ class Host:
             return                                      # kernel-paged; the reclaimer runs on its own thread
         if self.policy in STEERED:
             for t, kind in self.edges.pop_due(horizon):
-                if kind == "open" and self.policy in ("native-pageout", "envelope-prefetch"):
+                if kind == "open" and self.policy in ("native-pageout",) + PREFETCHING:
                     continue
-                if kind == "close" and self.prefetcher:
+                if kind == "close" and self.prefetcher and self.policy == "envelope-prefetch":
                     self.prefetcher.record(t)
                 store, x = self.live[t]
                 err = advise(store, x, MADV_PAGEOUT if kind == "close" else MADV_WILLNEED)
@@ -278,7 +310,8 @@ class Host:
     def run(self):
         n = self.trace["tenants"]
         self.reclaimer = None
-        self.prefetcher = Prefetcher(self) if self.policy == "envelope-prefetch" else None
+        self.prefetcher = Prefetcher(self) if self.policy in PREFETCHING else None
+        self.declared_ws = {}
         if self.policy in HEADROOM:
             # Started before warm-up: a real deployment would run it always.
             budget = self.spec["budget_bytes"]
@@ -290,6 +323,22 @@ class Host:
             for t in range(n):
                 self.materialize(t)
         warm_swap1 = vmstat()
+        recording = None
+        if self.spec.get("record_ws") and self.policy in KERNEL_PAGED:
+            r0, t0 = vmstat(), time.perf_counter()
+            for t in range(n):
+                store, x = self.live[t]
+                base, length = self.region[t]
+                _libc.madvise(base, length, MADV_PAGEOUT)
+                x["step"](store, RECORD_STEPS)
+                self.steps[t] += RECORD_STEPS
+                self.declared_ws[t] = mapped_pages(base, length)
+            r1 = vmstat()
+            sizes = sorted(len(w) for w in self.declared_ws.values())
+            recording = {"steps_per_tenant": RECORD_STEPS, "s": round(time.perf_counter() - t0, 2),
+                         "swap_pages_in": r1[0] - r0[0], "swap_pages_out": r1[1] - r0[1],
+                         "ws_pages_p50": sizes[len(sizes) // 2], "ws_pages_max": sizes[-1],
+                         "ws_pages_min": sizes[0]}
         self.edges = Edges(self.env) if self.policy in STEERED else None
         self.advice, self.advice_errors = {"open": 0, "close": 0}, 0
         self.restore_ms.clear()
@@ -298,7 +347,7 @@ class Host:
         self.pending = []
         results, rss_samples, cg_samples, next_sample = [], [], [], 0.0
         cg_path = memcg_usage_path()
-        swap0, maj0 = vmstat(), majflt()
+        swap0, maj0, tmaj0 = vmstat(), majflt(), thread_majflt()
         start = time.perf_counter()
         if self.reclaimer:
             self.reclaimer.t0 = start
@@ -333,7 +382,7 @@ class Host:
             self.last[t] = max(at, self.last[t])
             results.append([t, round((done - at) * 1000, 3), self.env[t]["class"], True])
         wall = time.perf_counter() - start
-        swap1, maj1 = vmstat(), majflt()
+        swap1, maj1, tmaj1 = vmstat(), majflt(), thread_majflt()
         reclaim = prefetch = None
         if self.prefetcher:
             self.prefetcher.halt.set()
@@ -347,6 +396,7 @@ class Host:
         return {"results": results, "rss_samples": rss_samples, "memcg_samples": cg_samples, "wall_s": wall,
                 "restores": self.restores, "restore_ms": self.restore_ms, "demotions": self.demotions,
                 "snapshot_bytes_written": self.snapshot_bytes, "major_faults": maj1 - maj0,
+                "request_thread_major_faults": tmaj1 - tmaj0, "recording": recording,
                 "swap_pages_in": swap1[0] - swap0[0], "swap_pages_out": swap1[1] - swap0[1],
                 "warmup_swap_pages_out": warm_swap1[1] - warm_swap0[1],
                 "advice": self.advice, "advice_errors": self.advice_errors, "reclaim": reclaim, "prefetch": prefetch,
@@ -497,7 +547,7 @@ class Prefetcher(threading.Thread):
                 self.halt.wait(min(wait, 0.05))
                 continue
             i += 1
-            ws = self.ws.get(t)
+            ws = self.h.declared_ws.get(t) if self.h.policy == "envelope-declared" else self.ws.get(t)
             if not ws:
                 self.skipped += 1
                 continue
