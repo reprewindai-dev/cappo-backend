@@ -42,6 +42,9 @@ PUBLIC_PATHS = frozenset(
         "/.well-known/x402.json",
         "/.well-known/capability-beacon-keys",
         "/.well-known/capability-beacon-keys.json",
+        # The receipt-verifying public key: useless if verifiers must log in to fetch it.
+        "/.well-known/evidence-keys",
+        "/.well-known/evidence-keys.json",
         "/x402/bazaar",
         "/api/v1/pricing",
         "/api/v1/pricing/",

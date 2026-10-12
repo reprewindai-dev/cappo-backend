@@ -184,3 +184,18 @@ def test_receipt_of_another_principal_or_workspace_is_reported_as_not_found(
     for resp in (missing, other_workspace, other_principal):
         assert resp.status_code == 404, resp.text
         assert resp.json() == {"detail": "RECEIPT_NOT_FOUND"}
+
+
+def test_published_key_needs_no_login_but_the_receipt_does(client: TestClient, settings) -> None:
+    # Found on staging 2026-10-12: auth on made /.well-known/evidence-keys answer 401,
+    # so no outside verifier could ever fetch the key.
+    settings.auth_enabled = True
+    settings.api_keys = "owner-key"
+    client.headers.pop("X-API-Key", None)
+
+    for path in ("/.well-known/evidence-keys", "/.well-known/evidence-keys.json"):
+        resp = client.get(path)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["keys"][0]["kid"].startswith("ed25519-sha256:")
+
+    assert client.get("/v1/capability/receipts/rcpt_anything").status_code == 401
