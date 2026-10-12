@@ -2,6 +2,8 @@
 """Offline verifier for VRE-1.5 revocation evidence.
 
     python verify_evidence.py bundle.json trust_store.json [--images DIR] [--require-witness]
+                              [--audit audit.jsonl [--require-audit]]
+    python verify_evidence.py --audit-only audit.jsonl trust_store.json
 
 Imports nothing from the runtime: the canonical encoding, the journal chain,
 the EEE envelope hash and signature, and the receipt digest are re-derived
@@ -25,9 +27,30 @@ What a VALID verdict establishes, for every revocation in the journal:
   attested the final images, every image file is byte-identical to the
   witness's hash of it.
 
-What it does not establish: that the runtime measured honestly. The
-issuer key belongs to the runtime; the witness checks history, not memory.
-That is evidence level E2: the supervisor is trusted.
+Without --audit it does not establish that the runtime measured honestly.
+The issuer key belongs to the runtime; the witness checks history, not
+memory. That is evidence level E2: the supervisor is trusted.
+
+With --audit, the log of the residency auditor (vre15/audit.py) is joined
+in. The auditor is a separate process outside the tenant cgroup, with its
+own key, that read the runtime's page tables from /proc during the run. A
+VALID verdict then also establishes, for the image-backed regions:
+- no record's claim of release is contradicted: no sweep that ran wholly
+  after a record's completion and before the tenant's next window saw a
+  private page of that tenant (REJECTED_RESIDENCY_CONTRADICTED);
+- no private page of a tenant was seen more than GRACE_S after one of its
+  windows ended and before its next one began
+  (REJECTED_RESIDENCY_OUTLIVED_AUTHORITY);
+- the auditor's log is one hash chain, sealed by a pinned auditor key, and
+  covers the run from trace start to the runtime's end marker.
+Private pages held before a tenant's first window are reported, not
+rejected: the journal makes no claim about them. The auditor and the
+runtime still share a machine and root, so this is independence of the
+observation (kernel page tables read by another process under another
+key), not of administrative control: evidence level E3.
+
+--audit-only checks an auditor log on its own, for runs without a journal
+(the control arm), and reports what it saw.
 """
 
 import base64
@@ -44,7 +67,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 JOURNAL = "veklom.vre15.revocation-journal/v1"
 BUNDLE = "veklom.vre15.revocation-bundle/v1"
 CHECKPOINT = "veklom.vre15.revocation-checkpoint/v1"
+AUDIT = "veklom.vre15.residency-audit/v1"
 PAGE = 4096
+GRACE_S = 1.0       # residency may outlive a window by this much (revocation lag); fixed before any audited run
+EPS_S = 0.010       # clock-read ordering between the runtime and the auditor
+CLOCK_TOL_S = 1.0   # the runtime's declared trace start/end vs when the auditor saw them
+MIN_GAP_S = 1.0     # a gap shorter than this after the grace is not counted as checkable
 INTEGRITY = ("envelope_hash", "previous_envelope_hash", "signatures")
 
 
@@ -141,7 +169,130 @@ def receipt_digest_from_image(data, runs):
     return h.hexdigest()
 
 
-def verify_bundle(bundle, trust, images_dir=None, require_witness=False):
+def _merge(intervals):
+    out = []
+    for a, b in sorted(intervals):
+        if out and a <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return out
+
+
+def _mapped_set(hexbits, n):
+    raw = bytes.fromhex(hexbits)
+    return {t for t in range(min(n, 8 * len(raw))) if raw[t // 8] >> (t % 8) & 1}
+
+
+def verify_audit(lines, trust, records=None, grace_s=GRACE_S):
+    """Join an auditor log with the authority schedule (and, if given, the
+    runtime's revocation records). Raises Reject on a broken log; returns
+    what the auditor saw otherwise. See the module docstring."""
+    prev = "genesis"
+    for i, rec in enumerate(lines):
+        body = {k: v for k, v in rec.items() if k not in ("hash", "sig")}
+        if (rec.get("protocol") != AUDIT or rec.get("seq") != i or rec.get("prev") != prev
+                or rec.get("hash") != digest(body)):
+            raise Reject("REJECTED_AUDIT_INCONSISTENT", "audit_chain", f"record {i}")
+        prev = rec["hash"]
+    if len(lines) < 2 or lines[0].get("kind") != "HEADER" or lines[-1].get("kind") != "SEAL" or any(
+            r.get("kind") != "SWEEP" for r in lines[1:-1]):
+        raise Reject("REJECTED_AUDIT_INCOMPLETE", "audit_structure", "header, sweeps, seal expected")
+    head, seal, sweeps = lines[0], lines[-1], lines[1:-1]
+    if seal.get("auditor_kid") != head.get("auditor_kid"):
+        raise Reject("REJECTED_AUDIT_INCONSISTENT", "audit_seal", "seal and header name different keys")
+    _key(trust.get("auditor_keys", {}), seal["auditor_kid"], "auditor_signature").verify(
+        unb64u(seal.get("sig", "")), seal["hash"].encode("ascii"))
+
+    start, end = head.get("declared_start_wall"), seal.get("declared_end_wall")
+    if start is None or abs(head["observed_start_at"] - start) > CLOCK_TOL_S:
+        raise Reject("REJECTED_AUDIT_CLOCK", "audit_start", "declared trace start differs from when it appeared")
+    if end is None or end < start + head["duration_s"] - 2.0:
+        raise Reject("REJECTED_AUDIT_INCOMPLETE", "audit_end",
+                     f"audit ended ({seal.get('end_reason')}) before the trace did")
+    if abs(seal["observed_end_at"] - end) > CLOCK_TOL_S:
+        raise Reject("REJECTED_AUDIT_CLOCK", "audit_end", "declared end differs from when it appeared")
+    if not sweeps:
+        raise Reject("REJECTED_AUDIT_INCOMPLETE", "audit_sweeps", "no sweeps")
+    schedule = head["schedule"]
+
+    if records:
+        for r in records:
+            t, w = r["tenant"], r["body"]["authority"]["window"]
+            if w not in schedule[t] or abs(ts(r["body"]["authority"]["ended_at"]) - (start + w[1])) > 0.002:
+                raise Reject("REJECTED_AUDIT_SCHEDULE_MISMATCH", "audit_schedule",
+                             f"seq {r['seq']}: window {w} of tenant {t} is not the audited schedule's")
+
+    # Gaps without authority, per tenant, from trace start to the end marker.
+    # "pre": before the tenant's first window; "post": after one ended,
+    # starting `grace_s` after the window's end.
+    gaps = []
+    for t, windows in enumerate(schedule):
+        merged = _merge([[start + s - EPS_S, start + e] for s, e in windows])
+        cursor, kind = start, "pre"
+        for a, b in merged + [[end, None]]:
+            lo = cursor + (grace_s if kind == "post" else 0.0)
+            if a > lo:
+                gaps.append({"tenant": t, "kind": kind, "lo": lo, "hi": a})
+            if b is None:
+                break
+            cursor, kind = max(cursor, b), "post"
+    by_tenant = {}
+    for g in gaps:
+        g.update(sweeps_inside=0, violations=0, max_private=0)
+        by_tenant.setdefault(g["tenant"], []).append(g)
+
+    vanished, seen_mapped = 0, set()
+    for sw in sweeps:
+        held = {int(k): v for k, v in sw["held"].items()}
+        mapped = _mapped_set(sw["mapped"], head["tenants"])
+        vanished += len(seen_mapped - mapped)
+        seen_mapped = mapped
+        for t, gs in by_tenant.items():
+            for g in gs:
+                if not (g["lo"] < sw["t0"] and sw["t1"] < g["hi"]):
+                    continue
+                g["sweeps_inside"] += 1
+                if held.get(t, 0) > 0:
+                    g["violations"] += 1
+                    g["max_private"] = max(g["max_private"], held[t])
+
+    contradictions = []
+    for r in records or []:
+        t, c = r["tenant"], ts(r["body"]["revocation"]["completed_at"])
+        nxt = min([start + s for s, _ in schedule[t] if start + s > c] + [end])
+        for sw in sweeps:
+            if c + EPS_S < sw["t0"] and sw["t1"] < nxt - EPS_S and sw["held"].get(str(t), 0) > 0:
+                contradictions.append({"seq": r["seq"], "tenant": t, "sweep_t0": sw["t0"],
+                                       "private_pages": sw["held"][str(t)]})
+                break
+
+    def summary(kind):
+        # Coverage counts gaps long enough to check; violations count in every gap.
+        every = [g for g in gaps if g["kind"] == kind]
+        long = [g for g in every if g["hi"] - g["lo"] >= MIN_GAP_S]
+        return {"gaps": len(every), "gaps_checkable": len(long),
+                "gaps_checked": sum(1 for g in long if g["sweeps_inside"]),
+                "checkable_gaps_with_private_pages": sum(1 for g in long if g["violations"]),
+                "gaps_with_private_pages": sum(1 for g in every if g["violations"]),
+                "violation_sweeps": sum(g["violations"] for g in every),
+                "max_private_pages": max([g["max_private"] for g in every] + [0])}
+
+    periods = sorted(b["t0"] - a["t0"] for a, b in zip(sweeps, sweeps[1:]))
+    durations = sorted(sw["t1"] - sw["t0"] for sw in sweeps)
+    post, pre = summary("post"), summary("pre")
+    return {"auditor_kid": seal["auditor_kid"], "sweeps": len(sweeps), "grace_s": grace_s,
+            "sweep_period_ms_p50": round(1000 * periods[len(periods) // 2], 1) if periods else None,
+            "sweep_ms_p50": round(1000 * durations[len(durations) // 2], 1),
+            "sweep_ms_max": round(1000 * durations[-1], 1),
+            "after_authority": post, "before_first_authority": pre,
+            "contradicted_records": len(contradictions), "contradictions": contradictions[:10],
+            "regions_vanished": vanished,
+            "audit_verdict": "CLEAN" if not (post["gaps_with_private_pages"] or contradictions or vanished)
+            else "PRIVATE_STATE_OUTSIDE_AUTHORITY"}
+
+
+def verify_bundle(bundle, trust, images_dir=None, require_witness=False, audit=None, require_audit=False):
     passed = []
     try:
         if bundle.get("protocol") != BUNDLE:
@@ -203,6 +354,26 @@ def verify_bundle(bundle, trust, images_dir=None, require_witness=False):
                                      f"{name} differs from the image the witness attested")
                     images_checked += 1
             passed.append("images")
+
+        audited = None
+        if audit is not None:
+            audited = verify_audit(audit, trust, records)
+            if audited["contradicted_records"]:
+                c = audited["contradictions"][0]
+                raise Reject("REJECTED_RESIDENCY_CONTRADICTED", "audit",
+                             f"seq {c['seq']}: auditor saw {c['private_pages']} private pages of tenant "
+                             f"{c['tenant']} after the record said they were released")
+            if audited["after_authority"]["gaps_with_private_pages"]:
+                raise Reject("REJECTED_RESIDENCY_OUTLIVED_AUTHORITY", "audit",
+                             f"{audited['after_authority']['gaps_with_private_pages']} gaps with private pages "
+                             f"more than {GRACE_S} s after authority ended")
+            if audited["regions_vanished"]:
+                raise Reject("REJECTED_AUDIT_REGION_VANISHED", "audit",
+                             "a governed region disappeared from the runtime's mappings")
+            passed.append("audit")
+            profile += "+A1"
+        elif require_audit:
+            raise Reject("REJECTED_NOT_AUDITED", "audit", "no auditor log given")
     except Reject as r:
         return {"verdict": r.verdict, "failed_check": r.check, "detail": r.detail, "checks_passed": passed}
     except Exception as e:
@@ -215,24 +386,50 @@ def verify_bundle(bundle, trust, images_dir=None, require_witness=False):
             "pages_written": sum(r["body"]["receipt"]["pages"] for r in records),
             "images_checked": images_checked,
             "lag_ms_p50": round(lags[len(lags) // 2], 1), "lag_ms_max": round(lags[-1], 1),
+            **({"audit": audited} if audited is not None else {}),
             "checks_passed": passed}
+
+
+def read_jsonl(path):
+    data = pathlib.Path(path).read_bytes()
+    if data and not data.endswith(b"\n"):
+        raise ValueError("log does not end with a complete record")
+    return [json.loads(line) for line in data.splitlines()]
+
+
+def audit_only(lines, trust):
+    """An auditor log on its own (a run without a journal)."""
+    try:
+        return {"verdict": "AUDIT_READ", **verify_audit(lines, trust)}
+    except Reject as r:
+        return {"verdict": r.verdict, "failed_check": r.check, "detail": r.detail}
+    except Exception as e:
+        return {"verdict": "REJECTED_AUDIT_INCOMPLETE", "failed_check": "structure",
+                "detail": f"{type(e).__name__}: {e}"}
 
 
 def main(argv):
     args = list(argv[1:])
-    require = "--require-witness" in args
-    args = [a for a in args if a != "--require-witness"]
-    images = None
-    if "--images" in args:
-        i = args.index("--images")
-        images = args[i + 1]
-        del args[i:i + 2]
+    if args[:1] == ["--audit-only"] and len(args) == 3:
+        result = audit_only(read_jsonl(args[1]), json.loads(pathlib.Path(args[2]).read_text()))
+        print(json.dumps(result, indent=1))
+        return 0 if result["verdict"] == "AUDIT_READ" else 1
+    flags = {a for a in args if a in ("--require-witness", "--require-audit")}
+    args = [a for a in args if a not in flags]
+    opts = {}
+    for opt in ("--images", "--audit"):
+        if opt in args:
+            i = args.index(opt)
+            opts[opt] = args[i + 1]
+            del args[i:i + 2]
     if len(args) != 2:
-        print(__doc__.splitlines()[2].strip(), file=sys.stderr)
+        print("\n".join(__doc__.splitlines()[2:5]), file=sys.stderr)
         return 2
     bundle = json.loads(pathlib.Path(args[0]).read_text())
     trust = json.loads(pathlib.Path(args[1]).read_text())
-    result = verify_bundle(bundle, trust, images, require)
+    audit = read_jsonl(opts["--audit"]) if "--audit" in opts else None
+    result = verify_bundle(bundle, trust, opts.get("--images"), "--require-witness" in flags,
+                           audit, "--require-audit" in flags)
     print(json.dumps(result, indent=1))
     return 0 if result["verdict"] == "VALID" else 1
 

@@ -53,6 +53,7 @@ KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom
                 "envelope-prefetch", "envelope-declared", "lru-pageout", "native-cold", "pageout-delay",
                 "pageout-bg", "mapped", "mapped-ckpt")
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
+AUDIT_PERIOD_S = 0.25                   # residency auditor sweep period (vre15/audit.py)
 
 
 def code_info() -> dict:
@@ -156,10 +157,11 @@ def summarize(raw: dict, trace: dict, policy: str, oom_kills: int, exit_code: in
     }
 
 
-def seal_evidence(rundir, issuer, prefix):
+def seal_evidence(rundir, issuer, prefix, audit=None):
     """Witness the run's revocation journal, then verify the bundle offline,
-    including against the images before they are deleted. Keeps the bundle
-    and the public trust store; returns the verdict."""
+    including against the images before they are deleted, and against the
+    auditor's log when the run was audited. Keeps the bundle and the public
+    trust store; returns the verdict."""
     from vre15 import evidence, verify_evidence
     journal = rundir / "revocations.jsonl"
     if not journal.exists() or not journal.stat().st_size:
@@ -171,9 +173,36 @@ def seal_evidence(rundir, issuer, prefix):
         return {"verdict": "WITNESS_REFUSED", "reason": e.reason, "detail": str(e)}
     bundle = evidence.bundle(evidence.read_journal(journal), checkpoint)
     trust = {"issuer_keys": issuer, "witness_keys": witness_keys}
+    lines = None
+    if audit is not None:
+        trust["auditor_keys"], lines = audit
     pathlib.Path(f"{prefix}.evidence.json").write_text(json.dumps(bundle))
     pathlib.Path(f"{prefix}.trust.json").write_text(json.dumps(trust, indent=1))
-    return verify_evidence.verify_bundle(bundle, trust, rundir / "images", require_witness=True)
+    return verify_evidence.verify_bundle(bundle, trust, rundir / "images", require_witness=True,
+                                         audit=lines, require_audit=audit is not None)
+
+
+def start_auditor(pid, rundir, tpath, run_id):
+    """vre15/audit.py beside the runtime: its own process, outside the
+    tenant cgroup, reading the runtime's page tables."""
+    aspec = {"pid": pid, "images_dir": str(rundir / "images"), "trace": str(tpath),
+             "clock": str(rundir / "clock.json"), "out": str(rundir / "audit.jsonl"),
+             "pub": str(rundir / "auditor.pub.json"), "period_s": AUDIT_PERIOD_S, "run_id": run_id}
+    return subprocess.Popen([sys.executable, "-I", str(HERE / "audit.py"), json.dumps(aspec)])
+
+
+def finish_auditor(auditor, rundir, prefix):
+    """Wait for the auditor to seal its log (it stops at the runtime's end
+    marker), keep the log, and return (auditor trust entry, log lines)."""
+    from vre15 import verify_evidence
+    try:
+        auditor.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        auditor.terminate()
+        auditor.wait(timeout=30)
+    log = rundir / "audit.jsonl"
+    shutil.copy(log, f"{prefix}.audit.jsonl")
+    return json.loads((rundir / "auditor.pub.json").read_text()), verify_evidence.read_jsonl(log)
 
 
 def main() -> int:
@@ -208,6 +237,9 @@ def main() -> int:
     ap.add_argument("--evidence", action="store_true",
                     help="mapped-ckpt: sign every revocation, have a witness countersign the journal, "
                          "and verify the bundle offline against the run's images (vre15/evidence.py)")
+    ap.add_argument("--audit", action="store_true",
+                    help="mapped and mapped-ckpt: run the residency auditor (vre15/audit.py) beside the "
+                         "runtime, outside its cgroup, and verify its log against the authority schedule")
     ap.add_argument("--out", type=pathlib.Path, default=HERE / "runs")
     args = ap.parse_args()
     if os.geteuid() != 0:
@@ -275,17 +307,26 @@ def main() -> int:
                     issuer = evidence.new_issuer(rundir / "issuer.key")
                     spec["evidence"] = {"journal": str(rundir / "revocations.jsonl"),
                                         "issuer_key": str(rundir / "issuer.key"), "run_id": f"{run_id}/{tag}"}
+                audited = args.audit and run_images is not None
+                if audited:
+                    spec["clock"] = str(rundir / "clock.json")
                 sampler = None
                 if args.sample:
                     sampler = subprocess.Popen([sys.executable, "-I", str(HERE / "sampler.py"),
                                                 str(out / f"{tag}-{policy}.samples.jsonl"), str(cg.path)])
-                proc = subprocess.run(
+                proc = subprocess.Popen(
                     [sys.executable, "-I", str(HERE / "host.py"), json.dumps(spec)],
-                    preexec_fn=cg.join,
-                    capture_output=True, text=True, timeout=args.duration * 6 + 600)
+                    preexec_fn=cg.join, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                auditor = start_auditor(proc.pid, rundir, tpath, f"{run_id}/{tag}") if audited else None
+                try:
+                    _, stderr = proc.communicate(timeout=args.duration * 6 + 600)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    _, stderr = proc.communicate()
                 if sampler:
                     sampler.terminate()
                     sampler.wait(timeout=10)
+                audit = finish_auditor(auditor, rundir, out / f"{tag}-{policy}") if auditor else None
                 oom = cg.oom_kills()
                 if kernel_paged:
                     subprocess.run(["swapoff", str(swapfile)], check=True)
@@ -295,9 +336,14 @@ def main() -> int:
                 if args.repeat > 1:
                     row["rep"] = rep
                 if proc.returncode != 0:
-                    row["stderr_tail"] = proc.stderr[-600:]
+                    row["stderr_tail"] = stderr[-600:]
                 if issuer is not None:
-                    row["evidence"] = seal_evidence(rundir, issuer, out / f"{tag}-{policy}")
+                    row["evidence"] = seal_evidence(rundir, issuer, out / f"{tag}-{policy}", audit)
+                elif audit is not None:
+                    from vre15 import verify_evidence
+                    trust = {"auditor_keys": audit[0]}
+                    pathlib.Path(f"{out / f'{tag}-{policy}'}.trust.json").write_text(json.dumps(trust, indent=1))
+                    row["audit"] = verify_evidence.audit_only(audit[1], trust)
                 rows.append(row)
                 (out / f"{tag}-{policy}.json").write_text(json.dumps(raw.get("results", [])))
                 cg.remove()
