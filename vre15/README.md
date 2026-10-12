@@ -1397,6 +1397,25 @@ holds under the amended rules.
 **Reporting rule:** missing runs, OOM kills, invalid evidence or fewer than
 12 wins stay part of the result. No seeds are replaced or added.
 
+**Where it runs (2026-10-12, before any run):**
+`.github/workflows/vre15-transfer.yml` runs the unchanged
+`scripts/vre15_transfer.sh` on a GitHub-hosted `ubuntu-24.04` runner.
+
+Why that machine:
+- It uses cgroup v2 and gives root through sudo.
+- It serves nothing.
+- Nobody involved in this work controls its kernel.
+
+The workflow:
+1. records the machine (kernel, cgroup, MGLRU, swap, CPU and memory);
+2. runs the check script;
+3. runs the transfer test;
+4. re-verifies every new evidence bundle from an empty directory;
+5. uploads the complete run directory and log as an artifact, kept 90
+   days.
+
+It is never run on the self-hosted runner. The rules above are unchanged.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
