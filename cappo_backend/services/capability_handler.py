@@ -104,6 +104,9 @@ class VerifiedExecutionContext:
     materialization_policy: MaterializationPolicy
     presented_envelope_spec: VREEnvelopeSpec | None = None
     is_activation: bool = False
+    # The identity CAPPO verified for this request: the workload SPIFFE ID its middleware
+    # set, else the authenticated principal. Mounting binds the Biscuit to the same one.
+    caller_spiffe_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +234,28 @@ class CapabilityHandler:
     # Consequence-dominance enforcement
     # ------------------------------------------------------------------
 
+    def _load_execution_revocation_state(
+        self, ctx: VerifiedExecutionContext, trusted_state: Any
+    ) -> None:
+        """Load CAPPO's own revocation state for the token's ``execution:<id>`` scope.
+
+        Mounting mints the Biscuit under that scope at epoch 0; terminating the mount
+        revokes its lease and bumps the epoch. Both come from CAPPO's database, never
+        from the request.
+        """
+        from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
+
+        lease = (
+            self._db.query(CapabilityLease)
+            .filter(CapabilityLease.mount_id == ctx.mount_id)
+            .order_by(CapabilityLease.authority_epoch.desc())
+            .first()
+        )
+        epoch = int(lease.revocation_epoch or 0) if lease is not None else 0
+        trusted_state.known_epochs[f"execution:{ctx.execution_id}"] = epoch
+        if lease is not None and lease.lease_state == LeaseState.REVOKED.value:
+            trusted_state.revoke_execution(ctx.execution_id)
+
     def _assert_handler_bound_authority(self, ctx: VerifiedExecutionContext) -> None:
         """Verify handler-bound authority. Fabricated fields are denied."""
         if not ctx.receipt_id or not ctx.receipt_id.strip():
@@ -261,17 +286,27 @@ class CapabilityHandler:
         from cappo_backend.security.biscuit import verify_biscuit_capability
         from cappo_backend.security.biscuit import TrustedRevocationState
         
-        # In a real environment, revocation state would be fetched from the DB/Redis.
         trusted_state = TrustedRevocationState()
         trusted_state.known_epochs["workspace"] = 0
+        self._load_execution_revocation_state(ctx, trusted_state)
         
+        if not ctx.caller_spiffe_id or not ctx.caller_spiffe_id.strip():
+            raise ConsequenceDominanceViolation(
+                "Execution rejected: no verified workload identity to bind the "
+                "capability token to."
+            )
+
+        # The mount minted this Biscuit for the verified caller workload as both its
+        # subject and its executor (capability_mount_router: the executor defaults to
+        # the caller). Verify against that same server-verified identity, so a lease
+        # can only be exercised by the workload it was issued to.
         # Enforce exact match on execution_id
         is_valid = verify_biscuit_capability(
             token_b64=ctx.biscuit_token,
-            executor_spiffe_id="cappo-backend",
+            executor_spiffe_id=ctx.caller_spiffe_id,
             action=ctx.action,
             resource=ctx.resource or "any",
-            subject_spiffe_id=ctx.principal,
+            subject_spiffe_id=ctx.caller_spiffe_id,
             trusted_state=trusted_state,
             execution_id=ctx.execution_id
         )

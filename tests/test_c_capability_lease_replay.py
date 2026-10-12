@@ -76,6 +76,7 @@ class TestCCapabilityLeaseReplay(unittest.TestCase):
                 materialization_policy=MaterializationPolicy.EPHEMERAL,
                 is_activation=False,
                 biscuit_token="mock_biscuit",
+                caller_spiffe_id="spiffe://test/subject",
             )
             
             # C1: First valid presentation -> ALLOW -> call_count == 1
@@ -105,6 +106,7 @@ class TestCCapabilityLeaseReplay(unittest.TestCase):
                 materialization_policy=MaterializationPolicy.EPHEMERAL,
                 is_activation=False,
                 biscuit_token="mock_biscuit",
+                caller_spiffe_id="spiffe://test/subject",
             )
             with self.assertRaises(ConsequenceDominanceViolation) as cm:
                 self.handler.execute(ctx_c4, self.orchestrator)
