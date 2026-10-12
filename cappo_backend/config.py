@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     # compute.job@v1 package is offered and its commits go to this sink.
     fabric_result_sink_url: str | None = None
     fabric_result_sink_token: str | None = None
+    # Comma-separated provider names (e.g. "ollama") the veklom.inference@v1 package may
+    # dispatch to (capability_mount/inference.py). Empty -> the package is not offered.
+    inference_allowed_providers: str = ""
     biscuit_root_private_key_hex: str | None = None
     # Default to a home-anchored absolute path so the file location is
     # deterministic regardless of the process working directory.  A relative

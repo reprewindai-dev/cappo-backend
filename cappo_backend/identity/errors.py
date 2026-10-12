@@ -39,6 +39,10 @@ class MissingAuthorityError(IdentityValidationError):
     def __init__(self, **kwargs):
         super().__init__("WID_MISSING_AUTHORITY", "Veklom-Authority header is missing", **kwargs)
 
+class ExecutionContextLeaseMismatchError(IdentityValidationError):
+    def __init__(self, **kwargs):
+        super().__init__("WID_EXECUTION_CONTEXT_LEASE_MISMATCH", "Execution-Context does not name the execution the capability lease was issued for", **kwargs)
+
 class TokenExpiredError(IdentityValidationError):
     def __init__(self, **kwargs):
         super().__init__("WID_TOKEN_EXPIRED", "Token is expired", **kwargs)

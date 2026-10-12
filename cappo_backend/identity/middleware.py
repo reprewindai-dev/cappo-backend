@@ -34,8 +34,16 @@ class WIDMiddlewareContext:
         wit_payload: Optional[dict] = None,
         ect_payload: Optional[dict] = None,
         wpt_payload: Optional[dict] = None,
-        authority_payload: Optional[dict] = None
+        authority_payload: Optional[dict] = None,
+        lease_execution_id: Optional[str] = None,
     ):
+        """Enforce workload identity for the route's classification.
+
+        A CONSEQUENCE route needs authority. ``lease_execution_id`` is that authority
+        when the caller resolved it server-side from an active capability lease; it is
+        never read from the request. The Execution-Context must then name the leased
+        execution, so identity tokens minted for one execution cannot drive another.
+        """
         if self.classification == RouteClassification.PUBLIC:
             return
             
@@ -91,6 +99,11 @@ class WIDMiddlewareContext:
             return
             
         # Consequence requirements
+        if lease_execution_id:
+            if ect.ephemeral_execution_id != lease_execution_id:
+                raise ExecutionContextLeaseMismatchError(route=route, method=method, trace_id=trace_id, workload_identifier=wit.sub, ephemeral_execution_id=ect.ephemeral_execution_id)
+            return
+
         if not authority_payload:
             raise MissingAuthorityError(route=route, method=method, trace_id=trace_id, workload_identifier=wit.sub, ephemeral_execution_id=ect.ephemeral_execution_id)
             

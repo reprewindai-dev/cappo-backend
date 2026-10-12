@@ -8,6 +8,10 @@ from fastapi.testclient import TestClient
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.security.biscuit import mint_biscuit_capability
 
+# The workload identity CAPPO's middleware verifies for these requests (auth disabled).
+# Mounting mints the Biscuit for this identity as subject and executor.
+CALLER_SPIFFE_ID = "spiffe://example.org/workload/cappo-backend"
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -39,7 +43,7 @@ def test_consequence_dominance_proof_invalid_biscuit_fails(client: TestClient, d
     # We will sign with a different caller_spiffe_id to simulate an invalid token for this caller.
     garbage_biscuit = mint_biscuit_capability(
         caller_spiffe_id="imposter:principal",
-        executor_spiffe_id="cappo-backend",
+        executor_spiffe_id=CALLER_SPIFFE_ID,
         capability_id="test@v1",
         reads=[],
         writes=["execute"],
@@ -96,7 +100,7 @@ def test_consequence_dominance_proof_wrong_executor_fails(client: TestClient, db
 
     execution_id = str(uuid.uuid4())
     biscuit = mint_biscuit_capability(
-        caller_spiffe_id="auth-disabled",
+        caller_spiffe_id=CALLER_SPIFFE_ID,
         executor_spiffe_id="some-other-executor",
         capability_id="test@v1",
         reads=[],
@@ -135,8 +139,8 @@ def test_consequence_dominance_proof_mutated_intent_fails(client: TestClient, db
 
     execution_id = str(uuid.uuid4())
     biscuit = mint_biscuit_capability(
-        caller_spiffe_id="auth-disabled",
-        executor_spiffe_id="cappo-backend",
+        caller_spiffe_id=CALLER_SPIFFE_ID,
+        executor_spiffe_id=CALLER_SPIFFE_ID,
         capability_id="test@v1",
         reads=[],
         writes=["execute"],
@@ -166,8 +170,8 @@ def test_consequence_dominance_proof_mutated_intent_fails(client: TestClient, db
 def test_consequence_dominance_proof_valid_request(client: TestClient, db: Session):
     execution_id = str(uuid.uuid4())
     valid_biscuit = mint_biscuit_capability(
-        caller_spiffe_id="auth-disabled",
-        executor_spiffe_id="cappo-backend",
+        caller_spiffe_id=CALLER_SPIFFE_ID,
+        executor_spiffe_id=CALLER_SPIFFE_ID,
         capability_id="test@v1",
         reads=[],
         writes=["execute"],
@@ -201,8 +205,8 @@ def test_consequence_dominance_proof_valid_request(client: TestClient, db: Sessi
 def test_consequence_dominance_proof_expired_mount_fails(client: TestClient, db: Session):
     execution_id = str(uuid.uuid4())
     biscuit = mint_biscuit_capability(
-        caller_spiffe_id="auth-disabled",
-        executor_spiffe_id="cappo-backend",
+        caller_spiffe_id=CALLER_SPIFFE_ID,
+        executor_spiffe_id=CALLER_SPIFFE_ID,
         capability_id="test@v1",
         reads=[],
         writes=["execute"],
@@ -240,8 +244,8 @@ def test_consequence_dominance_proof_expired_mount_fails(client: TestClient, db:
 def test_consequence_dominance_proof_persistent_cross_workspace_attack_fails(client: TestClient, db: Session):
     exec_id = str(uuid.uuid4())
     biscuit = mint_biscuit_capability(
-        caller_spiffe_id="auth-disabled",
-        executor_spiffe_id="cappo-backend",
+        caller_spiffe_id=CALLER_SPIFFE_ID,
+        executor_spiffe_id=CALLER_SPIFFE_ID,
         capability_id="test@v1",
         reads=[],
         writes=["execute"],
@@ -283,8 +287,8 @@ def test_consequence_dominance_proof_persistent_and_ephemeral_invariants(client:
     # 1. Ephemeral
     exec_id_1 = str(uuid.uuid4())
     biscuit_1 = mint_biscuit_capability(
-        caller_spiffe_id="auth-disabled",
-        executor_spiffe_id="cappo-backend",
+        caller_spiffe_id=CALLER_SPIFFE_ID,
+        executor_spiffe_id=CALLER_SPIFFE_ID,
         capability_id="test@v1",
         reads=[],
         writes=["execute"],
@@ -297,8 +301,8 @@ def test_consequence_dominance_proof_persistent_and_ephemeral_invariants(client:
     # 2. Persistent
     exec_id_2 = str(uuid.uuid4())
     biscuit_2 = mint_biscuit_capability(
-        caller_spiffe_id="auth-disabled",
-        executor_spiffe_id="cappo-backend",
+        caller_spiffe_id=CALLER_SPIFFE_ID,
+        executor_spiffe_id=CALLER_SPIFFE_ID,
         capability_id="test@v1",
         reads=[],
         writes=["execute"],

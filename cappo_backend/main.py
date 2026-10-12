@@ -49,6 +49,7 @@ from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
 from cappo_backend.capability_mount.http_target import load_http_targets
 from cappo_backend.capability_mount.fabric_compute import FABRIC_COMPUTE_JOB_PACKAGE, ResultSinkAdapter
+from cappo_backend.capability_mount.inference import inference_package_from_settings
 from cappo_backend.capability_mount.effects import (
     GovernedCounterAdapter,
     LocalRecordAdapter,
@@ -133,6 +134,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if fabric_sink is not None:
         # Private Cloud: governed compute on owned machines (capability_mount/fabric_compute.py).
         mount_registry.register_package(FABRIC_COMPUTE_JOB_PACKAGE)
+    inference_package = inference_package_from_settings(settings)
+    if inference_package is not None:
+        # Governed model inference for Capability OS (capability_mount/inference.py).
+        mount_registry.register_package(inference_package)
     for package in load_packages_from_json(settings.capability_packages_json):
         mount_registry.register_package(package)
     app.state.mount_registry = mount_registry
