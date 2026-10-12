@@ -138,3 +138,100 @@ def _signed_request(private_key: Ed25519PrivateKey, body: bytes) -> dict[str, st
         "signature-input": f'sig1=("@method" "@target-uri" "content-digest"){params}',
         "signature": f"sig1=:{signature}:",
     }
+
+
+# Identity headers cAPI's cappo-preparer signs alongside the request (http-message-signatures.ts).
+EXEC_IDENTITY_HEADERS = (
+    "workload-identity",
+    "execution-context",
+    "workload-proof",
+    "veklom-authority",
+    "x-veklom-actor",
+    "x-veklom-nonce",
+)
+
+
+def _signed_request_with_identity(
+    private_key: Ed25519PrivateKey, body: bytes, covered: tuple[str, ...]
+) -> dict[str, str]:
+    """Signs the way cAPI does: method, URI and digest, then the covered headers sorted."""
+    created = int(datetime.now(UTC).timestamp())
+    digest = f"sha-256=:{base64.b64encode(hashlib.sha256(body).digest()).decode('ascii')}:"
+    identity = {name: f"value-of-{name}" for name in EXEC_IDENTITY_HEADERS}
+    names = ["@method", "@target-uri", "content-digest", *sorted(covered)]
+    component_list = " ".join(f'"{name}"' for name in names)
+    params = f';created={created};keyid="capi-1"'
+    base = "\n".join(
+        [
+            '"@method": POST',
+            '"@target-uri": https://cappo.veklom.com/v1/exec',
+            f'"content-digest": {digest}',
+            *[f'"{name}": {identity[name]}' for name in sorted(covered)],
+            f'"@signature-params": ({component_list}){params}',
+        ]
+    ).encode()
+    signature = base64.b64encode(private_key.sign(base)).decode()
+    return {
+        **identity,
+        "content-digest": digest,
+        "signature-input": f"sig1=({component_list}){params}",
+        "signature": f"sig1=:{signature}:",
+    }
+
+
+def test_exec_request_covering_identity_headers_is_accepted() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    body = b'{"prompt":"governed"}'
+
+    verify_rfc9421_request(
+        method="POST",
+        target_uri="https://cappo.veklom.com/v1/exec",
+        headers=_signed_request_with_identity(private_key, body, EXEC_IDENTITY_HEADERS),
+        body=body,
+        public_key_hex=private_key.public_key().public_bytes_raw().hex(),
+        required_header_components=set(EXEC_IDENTITY_HEADERS),
+    )
+
+
+def test_exec_request_missing_a_signed_identity_header_is_rejected() -> None:
+    private_key = Ed25519PrivateKey.generate()
+    body = b'{"prompt":"governed"}'
+    unsigned_nonce = tuple(name for name in EXEC_IDENTITY_HEADERS if name != "x-veklom-nonce")
+
+    with pytest.raises(SignatureVerificationError, match="signature must cover"):
+        verify_rfc9421_request(
+            method="POST",
+            target_uri="https://cappo.veklom.com/v1/exec",
+            headers=_signed_request_with_identity(private_key, body, unsigned_nonce),
+            body=body,
+            public_key_hex=private_key.public_key().public_bytes_raw().hex(),
+            required_header_components=set(EXEC_IDENTITY_HEADERS),
+        )
+
+
+def test_exec_router_integrity_check_runs_without_type_error() -> None:
+    """The exec route passes required_header_components; it used to raise TypeError (HTTP 500)."""
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from cappo_backend.api.routers.exec_router import _verify_exec_request_integrity
+
+    private_key = Ed25519PrivateKey.generate()
+    body = b'{"prompt":"governed"}'
+    headers = _signed_request(private_key, body)  # covers no identity headers
+
+    class _Request:
+        method = "POST"
+        url = "https://cappo.veklom.com/v1/exec"
+        def __init__(self) -> None:
+            self.headers = headers
+        async def body(self) -> bytes:
+            return body
+
+    with pytest.raises(HTTPException) as excinfo:
+        asyncio.run(
+            _verify_exec_request_integrity(_Request(), private_key.public_key().public_bytes_raw().hex())
+        )
+    assert excinfo.value.status_code == 401
+    assert excinfo.value.detail["error"] == "HTTP_MESSAGE_INTEGRITY_INVALID"
