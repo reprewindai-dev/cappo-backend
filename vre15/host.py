@@ -229,10 +229,16 @@ def advise(store, exports, advice):
 
 
 def memcg_usage_path():
+    """This process's cgroup charge file: memory.usage_in_bytes (v1) or
+    memory.current (v2)."""
     for line in open("/proc/self/cgroup").read().splitlines():
-        _, ctrls, path = line.split(":", 2)
+        hid, ctrls, path = line.split(":", 2)
         if "memory" in ctrls.split(","):
             return os.path.join("/sys/fs/cgroup/memory", path.lstrip("/"), "memory.usage_in_bytes")
+    for line in open("/proc/self/cgroup").read().splitlines():
+        hid, ctrls, path = line.split(":", 2)
+        if hid == "0" and ctrls == "":
+            return os.path.join("/sys/fs/cgroup", path.lstrip("/"), "memory.current")
     return None
 
 

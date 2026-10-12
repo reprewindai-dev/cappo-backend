@@ -1121,12 +1121,26 @@ swap file, uses it, and removes it afterwards; expect 25 passed.
 python vre15/verify_evidence.py BUNDLE.evidence.json BUNDLE.trust.json --require-witness
 ```
 
-**Re-running the 300-tenant experiments** (`python -m vre15.runner ...`) is a
-different matter. It needs root and a **cgroup v1** memory controller. Its
-cgroup code writes `memory.limit_in_bytes` and `memory.memsw.limit_in_bytes`.
-WSL2 and most current distributions use cgroup v2, where the runner does not
-work yet. Porting it to `memory.max` and `memory.swap.max` is the open
-transfer step.
+**Re-running the 300-tenant experiments** needs root and a memory cgroup,
+on either v1 or v2 (`vre15/cgroups.py`). The pre-registered transfer test
+runs in one command and takes about 60–90 minutes; keep the machine awake:
+
+```
+sudo scripts/vre15_transfer.sh
+```
+
+It runs the cgroup selftest, then the 30 pre-registered runs, then prints
+the verdict as one JSON line. That line is also saved as
+`transfer-summary.json` in the run directory.
+
+Run it on a machine that serves nothing. It drops the page cache for the
+whole kernel 30 times and keeps memory under pressure for over an hour.
+Under WSL it refuses to start: every distro there shares one VM with Docker
+Desktop.
+
+The light check (`scripts/vre15_check.sh`, about 3 s) is fine anywhere.
+On a PC whose WSL VM also runs production containers, close the distro
+afterwards from PowerShell with `wsl --terminate Ubuntu`.
 
 ## Revocations as verifiable evidence
 
@@ -1257,6 +1271,95 @@ separately.
   supervisor is trusted.
 - Anything about copies of tenant state outside the governed region.
 - Behaviour on WSL2 / cgroup v2.
+
+## On WSL2 / cgroup v2
+
+### Observed: the residency checks on the production kernel
+
+The owner ran `scripts/vre15_check.sh` in Ubuntu on WSL2 on 2026-10-12.
+
+| | |
+|---|---|
+| Kernel | `6.18.40.1-microsoft-standard-WSL2` |
+| cgroup | v2 (`cgroup2fs`); controllers `cpuset cpu io memory hugetlb pids rdma` |
+| Swap | a 2 GiB partition, active |
+| Tests | **25 passed**, none skipped |
+| Committed evidence bundle | verified VALID W1 |
+
+Because swap was active, the swapped-page test ran rather than skipping.
+On this kernel, a revoked page that was already in swap was written back and
+left swap. The revocation invariant held there: after revocation, no
+private page was present or swapped, and the image held exactly the state.
+
+### Port: the runner on cgroup v2
+
+`vre15/cgroups.py` gives the runner, sampler and host one memory-cgroup
+interface on both versions:
+
+| | cgroup v1 | cgroup v2 |
+|---|---|---|
+| Group location | own memcg | `/sys/fs/cgroup/vre15/<run>` |
+| Budget | `memory.limit_in_bytes` | `memory.max` |
+| Forbid swap | `memory.memsw.limit_in_bytes = budget` | `memory.swap.max = 0` |
+| OOM kills | `memory.oom_control` | `memory.events` |
+| Limit hits | `memory.failcnt` | `memory.events` `max` |
+| Charge | `memory.usage_in_bytes` | `memory.current` |
+
+`python -m vre15.cgroups --selftest` checks the contract on the running
+kernel before any run relies on it:
+- an allocation within the budget fits;
+- one over the budget with swap forbidden is OOM-killed and counted;
+- one over the budget with swap allowed survives.
+
+All three pass on this cgroup v1 host. On v2, the file logic is tested
+against a fake cgroup tree (`tests/test_vre15_cgroups.py`), and the real
+selftest is step 1 of the transfer run.
+
+The manifest now records the cgroup version, the MGLRU state and
+`/proc/swaps`.
+
+**Not equivalent between the versions:** the kernels differ in what is
+charged and how reclaim behaves. MGLRU may be on under WSL2, and it is off
+here. The same 16 MiB budget is therefore a comparable setting, not an
+identical one. This is why the transfer test pre-registers the governance
+property, not deadlines.
+
+## Pre-registered: transfer to WSL2 / cgroup v2 (fixed before the run)
+
+Written and committed before any run with these seeds.
+
+- **Where:** a Linux machine with cgroup v2 that serves nothing else, run
+  with `sudo scripts/vre15_transfer.sh`. The script records the kernel,
+  cgroup version, MGLRU state and swap devices. It is not to run on the
+  owner's WSL2: that VM is shared with the Docker containers serving
+  production, and the run drops the page cache for the whole VM. The
+  script refuses to run under WSL without `--shared-vm-ok`. The
+  WSL2-kernel evidence is the check run above.
+- **Arms:** native, and mapped-ckpt with `--evidence`.
+- **Settings:** 16 MiB, informative trace, 300 tenants, 90 s at 250 req/s;
+  `--record-ws`, `--sample`, `--probe-revoked`, `--rotate-order`.
+- **Seeds:** fresh, 801–815, one run per arm per seed (30 runs).
+- **Deviation from H15:** mapped-ckpt runs with evidence mode, the
+  configuration that is now implemented. Its writer thread is off the
+  request path. The residency probe is the same.
+
+**Hypotheses**
+
+| Hypothesis | Claim | Test | Confirmed only if |
+|---|---|---|---|
+| T1 (H15 on this kernel) | mapped-ckpt leaves less revoked state resident than native | per seed, mean resident pages per revoked tenant 5 s after authority ends; exact two-sided sign test over seeds where both arms completed, ties excluded; α = 0.05 (single primary hypothesis) | the direction favours mapped-ckpt and p < 0.05; with all 15 seeds usable, that needs at least 12 of 15 |
+| T2 (evidence on this kernel) | every completed mapped-ckpt run's revocations are valid evidence | per run | every completed mapped-ckpt run's bundle verifies VALID W1 against its images, with 0 private pages held after every revocation; one failure is not confirmed |
+
+**Reported, not deciding**
+- within-deadline share and p99;
+- warm-up kills, swap I/O and checkpoint cost;
+- the share of revoked tenants with nothing resident;
+- integrity failures and authority violations, which must stay 0;
+- the selftest result, MGLRU state, swap devices and kernel.
+
+**Analysis:** `python -m vre15.transfer <manifest>`. Applied to H15's run
+`20261011T181835Z`, it reproduces H15 exactly: 13/0, p = 0.0002, medians
+5.75 vs 1.96 pages.
 
 ### Still untested
 

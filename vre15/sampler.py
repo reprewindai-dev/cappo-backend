@@ -13,13 +13,15 @@ until it receives SIGTERM.
   allocstall/pgsteal_direct counters do not move during cgroup v1 limit
   reclaim, so PSI is the stall signal.
 - memcg_failcnt: how many times the cgroup hit its limit
-  (memory.failcnt, cgroup v1).
+  (memory.failcnt on cgroup v1, the "max" count in memory.events on v2).
+- memcg_usage_bytes: memory.usage_in_bytes (v1) or memory.current (v2).
 Used to test H-mech (native's collapses are request threads waiting on
 swap writes during reclaim) by lining stall seconds up with these
 counters, without kernel tracing. Standard library only.
 """
 
 import json
+import os
 import signal
 import sys
 import time
@@ -58,8 +60,18 @@ def read_int(path):
         return None
 
 
+def limit_hits(cg):
+    """Times the cgroup hit its limit: memory.failcnt (v1), memory.events "max" (v2)."""
+    try:
+        with open(f"{cg}/memory.events") as f:
+            return next((int(line.split()[1]) for line in f if line.startswith("max ")), None)
+    except OSError:
+        return read_int(f"{cg}/memory.failcnt")
+
+
 def main():
     out, cg = sys.argv[1], sys.argv[2]
+    v2 = os.path.exists(f"{cg}/memory.current")
     interval = float(sys.argv[3]) if len(sys.argv) > 3 else 0.1
     stop = []
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
@@ -68,7 +80,7 @@ def main():
         while not stop:
             some, full = psi()
             row = [round(time.time(), 4), some, full, *vmstat(),
-                   read_int(f"{cg}/memory.failcnt"), read_int(f"{cg}/memory.usage_in_bytes")]
+                   limit_hits(cg), read_int(f"{cg}/memory.current") if v2 else read_int(f"{cg}/memory.usage_in_bytes")]
             f.write(json.dumps(row) + "\n")
             nxt += interval
             time.sleep(max(0.0, nxt - time.time()))

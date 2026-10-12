@@ -6,10 +6,11 @@
 For each trace variant (informative, uninformative) and each policy (native,
 idle-lru, envelope, predictive):
   - drops the page cache;
-  - creates a cgroup v1 memory group with limit = budget. native may swap
-    (memsw unlimited, a swap file is switched on for its runs). The managed
-    policies may not: memsw = budget, so exceeding it is an OOM kill, not
-    hidden swapping;
+  - creates a memory cgroup (v1 or v2, vre15/cgroups.py) with the budget
+    as its limit. Kernel-paged policies may swap (a swap file is switched on
+    for their runs). The managed policies may not: memsw = budget on v1,
+    memory.swap.max = 0 on v2, so exceeding it is an OOM kill, not hidden
+    swapping;
   - runs vre15/host.py inside it and collects its results.
 
 Reported per run (the brief's VRE-1.5 metrics):
@@ -41,7 +42,7 @@ import tempfile
 from datetime import datetime, timezone
 
 from vre1.bench import probe
-from vre15 import traces
+from vre15 import cgroups, traces
 
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = ("native", "idle-lru", "envelope", "predictive", "native-steered", "native-pageout",
@@ -54,10 +55,13 @@ KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
-def own_memcg() -> pathlib.Path:
-    rel = next(line.split(":", 2)[2] for line in open("/proc/self/cgroup").read().splitlines()
-               if line.split(":")[1] == "memory")
-    return pathlib.Path("/sys/fs/cgroup/memory") / rel.lstrip("/")
+def host_info() -> dict:
+    from importlib.metadata import version
+    lru = pathlib.Path("/sys/kernel/mm/lru_gen/enabled")
+    return {"kernel": platform.release(), "nproc": os.cpu_count(), "python": sys.version.split()[0],
+            "wasmtime_py": version("wasmtime"), "cgroup": cgroups.version(),
+            "mglru": lru.read_text().strip() if lru.exists() else None,
+            "swaps_before_run": pathlib.Path("/proc/swaps").read_text().splitlines()[1:]}
 
 
 def pct(xs, q):
@@ -192,6 +196,7 @@ def main() -> int:
     if os.geteuid() != 0:
         print("needs root (cgroups, swap, page cache)", file=sys.stderr)
         return 2
+    host = host_info()
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = args.out / run_id
     out.mkdir(parents=True)
@@ -222,12 +227,9 @@ def main() -> int:
             tpath.write_text(json.dumps(trace))
             k = i % len(args.policies) if args.rotate_order else 0
             for pos, policy in enumerate(args.policies[k:] + args.policies[:k]):
-                cg = own_memcg() / f"vre15-{run_id}-{tag}-{policy}"
-                cg.mkdir()
-                (cg / "memory.limit_in_bytes").write_text(str(budget))
                 kernel_paged = policy in KERNEL_PAGED
-                if not kernel_paged:
-                    (cg / "memory.memsw.limit_in_bytes").write_text(str(budget))
+                cg = cgroups.MemoryCgroup.create(f"vre15-{run_id}-{tag}-{policy}", budget,
+                                                 allow_swap=kernel_paged)
                 rundir = work / f"{tag}-{policy}"
                 rundir.mkdir()
                 run_images = None
@@ -259,16 +261,15 @@ def main() -> int:
                 sampler = None
                 if args.sample:
                     sampler = subprocess.Popen([sys.executable, "-I", str(HERE / "sampler.py"),
-                                                str(out / f"{tag}-{policy}.samples.jsonl"), str(cg)])
+                                                str(out / f"{tag}-{policy}.samples.jsonl"), str(cg.path)])
                 proc = subprocess.run(
                     [sys.executable, "-I", str(HERE / "host.py"), json.dumps(spec)],
-                    preexec_fn=lambda cg=cg: (cg / "cgroup.procs").write_text(str(os.getpid())),
+                    preexec_fn=cg.join,
                     capture_output=True, text=True, timeout=args.duration * 6 + 600)
                 if sampler:
                     sampler.terminate()
                     sampler.wait(timeout=10)
-                oom = next(int(line.split()[1]) for line in (cg / "memory.oom_control").read_text().splitlines()
-                           if line.startswith("oom_kill "))
+                oom = cg.oom_kills()
                 if kernel_paged:
                     subprocess.run(["swapoff", str(swapfile)], check=True)
                 raw = json.loads((rundir / "result.json").read_text()) if (rundir / "result.json").exists() else {}
@@ -282,7 +283,7 @@ def main() -> int:
                     row["evidence"] = seal_evidence(rundir, issuer, out / f"{tag}-{policy}")
                 rows.append(row)
                 (out / f"{tag}-{policy}.json").write_text(json.dumps(raw.get("results", [])))
-                cg.rmdir()
+                cg.remove()
                 shutil.rmtree(rundir, ignore_errors=True)
                 ic = row["by_class"].get("interactive", {})
                 print(f"{budget_mib:>4}MiB s{seed:<3} {variant:<13} {policy:<14} exit={proc.returncode} oom={oom} served={row['served']} "
@@ -293,11 +294,9 @@ def main() -> int:
         subprocess.run(["swapoff", str(swapfile)], capture_output=True)
         pc_path.write_text(pc_saved)
         shutil.rmtree(work, ignore_errors=True)
-    from importlib.metadata import version
     (out / "manifest.json").write_text(json.dumps({
         "run_id": run_id, "finished_at": datetime.now(timezone.utc).isoformat(),
-        "host": {"kernel": platform.release(), "nproc": os.cpu_count(), "python": sys.version.split()[0],
-                 "wasmtime_py": version("wasmtime")},
+        "host": host,
         "params": vars(args) | {"out": str(args.out), "per_tenant_bytes": PER_TENANT_BYTES,
                                 "page_cluster_in_effect": args.page_cluster if args.page_cluster is not None
                                 else int(pc_saved)},
