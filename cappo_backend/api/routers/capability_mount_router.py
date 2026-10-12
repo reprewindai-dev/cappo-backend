@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 from datetime import datetime
@@ -31,6 +32,7 @@ from cappo_backend.capability_mount.service import (
     UnconfirmedAnchor,
 )
 from cappo_backend.db.session import get_session, get_unscoped_session
+from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
 from cappo_backend.services.audit_service import AuditService
 from cappo_backend.services.entitlement_meter import (
     GOVERNED_ACTION,
@@ -563,6 +565,73 @@ def mount_status(
         ttl_seconds=record.token.ttl_seconds,
         expires_at=record.token.expires_at,
         nonce_consumed=record.token.nonce_consumed,
+    )
+
+
+class ReceiptEvidenceResponse(BaseModel):
+    """The signed receipt itself, so its owner can verify it without trusting CAPPO."""
+
+    receipt_id: str
+    mount_id: str
+    receipt_schema_version: int | None
+    content_hash: str
+    signed: bool
+    format: str = "COSE_Sign1 (RFC 9052), alg EdDSA (-8), kid in unprotected header label 4"
+    kid: str | None = None
+    cose_b64: str | None = None
+    key_endpoint: str = "/.well-known/evidence-keys"
+
+
+def _cose_kid(cose: bytes) -> str | None:
+    import cbor2
+
+    try:
+        message = cbor2.loads(cose)
+        value = message.value if isinstance(message, cbor2.CBORTag) else message
+        # cbor2 decodes maps as frozendict, which is not a dict subclass.
+        header = value[1]
+        kid = header.get(4) if hasattr(header, "get") else None
+    except Exception:
+        return None
+    if isinstance(kid, bytes):
+        return kid.decode("utf-8", errors="replace")
+    return kid if isinstance(kid, str) else None
+
+
+@router.get("/receipts/{receipt_id}", response_model=ReceiptEvidenceResponse)
+def receipt_evidence(
+    receipt_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+    registry: MountRegistry = Depends(get_registry),
+) -> ReceiptEvidenceResponse:
+    """Return a receipt's signed COSE bytes to the owner of the mount that produced it.
+
+    The response carries no verdict: the caller checks the signature against the key at
+    /.well-known/evidence-keys with any COSE_Sign1 verifier. A receipt the caller does not
+    own is reported exactly like one that does not exist.
+    """
+    _deny_holder(request)
+    principal, workspace = _caller(request)
+    row = db.get(CapabilityActionReceipt, receipt_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="RECEIPT_NOT_FOUND")
+    record, _state = registry.status(
+        row.mount_id,
+        owner_principal=principal,
+        owner_workspace=workspace,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="RECEIPT_NOT_FOUND")
+    cose = row.signed_receipt_cose
+    return ReceiptEvidenceResponse(
+        receipt_id=row.receipt_id,
+        mount_id=row.mount_id,
+        receipt_schema_version=row.receipt_schema_version,
+        content_hash=row.content_hash,
+        signed=bool(cose),
+        kid=_cose_kid(cose) if cose else None,
+        cose_b64=base64.b64encode(cose).decode("ascii") if cose else None,
     )
 
 

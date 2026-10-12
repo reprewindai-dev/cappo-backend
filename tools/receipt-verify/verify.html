@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a Veklom receipt</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --text: #15181d;
+    --muted: #5b6370;
+    --border: #d5d9e0;
+    --field: #ffffff;
+    --accent: #1f5fd1;
+    --accent-text: #ffffff;
+    --ok: #137a3a;
+    --ok-bg: #e6f5ec;
+    --bad: #b42318;
+    --bad-bg: #fdecea;
+    --warn: #8a5a00;
+    --warn-bg: #fff4dc;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --text: #e8eaee;
+      --muted: #9aa3b2;
+      --border: #2c313b;
+      --field: #11141a;
+      --accent: #5b8def;
+      --accent-text: #0b0d11;
+      --ok: #4ccb7a;
+      --ok-bg: #11291b;
+      --bad: #ff6b5e;
+      --bad-bg: #331512;
+      --warn: #f0b84a;
+      --warn-bg: #2e2410;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header { padding: 14px 24px 10px; border-bottom: 1px solid var(--border); }
+  h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 16px;
+    padding: 16px 24px;
+    min-height: 0;
+  }
+  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  label { font-weight: 600; font-size: 14px; display: block; margin-bottom: 4px; }
+  textarea {
+    width: 100%;
+    font: 12.5px/1.45 var(--mono);
+    color: var(--text);
+    background: var(--field);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    resize: vertical;
+  }
+  #bundle { height: 210px; }
+  #keys { height: 150px; }
+  textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: 600 15px var(--sans);
+    border-radius: 6px;
+    padding: 9px 18px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button:disabled { opacity: 0.55; cursor: progress; }
+  .note { color: var(--muted); font-size: 13px; margin: 0; }
+  #webcrypto-warning {
+    display: none;
+    background: var(--warn-bg);
+    color: var(--warn);
+    border: 1px solid var(--warn);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  #result {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    overflow: auto;
+    min-height: 0;
+    flex: 1;
+  }
+  #result-verdict {
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    line-height: 1.1;
+    min-height: 1.1em;
+  }
+  #result.valid #result-verdict { color: var(--ok); }
+  #result.invalid #result-verdict { color: var(--bad); }
+  #result.unknown #result-verdict { color: var(--warn); font-size: 34px; }
+  #result-reason { margin: 4px 0 10px; font-size: 15px; }
+  #result.invalid #result-reason { color: var(--bad); }
+  #result.idle #result-verdict { color: var(--muted); font-size: 18px; font-weight: 500; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 12px 0 6px; }
+  #checks { list-style: none; margin: 0; padding: 0; font: 13px/1.5 var(--mono); }
+  #checks li { display: grid; grid-template-columns: 1.4em minmax(0, 17em) minmax(0, 1fr); gap: 6px; padding: 2px 0; }
+  #checks .mark { font-weight: 700; }
+  #checks .ok .mark { color: var(--ok); }
+  #checks .bad .mark, #checks .bad .val { color: var(--bad); }
+  #checks .info .mark { color: var(--muted); }
+  #checks .label { color: var(--muted); }
+  #checks .val { overflow-wrap: anywhere; }
+  table { border-collapse: collapse; width: 100%; font: 12.5px/1.45 var(--mono); }
+  #fields td { border-top: 1px solid var(--border); padding: 3px 8px 3px 0; vertical-align: top; overflow-wrap: anywhere; }
+  #fields td:first-child { color: var(--muted); white-space: nowrap; width: 1%; padding-right: 16px; }
+  #fields .null { color: var(--muted); font-style: italic; }
+  footer { padding: 8px 24px 12px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
+  @media (min-width: 1000px) {
+    body { height: 100vh; }
+    main { overflow: hidden; }
+    .col.right { overflow: hidden; }
+  }
+  @media (max-width: 999px) {
+    main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px; }
+    header, footer { padding-left: 16px; padding-right: 16px; }
+    #result { overflow: visible; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Verify a Veklom receipt</h1>
+  <p>Checks a CAPPO execution receipt (COSE_Sign1, Ed25519) against the published key, without trusting CAPPO.</p>
+</header>
+<main>
+  <section class="col left">
+    <div>
+      <label for="bundle">Receipt bundle (JSON from Veklom)</label>
+      <textarea id="bundle" spellcheck="false" autocomplete="off" placeholder='{"receipt_id": "...", "content_hash": "...", "cose_b64": "...", ...}'></textarea>
+    </div>
+    <div>
+      <label for="keys">Published key (JSON from /.well-known/evidence-keys)</label>
+      <textarea id="keys" spellcheck="false" autocomplete="off" placeholder='{"issuer": "cappo", "keys": [{"kid": "ed25519-sha256:...", "kty": "OKP", "crv": "Ed25519", "x": "..."}]}'></textarea>
+    </div>
+    <div class="buttons">
+      <button id="verify" class="primary" type="button">Verify</button>
+      <button id="tamper" type="button" title="Changes one byte in the middle of the signature inside the bundle above, then verifies again">Flip one byte</button>
+    </div>
+    <div id="webcrypto-warning" role="alert"></div>
+    <p class="note">The key id (kid) travels outside the signature, so it is checked separately: it must be the SHA-256 fingerprint of the key that verified the signature.</p>
+  </section>
+  <section class="col right">
+    <div id="result" class="idle" aria-live="polite">
+      <div id="result-verdict"></div>
+      <div id="result-reason">Paste a receipt bundle and the published key, then press Verify.</div>
+      <h2>Checks</h2>
+      <ul id="checks"></ul>
+      <h2>Signed fields</h2>
+      <table id="fields"><tbody></tbody></table>
+    </div>
+  </section>
+</main>
+<footer>Runs entirely in your browser. Nothing is sent anywhere.</footer>
+
+<script>
+"use strict";
+/*
+ * Independent receipt verifier. Shares no code with CAPPO; mirrors verify.py.
+ * CBOR decoding (RFC 8949) and the COSE Sig_structure (RFC 9052 s4.4) are written here.
+ */
+(function () {
+  var KID_PREFIX = "ed25519-sha256:";
+  var MAX_NESTING = 64;
+  var UNSUPPORTED_MSG = "this browser lacks Ed25519 WebCrypto; use verify.py";
+
+  function CBORError(message) { this.message = message; this.name = "CBORError"; }
+  CBORError.prototype = Object.create(Error.prototype);
+
+  // CBOR floats stay distinguishable from integers so the Python-style JSON matches.
+  function PyFloat(value) { this.value = value; }
+  function CborTag(number, value) { this.number = number; this.value = value; }
+
+  var MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+  function intValue(big) {
+    return (big <= MAX_SAFE && big >= -MAX_SAFE) ? Number(big) : big;
+  }
+
+  function halfToNumber(h) {
+    var sign = (h & 0x8000) ? -1 : 1, exp = (h >> 10) & 0x1f, frac = h & 0x3ff;
+    if (exp === 0) return sign * frac * Math.pow(2, -24);
+    if (exp === 31) return frac ? NaN : sign * Infinity;
+    return sign * (1 + frac / 1024) * Math.pow(2, exp - 15);
+  }
+
+  var utf8Strict = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+  function Decoder(bytes) {
+    this.b = bytes;
+    this.pos = 0;
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  }
+  Decoder.prototype.remaining = function () { return this.b.length - this.pos; };
+  Decoder.prototype.take = function (n) {
+    if (typeof n !== "number" || n < 0 || n > this.remaining()) {
+      throw new CBORError("truncated input at byte " + this.pos + " (needed " + String(n) + " more bytes)");
+    }
+    var out = this.b.subarray(this.pos, this.pos + n);
+    this.pos += n;
+    return out;
+  };
+  Decoder.prototype.argument = function (info) {
+    var at = this.pos - 1;
+    if (info < 24) return info;
+    if (info === 24) return this.take(1)[0];
+    if (info === 25) { this.take(2); return this.view.getUint16(this.pos - 2); }
+    if (info === 26) { this.take(4); return this.view.getUint32(this.pos - 4); }
+    if (info === 27) {
+      this.take(8);
+      var hi = this.view.getUint32(this.pos - 8), lo = this.view.getUint32(this.pos - 4);
+      return intValue((BigInt(hi) << 32n) | BigInt(lo));
+    }
+    if (info === 31) throw new CBORError("indefinite-length item at byte " + at + " is not allowed");
+    throw new CBORError("reserved additional information " + info + " at byte " + at);
+  };
+  Decoder.prototype.item = function (depth) {
+    if (depth > MAX_NESTING) throw new CBORError("nesting too deep");
+    var start = this.pos;
+    var initial = this.take(1)[0];
+    var major = initial >> 5, info = initial & 0x1f;
+    if (major === 7) {
+      if (info === 20) return false;
+      if (info === 21) return true;
+      if (info === 22) return null;
+      if (info === 25) { this.take(2); return new PyFloat(halfToNumber(this.view.getUint16(this.pos - 2))); }
+      if (info === 26) { this.take(4); return new PyFloat(this.view.getFloat32(this.pos - 4)); }
+      if (info === 27) { this.take(8); return new PyFloat(this.view.getFloat64(this.pos - 8)); }
+      if (info === 31) throw new CBORError("unexpected break code at byte " + start);
+      throw new CBORError("unsupported simple value (info " + info + ") at byte " + start);
+    }
+    var n = this.argument(info);
+    if (major === 0) return n;
+    if (major === 1) return intValue(-1n - BigInt(n));
+    if (major === 6) return new CborTag(n, this.item(depth + 1));
+    if (typeof n === "bigint") throw new CBORError("length at byte " + start + " exceeds the input");
+    if (major === 2) return this.take(n).slice();
+    if (major === 3) {
+      var raw = this.take(n);
+      try { return utf8Strict.decode(raw); }
+      catch (e) { throw new CBORError("text string at byte " + start + " is not valid UTF-8"); }
+    }
+    if (major === 4) {
+      if (n > this.remaining()) throw new CBORError("array length " + n + " at byte " + start + " exceeds the input");
+      var arr = [];
+      for (var i = 0; i < n; i++) arr.push(this.item(depth + 1));
+      return arr;
+    }
+    // major === 5
+    if (2 * n > this.remaining()) throw new CBORError("map length " + n + " at byte " + start + " exceeds the input");
+    var map = new Map(), seen = new Set();
+    for (var j = 0; j < n; j++) {
+      var keyAt = this.pos;
+      var key = this.item(depth + 1);
+      var id;
+      if (typeof key === "string") id = "s:" + key;
+      else if (typeof key === "number" || typeof key === "bigint") id = "i:" + String(key);
+      else if (key instanceof Uint8Array) id = "b:" + toHex(key);
+      else throw new CBORError("unsupported map key type at byte " + keyAt);
+      if (seen.has(id)) throw new CBORError("duplicate map key " + JSON.stringify(String(key)) + " at byte " + keyAt);
+      seen.add(id);
+      map.set(key, this.item(depth + 1));
+    }
+    return map;
+  };
+
+  function cborDecode(bytes) {
+    var d = new Decoder(bytes);
+    var value = d.item(0);
+    if (d.pos !== bytes.length) throw new CBORError((bytes.length - d.pos) + " trailing bytes after the CBOR item");
+    return value;
+  }
+
+  function parseCose(bytes) {
+    var d = new Decoder(bytes);
+    var initial = d.take(1)[0];
+    if (initial >> 5 !== 6) throw new CBORError("message does not start with a CBOR tag (expected tag 18, COSE_Sign1)");
+    var tag = d.argument(initial & 0x1f);
+    if (tag !== 18) throw new CBORError("message carries CBOR tag " + String(tag) + ", expected 18 (COSE_Sign1)");
+    initial = d.take(1)[0];
+    if (initial >> 5 !== 4 || d.argument(initial & 0x1f) !== 4) throw new CBORError("COSE_Sign1 must be an array of exactly 4 elements");
+    var parts = [], ends = [];
+    for (var i = 0; i < 4; i++) { parts.push(d.item(1)); ends.push(d.pos); }
+    if (d.pos !== bytes.length) throw new CBORError((bytes.length - d.pos) + " trailing bytes after the COSE_Sign1 message");
+    if (!(parts[0] instanceof Uint8Array)) throw new CBORError("protected header is not a byte string");
+    if (!(parts[1] instanceof Map)) throw new CBORError("unprotected header is not a map");
+    if (!(parts[2] instanceof Uint8Array)) throw new CBORError("payload is not a byte string (detached payloads are not supported)");
+    if (!(parts[3] instanceof Uint8Array)) throw new CBORError("signature is not a byte string");
+    return {
+      protected: parts[0], unprotected: parts[1], payload: parts[2], signature: parts[3],
+      payloadEnd: ends[2], signatureEnd: ends[3]
+    };
+  }
+
+  function cborHead(major, n) {
+    var m = major << 5;
+    if (n < 24) return [m | n];
+    if (n < 0x100) return [m | 24, n];
+    if (n < 0x10000) return [m | 25, n >>> 8, n & 0xff];
+    if (n < 0x100000000) return [m | 26, n >>> 24, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
+    var hi = Math.floor(n / 0x100000000), lo = n >>> 0;
+    return [m | 27, hi >>> 24, (hi >>> 16) & 0xff, (hi >>> 8) & 0xff, hi & 0xff,
+            lo >>> 24, (lo >>> 16) & 0xff, (lo >>> 8) & 0xff, lo & 0xff];
+  }
+
+  // Sig_structure = ["Signature1", protected, h'', payload], using the message's exact bytes.
+  function sigStructure(protectedBytes, payload) {
+    var context = new TextEncoder().encode("Signature1");
+    var pieces = [
+      cborHead(4, 4), cborHead(3, context.length), context,
+      cborHead(2, protectedBytes.length), protectedBytes,
+      cborHead(2, 0),
+      cborHead(2, payload.length), payload
+    ];
+    var total = 0;
+    pieces.forEach(function (p) { total += p.length; });
+    var out = new Uint8Array(total), off = 0;
+    pieces.forEach(function (p) { out.set(p, off); off += p.length; });
+    return out;
+  }
+
+  // ---- Python json.dumps(sort_keys=True, separators=(",",":"), ensure_ascii=False, default=str)
+
+  function cmpCodePoints(a, b) {
+    var A = Array.from(a), B = Array.from(b), n = Math.min(A.length, B.length);
+    for (var i = 0; i < n; i++) {
+      var x = A[i].codePointAt(0), y = B[i].codePointAt(0);
+      if (x !== y) return x < y ? -1 : 1;
+    }
+    return A.length - B.length;
+  }
+
+  function pyFloatRepr(x) {
+    if (Number.isNaN(x)) return "NaN";
+    if (x === Infinity) return "Infinity";
+    if (x === -Infinity) return "-Infinity";
+    if (x === 0) return Object.is(x, -0) ? "-0.0" : "0.0";
+    var sign = x < 0 ? "-" : "";
+    var parts = Math.abs(x).toExponential().split("e");   // shortest round-trip digits
+    var digits = parts[0].replace(".", ""), exp = parseInt(parts[1], 10);
+    if (exp >= -4 && exp < 16) {
+      if (exp < 0) return sign + "0." + "0".repeat(-exp - 1) + digits;
+      var intLen = exp + 1;
+      if (digits.length <= intLen) return sign + digits + "0".repeat(intLen - digits.length) + ".0";
+      return sign + digits.slice(0, intLen) + "." + digits.slice(intLen);
+    }
+    var mant = digits.length > 1 ? digits[0] + "." + digits.slice(1) : digits;
+    var e = Math.abs(exp);
+    return sign + mant + "e" + (exp < 0 ? "-" : "+") + (e < 10 ? "0" + e : String(e));
+  }
+
+  // Python str(bytes), which is what default=str produces for a byte string.
+  function pyBytesRepr(u8) {
+    var hasSingle = u8.indexOf(0x27) !== -1, hasDouble = u8.indexOf(0x22) !== -1;
+    var quote = (hasSingle && !hasDouble) ? 0x22 : 0x27;
+    var s = "b" + String.fromCharCode(quote);
+    for (var i = 0; i < u8.length; i++) {
+      var c = u8[i];
+      if (c === quote || c === 0x5c) s += "\\" + String.fromCharCode(c);
+      else if (c === 0x09) s += "\\t";
+      else if (c === 0x0a) s += "\\n";
+      else if (c === 0x0d) s += "\\r";
+      else if (c < 0x20 || c >= 0x7f) s += "\\x" + (c < 16 ? "0" : "") + c.toString(16);
+      else s += String.fromCharCode(c);
+    }
+    return s + String.fromCharCode(quote);
+  }
+
+  function pyJson(v) {
+    if (v === null) return "null";
+    if (v === true) return "true";
+    if (v === false) return "false";
+    if (typeof v === "number") return String(v);         // integers only; floats are PyFloat
+    if (typeof v === "bigint") return v.toString();
+    if (typeof v === "string") return JSON.stringify(v);  // same escapes as Python with ensure_ascii=False
+    if (v instanceof PyFloat) return pyFloatRepr(v.value);
+    if (v instanceof Uint8Array) return JSON.stringify(pyBytesRepr(v));
+    if (Array.isArray(v)) return "[" + v.map(pyJson).join(",") + "]";
+    if (v instanceof Map) {
+      var keys = Array.from(v.keys());
+      var allStr = keys.every(function (k) { return typeof k === "string"; });
+      var allInt = keys.every(function (k) { return typeof k === "number" || typeof k === "bigint"; });
+      if (keys.length && !allStr && !allInt) throw new Error("payload map mixes key types, which has no agreed JSON form");
+      if (allStr) keys.sort(cmpCodePoints);
+      else keys.sort(function (a, b) { var x = BigInt(a), y = BigInt(b); return x < y ? -1 : (x > y ? 1 : 0); });
+      return "{" + keys.map(function (k) {
+        return JSON.stringify(String(k)) + ":" + pyJson(v.get(k));
+      }).join(",") + "}";
+    }
+    if (v instanceof CborTag) throw new Error("payload contains a CBOR tag, which has no agreed JSON form");
+    throw new Error("payload contains a value with no agreed JSON form");
+  }
+
+  // ---- encodings and hashing
+
+  function toHex(u8) {
+    var s = "";
+    for (var i = 0; i < u8.length; i++) s += (u8[i] < 16 ? "0" : "") + u8[i].toString(16);
+    return s;
+  }
+  function bytesFromBinary(bin) {
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function binaryFromBytes(u8) {
+    var s = "";
+    for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return s;
+  }
+  function b64decodeStrict(text) {
+    if (typeof text !== "string" || text.length % 4 !== 0 || !/^[A-Za-z0-9+\/]*={0,2}$/.test(text)) {
+      throw new Error("not valid standard base64");
+    }
+    return bytesFromBinary(atob(text));
+  }
+  function b64encode(u8) { return btoa(binaryFromBytes(u8)); }
+  function b64urlDecode(text) {
+    if (typeof text !== "string" || !text || !/^[A-Za-z0-9_-]+$/.test(text) || text.length % 4 === 1) {
+      throw new Error("not unpadded base64url");
+    }
+    var std = text.replace(/-/g, "+").replace(/_/g, "/");
+    while (std.length % 4) std += "=";
+    return bytesFromBinary(atob(std));
+  }
+  function b64urlEncode(u8) { return b64encode(u8).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+
+  async function sha256Hex(u8) {
+    return toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", u8)));
+  }
+
+  // RFC 8032 section 7.1 test 1 public point (published, not a secret), used only to
+  // detect Ed25519 support. Kept as the RFC's hex so scanners don't mistake it for one.
+  var RFC8032_TEST1_PUB_HEX = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+  var PROBE_X = b64urlEncode(new Uint8Array(RFC8032_TEST1_PUB_HEX.match(/../g).map(function (h) { return parseInt(h, 16); })));
+  var ed25519Support = null;
+  async function hasEd25519() {
+    if (ed25519Support !== null) return ed25519Support;
+    try {
+      if (!globalThis.crypto || !crypto.subtle) throw new Error("no WebCrypto");
+      await crypto.subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: PROBE_X }, { name: "Ed25519" }, false, ["verify"]);
+      ed25519Support = true;
+    } catch (e) {
+      ed25519Support = false;
+    }
+    return ed25519Support;
+  }
+
+  function jwkProblem(jwk) {
+    if (!jwk || typeof jwk !== "object" || Array.isArray(jwk)) return "key entry is not a JSON object";
+    if (jwk.kty !== "OKP" || jwk.crv !== "Ed25519") return "key is not an Ed25519 OKP key (kty=" + jwk.kty + ", crv=" + jwk.crv + ")";
+    if ("alg" in jwk && jwk.alg !== "EdDSA" && jwk.alg !== "Ed25519") return "key alg is " + jwk.alg + ", expected EdDSA";
+    if ("use" in jwk && jwk.use !== "sig") return "key use is " + jwk.use + ", expected sig";
+    var raw;
+    try { raw = b64urlDecode(jwk.x); } catch (e) { return "key x is not unpadded base64url"; }
+    if (raw.length !== 32) return "key x decodes to " + raw.length + " bytes, expected 32";
+    return null;
+  }
+
+  function isPlainObject(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
+
+  // ---- the verification, mirroring verify_bundle() in verify.py
+
+  async function verifyReceipt(bundle, keysDoc, opts) {
+    opts = opts || {};
+    var r = { lines: [], failures: [], fields: null, signatureChecked: false, unsupported: false };
+    function line(label, value, state) { r.lines.push({ label: label, value: value, state: state || "info" }); }
+    function fail(reason) { r.failures.push(reason); }
+    function finish() {
+      r.verdict = r.failures.length ? "INVALID" : (r.unsupported ? "CANNOT VERIFY" : "VALID");
+      r.reason = r.failures.length ? r.failures[0] : (r.unsupported ? UNSUPPORTED_MSG : "");
+      return r;
+    }
+
+    if (!isPlainObject(bundle)) { fail("bundle is not a JSON object"); return finish(); }
+    var keys = isPlainObject(keysDoc) ? keysDoc.keys : null;
+    if (!Array.isArray(keys)) { fail('published key document has no "keys" list'); return finish(); }
+
+    line("receipt_id (bundle, not signed)", String(bundle.receipt_id));
+    var coseB64 = bundle.cose_b64;
+    if (bundle.signed !== true || typeof coseB64 !== "string" || !coseB64) {
+      line("signed", "no", "bad");
+      fail("receipt is not signed (bundle has no COSE bytes)");
+      return finish();
+    }
+    var cose;
+    try { cose = b64decodeStrict(coseB64); }
+    catch (e) { fail("cose_b64 is not valid standard base64"); return finish(); }
+
+    var msg;
+    try { msg = parseCose(cose); }
+    catch (e) {
+      line("COSE_Sign1 structure", "malformed (" + e.message + ")", "bad");
+      fail("receipt is not a well-formed COSE_Sign1: " + e.message);
+      return finish();
+    }
+    line("COSE_Sign1 structure", "well-formed (tag 18, 4 elements)", "ok");
+
+    var prot = null;
+    try { prot = cborDecode(msg.protected); }
+    catch (e) { fail("protected header does not parse: " + e.message); }
+    if (prot instanceof Map) {
+      var alg = prot.get(1);
+      if (alg === -8) line("algorithm (protected header)", "EdDSA (-8)", "ok");
+      else { line("algorithm (protected header)", String(alg) + " (not EdDSA)", "bad"); fail("protected header alg is " + String(alg) + ", expected -8 (EdDSA)"); }
+      if (prot.has(2)) fail("protected header lists critical parameters this verifier does not understand");
+    } else if (prot !== null) {
+      fail("protected header is not a CBOR map");
+    }
+
+    var kidRaw = msg.unprotected.get(4), kid = null;
+    if (kidRaw instanceof Uint8Array) { try { kid = utf8Strict.decode(kidRaw); } catch (e) { kid = null; } }
+    else if (typeof kidRaw === "string") kid = kidRaw;
+    line("kid (unprotected header, not signed)", kid !== null ? kid : "missing", kid !== null ? "info" : "bad");
+    if (kid === null) fail("receipt names no key id (unprotected header label 4)");
+
+    if (bundle.kid !== undefined && bundle.kid !== null && kid !== null) {
+      var sameKid = bundle.kid === kid;
+      line("bundle kid equals COSE kid", sameKid ? "yes" : "no (bundle says " + bundle.kid + ")", sameKid ? "ok" : "bad");
+      if (!sameKid) fail("bundle kid differs from the kid inside the COSE message");
+    }
+
+    var rawKey = null;
+    if (kid !== null) {
+      var matches = keys.filter(function (k) { return isPlainObject(k) && k.kid === kid; });
+      line("kid matches published key", matches.length ? "yes" : "no", matches.length ? "ok" : "bad");
+      if (!matches.length) {
+        var published = keys.filter(isPlainObject).map(function (k) { return String(k.kid); }).join(", ") || "none";
+        fail("no published key has kid " + kid + " (published: " + published + ")");
+      } else if (matches.length > 1) {
+        fail("the key document publishes the same kid more than once");
+      } else {
+        var problem = jwkProblem(matches[0]);
+        if (problem) fail("published key is unusable: " + problem);
+        else {
+          var raw = b64urlDecode(matches[0].x);
+          var fingerprint = KID_PREFIX + (await sha256Hex(raw));
+          var fpOk = fingerprint === kid && kid === matches[0].kid;
+          line("kid is SHA-256 fingerprint of that key", fpOk ? "yes" : "no (key fingerprint " + fingerprint + ")", fpOk ? "ok" : "bad");
+          if (!fpOk) fail("kid is not the SHA-256 fingerprint of the published key");
+          rawKey = raw;
+        }
+      }
+    }
+
+    if (rawKey === null) {
+      line("signature (Ed25519)", "NOT CHECKED (no usable key for this kid)", "bad");
+    } else if (msg.signature.length !== 64) {
+      line("signature (Ed25519)", "INVALID", "bad");
+      fail("signature is " + msg.signature.length + " bytes, Ed25519 signatures are 64");
+    } else if (!(await hasEd25519())) {
+      r.unsupported = true;
+      line("signature (Ed25519)", "NOT CHECKED (" + UNSUPPORTED_MSG + ")", "bad");
+    } else {
+      var key = await crypto.subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: b64urlEncode(rawKey) },
+                                              { name: "Ed25519" }, false, ["verify"]);
+      var good = await crypto.subtle.verify({ name: "Ed25519" }, key, msg.signature, sigStructure(msg.protected, msg.payload));
+      r.signatureChecked = true;
+      if (good) line("signature (Ed25519)", "VALID", "ok");
+      else {
+        line("signature (Ed25519)", "INVALID", "bad");
+        fail("signature does not verify: the signed bytes were changed or another key signed them");
+      }
+    }
+
+    var fields;
+    try { fields = cborDecode(msg.payload); }
+    catch (e) {
+      line("payload", "no longer parses (" + e.message + ")", "bad");
+      fail("payload no longer parses as CBOR");
+      return finish();
+    }
+    if (!(fields instanceof Map)) {
+      line("payload", "not a CBOR map", "bad");
+      fail("payload is not a CBOR map");
+      return finish();
+    }
+    r.fields = fields;
+
+    var recomputed = null;
+    try { recomputed = await sha256Hex(new TextEncoder().encode(pyJson(fields))); }
+    catch (e) {
+      line("content_hash recomputed", "CANNOT RECOMPUTE (" + e.message + ")", "bad");
+      fail("content_hash cannot be recomputed: " + e.message);
+    }
+    if (recomputed !== null) {
+      var expected = bundle.content_hash;
+      if (typeof expected !== "string") {
+        line("content_hash recomputed", recomputed + " (bundle has none to compare)", "bad");
+        fail("bundle carries no content_hash");
+      } else if (expected.trim().toLowerCase() === recomputed) {
+        line("content_hash recomputed", "matches (" + recomputed + ")", "ok");
+      } else {
+        line("content_hash recomputed", "DIFFERS (signed fields hash to " + recomputed + ", bundle says " + expected + ")", "bad");
+        fail("content_hash in the bundle is not the hash of the signed fields");
+      }
+    }
+
+    if ("mount_id" in bundle && fields.has("mount_id")) {
+      var sameMount = bundle.mount_id === fields.get("mount_id");
+      line("bundle mount_id equals signed mount_id", sameMount ? "yes" : "no", sameMount ? "ok" : "bad");
+      if (!sameMount) fail("bundle mount_id differs from the signed mount_id");
+    }
+    if ("receipt_schema_version" in bundle) {
+      var shown = bundle.receipt_schema_version || 1;
+      var signedVersion = fields.has("receipt_schema_version") ? fields.get("receipt_schema_version") : 1;
+      var sameVersion = shown === signedVersion;
+      line("bundle schema version equals signed version", sameVersion ? "yes" : "no (" + shown + " vs " + String(signedVersion) + ")", sameVersion ? "ok" : "bad");
+      if (!sameVersion) fail("bundle receipt_schema_version differs from the signed version");
+    }
+    return finish();
+  }
+
+  // Flip the low bit of the middle byte of the signature (or payload) inside cose_b64.
+  function flipBit(coseB64, part) {
+    var cose = b64decodeStrict(coseB64);
+    var msg = parseCose(cose);
+    var end = part === "payload" ? msg.payloadEnd : msg.signatureEnd;
+    var len = part === "payload" ? msg.payload.length : msg.signature.length;
+    if (!len) throw new Error(part + " is empty; nothing to tamper with");
+    var out = cose.slice();
+    out[end - len + Math.floor(len / 2)] ^= 0x01;
+    return b64encode(out);
+  }
+
+  function displayValue(v) {
+    if (v === null) return "null";
+    if (v === true) return "true";
+    if (v === false) return "false";
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "bigint") return String(v);
+    if (v instanceof PyFloat) return pyFloatRepr(v.value);
+    if (v instanceof Uint8Array) return "h'" + toHex(v) + "'";
+    try { return pyJson(v); } catch (e) { return "(" + e.message + ")"; }
+  }
+
+  var api = {
+    cborDecode: cborDecode, parseCose: parseCose, sigStructure: sigStructure, pyJson: pyJson,
+    pyFloatRepr: pyFloatRepr, verifyReceipt: verifyReceipt, flipBit: flipBit, hasEd25519: hasEd25519,
+    b64decodeStrict: b64decodeStrict, b64encode: b64encode, toHex: toHex, PyFloat: PyFloat, CBORError: CBORError
+  };
+  globalThis.VeklomReceiptVerify = api;
+
+  if (typeof document === "undefined") return;
+
+  // ---- page wiring
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function render(r) {
+    var box = $("result");
+    box.className = r.verdict === "VALID" ? "valid" : (r.verdict === "INVALID" ? "invalid" : "unknown");
+    $("result-verdict").textContent = r.verdict;
+    $("result-reason").textContent = r.verdict === "VALID"
+      ? "Signed by the holder of the published key, and unchanged since."
+      : r.reason + (r.failures.length > 1 ? "  (+" + (r.failures.length - 1) + " more)" : "");
+    var list = $("checks");
+    list.textContent = "";
+    r.lines.forEach(function (l) {
+      var li = document.createElement("li");
+      li.className = l.state;
+      var mark = document.createElement("span");
+      mark.className = "mark";
+      mark.textContent = l.state === "ok" ? "✓" : (l.state === "bad" ? "✗" : "•");
+      var label = document.createElement("span");
+      label.className = "label";
+      label.textContent = l.label;
+      var val = document.createElement("span");
+      val.className = "val";
+      val.textContent = l.value;
+      li.appendChild(mark); li.appendChild(label); li.appendChild(val);
+      list.appendChild(li);
+    });
+    r.failures.slice(1).forEach(function (f) {
+      var li = document.createElement("li");
+      li.className = "bad";
+      li.innerHTML = '<span class="mark">✗</span><span class="label">also</span><span class="val"></span>';
+      li.lastChild.textContent = f;
+      list.appendChild(li);
+    });
+    var body = $("fields").tBodies[0];
+    body.textContent = "";
+    if (r.fields) {
+      var keys = Array.from(r.fields.keys()).sort(function (a, b) {
+        var sa = typeof a === "string", sb = typeof b === "string";
+        if (sa !== sb) return sa ? -1 : 1;
+        return String(a) < String(b) ? -1 : (String(a) > String(b) ? 1 : 0);
+      });
+      keys.forEach(function (k) {
+        var tr = document.createElement("tr");
+        var td1 = document.createElement("td"), td2 = document.createElement("td");
+        var v = r.fields.get(k);
+        td1.textContent = String(k);
+        td2.textContent = displayValue(v);
+        if (v === null) td2.className = "null";
+        tr.appendChild(td1); tr.appendChild(td2);
+        body.appendChild(tr);
+      });
+    }
+  }
+
+  function renderInputError(message) {
+    render({ verdict: "INVALID", reason: message, failures: [message], lines: [], fields: null });
+  }
+
+  function parseInputs() {
+    var bundle, keysDoc;
+    try { bundle = JSON.parse($("bundle").value); }
+    catch (e) { throw new Error("receipt bundle is not valid JSON: " + e.message); }
+    try { keysDoc = JSON.parse($("keys").value); }
+    catch (e) { throw new Error("published key is not valid JSON: " + e.message); }
+    return { bundle: bundle, keys: keysDoc };
+  }
+
+  var busy = false;
+  async function runVerify() {
+    if (busy) return;
+    busy = true;
+    $("verify").disabled = true; $("tamper").disabled = true;
+    try {
+      var input;
+      try { input = parseInputs(); } catch (e) { renderInputError(e.message); return; }
+      render(await verifyReceipt(input.bundle, input.keys));
+    } catch (e) {
+      renderInputError("verifier error: " + (e && e.message ? e.message : String(e)));
+    } finally {
+      busy = false;
+      $("verify").disabled = false; $("tamper").disabled = false;
+    }
+  }
+
+  function runTamper() {
+    var text = $("bundle").value, bundle;
+    try { bundle = JSON.parse(text); } catch (e) { renderInputError("receipt bundle is not valid JSON: " + e.message); return; }
+    if (!isPlainObject(bundle) || typeof bundle.cose_b64 !== "string" || !bundle.cose_b64) {
+      renderInputError("the bundle has no cose_b64 to tamper with");
+      return;
+    }
+    var changed;
+    try { changed = flipBit(bundle.cose_b64, "signature"); }
+    catch (e) { renderInputError("cannot tamper: " + e.message); return; }
+    // Replace only the base64 text so the rest of the pasted JSON keeps its layout.
+    $("bundle").value = text.split(bundle.cose_b64).join(changed);
+    runVerify();
+  }
+
+  $("verify").addEventListener("click", runVerify);
+  $("tamper").addEventListener("click", runTamper);
+
+  hasEd25519().then(function (ok) {
+    if (!ok) {
+      var w = $("webcrypto-warning");
+      w.textContent = (globalThis.crypto && crypto.subtle)
+        ? "This browser lacks Ed25519 WebCrypto; use verify.py. (Ed25519 is in current Chrome, Edge, Firefox and Safari.)"
+        : "WebCrypto is unavailable here (open this file directly, over https, or from localhost); use verify.py.";
+      w.style.display = "block";
+    }
+  });
+})();
+</script>
+</body>
+</html>
