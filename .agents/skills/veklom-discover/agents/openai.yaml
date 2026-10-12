@@ -1,0 +1,6 @@
+interface:
+  display_name: "VEKLOM Discover"
+  short_description: "Evidence-disciplined frontier discovery for governed AI"
+  default_prompt: "Use VEKLOM Discover to separate observed facts, inferences, hypotheses, aspirations, unknowns, and rejected claims; identify the true consequence boundary; and define the smallest decisive proof path."
+policy:
+  allow_implicit_invocation: true
