@@ -1074,6 +1074,60 @@ governance mechanism and not a performance one.
   of which depends on the cgroup version, but that is unverified until
   run there.
 
+## How to run the checks
+
+You need Linux (WSL2 works), Python 3.11 or newer, and git. Root is not
+needed:
+
+```
+git clone -b claude/epic-clarke-jnefup https://github.com/reprewindai-dev/cappo-backend
+cd cappo-backend
+scripts/vre15_check.sh
+```
+
+**First run:** the script creates `.venv` and installs the project. It uses
+`uv` if present, otherwise `pip`.
+
+**What it runs:**
+- The tests in `tests/test_vre15.py`, `tests/test_vre15_revoke.py` and
+  `tests/test_vre15_evidence.py`, using real mappings and real revocations.
+- `vre15/verify_evidence.py` on every committed evidence bundle. Each bundle
+  is copied into an empty directory with only its trust store, the way a
+  third party would check it.
+
+**Expected output:**
+
+```
+24 passed, 1 skipped
+vre15/runs/20261011T231257Z/16-informative-mapped-ckpt.evidence.json: VALID W1, 415 revocations, 300 tenants, lag p50 7.0 ms
+```
+
+**The skipped test** checks that a page already in swap is written back. It
+needs an active swap device. To include it, run
+`sudo scripts/vre15_check.sh --with-swap`. That creates a temporary 256 MiB
+swap file, uses it, and removes it afterwards; expect 25 passed.
+
+**Exit code:** non-zero if any test fails or any bundle is rejected.
+
+**Checked:**
+- from a fresh clone, as a non-root user;
+- with plain `pip` on Python 3.11, and with `uv` on Python 3.12;
+- as root with `--with-swap`;
+- against a tampered bundle, which fails.
+
+**Verifying a bundle by hand** needs only `rfc8785` and `cryptography`:
+
+```
+python vre15/verify_evidence.py BUNDLE.evidence.json BUNDLE.trust.json --require-witness
+```
+
+**Re-running the 300-tenant experiments** (`python -m vre15.runner ...`) is a
+different matter. It needs root and a **cgroup v1** memory controller. Its
+cgroup code writes `memory.limit_in_bytes` and `memory.memsw.limit_in_bytes`.
+WSL2 and most current distributions use cgroup v2, where the runner does not
+work yet. Porting it to `memory.max` and `memory.swap.max` is the open
+transfer step.
+
 ## Revocations as verifiable evidence
 
 Residency following authority was a measured result. It is now also
