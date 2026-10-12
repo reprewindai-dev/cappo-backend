@@ -14,8 +14,11 @@
 # given --shared-vm-ok.
 #
 # Steps:
+#   0. refuses unless the machine is cgroup v2 and tracked files match the
+#      commit (the manifest records the commit);
 #   1. selftest: the kernel enforces the memory contract the runs rely on
-#      (budget, OOM kill counted, swap allowed or forbidden);
+#      (budget, OOM kill counted, swap allowed or forbidden); all three
+#      checks must run, with a temporary swap file if none is active;
 #   2. 30 runs: native and mapped-ckpt (with signed evidence), 16 MiB,
 #      seeds 801-815, 300 tenants, 90 s each;
 #   3. the pre-registered verdict, printed as one JSON line to paste back,
@@ -48,9 +51,24 @@ MSG
   exit 2
 fi
 
-echo "== 1/3 selftest: memory cgroup contract on this kernel"
-"$py" -m vre15.cgroups --selftest | tee /tmp/vre15-selftest.json
-if ! "$py" -c 'import json,sys; sys.exit(0 if json.load(open("/tmp/vre15-selftest.json"))["ok"] else 1)'; then
+if ! "$py" -c 'import sys; from vre15 import cgroups; sys.exit(0 if cgroups.version() == "v2" else 1)'; then
+  echo "this machine uses cgroup v1; the transfer test is defined for cgroup v2 only" >&2
+  exit 2
+fi
+if [[ -n "$(git -c safe.directory='*' status --porcelain --untracked-files=no)" ]]; then
+  echo "tracked files differ from the commit; the run must use committed code (git status)" >&2
+  exit 2
+fi
+
+echo "== 1/3 selftest: memory cgroup contract on this kernel (all three checks required)"
+"$py" -m vre15.cgroups --selftest --with-temp-swap | tee /tmp/vre15-selftest.json
+if ! "$py" - /tmp/vre15-selftest.json <<'PY'
+import json, sys
+from vre15.cgroups import REQUIRED_CHECKS
+r = json.load(open(sys.argv[1]))
+sys.exit(0 if r["ok"] and all(r["checks"].get(k, {}).get("ok") for k in REQUIRED_CHECKS) else 1)
+PY
+then
   echo "selftest failed: paste the JSON above back; nothing else was run" >&2
   exit 1
 fi
@@ -68,6 +86,7 @@ if [[ -z "$run_dir" ]]; then
 fi
 
 echo "== 3/3 verdict"
+cp /tmp/vre15-selftest.json "$run_dir/selftest.json"
 "$py" -m vre15.transfer "$run_dir/manifest.json" | tee "$run_dir/transfer-summary.json"
 if [[ -n "${SUDO_USER:-}" ]]; then
   chown -R "$SUDO_USER" "$run_dir"

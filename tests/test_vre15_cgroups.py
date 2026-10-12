@@ -67,3 +67,9 @@ def test_selftest_on_this_kernel():
     r = cgroups.selftest()
     assert r["ok"], r
     assert r["checks"]["over_budget_without_swap_is_killed"]["oom_kills"] >= 1
+    # The transfer run's form: all three checks must run, with a temporary
+    # swap file when none is active, and the swap file must be gone after.
+    before = open("/proc/swaps").read()
+    r = cgroups.selftest(temp_swap=True)
+    assert r["ok"] and set(cgroups.REQUIRED_CHECKS) <= set(r["checks"]), r
+    assert open("/proc/swaps").read() == before

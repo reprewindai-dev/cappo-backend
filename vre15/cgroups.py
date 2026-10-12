@@ -1,6 +1,6 @@
 """Memory cgroups for VRE-1.5 runs, on cgroup v1 or cgroup v2.
 
-    sudo python -m vre15.cgroups --selftest
+    sudo python -m vre15.cgroups --selftest [--with-temp-swap]
 
 One interface, two kernels:
 
@@ -179,13 +179,40 @@ def _child(cg: MemoryCgroup, mib: int) -> int:
     return p.returncode
 
 
-def selftest() -> dict:
-    """Check the contract the experiments rely on, on this kernel."""
-    swaps = [line.split()[0] for line in open("/proc/swaps").read().splitlines()[1:]]
+REQUIRED_CHECKS = ("fits_without_swap", "over_budget_without_swap_is_killed", "over_budget_with_swap_survives")
+
+
+def _swaps() -> list[str]:
+    return [line.split()[0] for line in open("/proc/swaps").read().splitlines()[1:]]
+
+
+def selftest(temp_swap: bool = False) -> dict:
+    """Check the contract the experiments rely on, on this kernel.
+
+    temp_swap: when no swap is active, switch on a temporary 256 MiB swap
+    file for the swap-allowed check and remove it afterwards, so all three
+    checks run; `ok` then requires all three (REQUIRED_CHECKS)."""
+    swapfile = None
+    if temp_swap and not _swaps():
+        swapfile = pathlib.Path(f"/var/tmp/vre15-selftest-{os.getpid()}.swap")
+        subprocess.run(["fallocate", "-l", "256M", str(swapfile)], check=True)
+        os.chmod(swapfile, 0o600)
+        subprocess.run(["mkswap", str(swapfile)], check=True, capture_output=True)
+        subprocess.run(["swapon", str(swapfile)], check=True)
+    try:
+        return _selftest(require_all=temp_swap, temp_swap_used=swapfile is not None)
+    finally:
+        if swapfile is not None:
+            subprocess.run(["swapoff", str(swapfile)], capture_output=True)
+            swapfile.unlink(missing_ok=True)
+
+
+def _selftest(require_all: bool, temp_swap_used: bool) -> dict:
+    swaps = _swaps()
     report = {"cgroup": version(), "kernel": os.uname().release, "swap_devices": swaps,
               "mglru": (open("/sys/kernel/mm/lru_gen/enabled").read().strip()
                         if os.path.exists("/sys/kernel/mm/lru_gen/enabled") else None),
-              "checks": {}}
+              "temporary_swap_used": temp_swap_used, "checks": {}}
     tag = f"selftest-{os.getpid()}"
     budget = 32 << 20
     cases = [("fits_without_swap", 8, False, True), ("over_budget_without_swap_is_killed", 96, False, False)]
@@ -202,18 +229,20 @@ def selftest() -> dict:
                                       "budget_mib": budget >> 20, "swap_allowed": allow_swap}
         finally:
             cg.remove()
-    report["ok"] = all(c["ok"] for c in report["checks"].values())
+    report["ok"] = all(c["ok"] for c in report["checks"].values()) and (
+        not require_all or all(k in report["checks"] for k in REQUIRED_CHECKS))
     return report
 
 
 def main(argv) -> int:
-    if argv[1:] != ["--selftest"]:
-        print("usage: python -m vre15.cgroups --selftest", file=sys.stderr)
+    args = argv[1:]
+    if args not in (["--selftest"], ["--selftest", "--with-temp-swap"]):
+        print("usage: python -m vre15.cgroups --selftest [--with-temp-swap]", file=sys.stderr)
         return 2
     if os.geteuid() != 0:
         print("needs root (creates cgroups)", file=sys.stderr)
         return 2
-    r = selftest()
+    r = selftest(temp_swap="--with-temp-swap" in args)
     print(json.dumps(r, indent=1))
     return 0 if r["ok"] else 1
 

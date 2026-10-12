@@ -1357,9 +1357,45 @@ Written and committed before any run with these seeds.
 - integrity failures and authority violations, which must stay 0;
 - the selftest result, MGLRU state, swap devices and kernel.
 
-**Analysis:** `python -m vre15.transfer <manifest>`. Applied to H15's run
-`20261011T181835Z`, it reproduces H15 exactly: 13/0, p = 0.0002, medians
-5.75 vs 1.96 pages.
+**Analysis:** `python -m vre15.transfer <manifest>`.
+
+### Amendment 1 (2026-10-12, before any run with seeds 801–815)
+
+A review of the committed analyzer found it looser than the intended test.
+Nothing had been run with these seeds. The amendment tightens the rules
+and supersedes the "Confirmed only if" column above.
+
+**Found:**
+- **T1.** The analyzer confirmed on p < 0.05 over the seeds where both arms
+  completed. A failed arm therefore shrank the denominator: 11 wins of 11
+  usable pairs, with 4 seeds lost to failures, would have confirmed. That
+  is not "12 of 15".
+- **T2.** Failed mapped-ckpt runs were dropped before the check, so a run
+  that crashed would not have counted against T2.
+- **Self-test.** The swap-allowed check ran only when swap was already
+  active. On a machine without swap the self-test passed on two checks.
+- **Not enforced:** the test's cgroup version and the code's identity.
+
+**Amended rules,** enforced by `vre15/transfer.py` and tested in
+`tests/test_vre15_transfer.py`:
+
+| Rule | Requirement |
+|---|---|
+| Applicability | The manifest's host must report cgroup v2. Otherwise both hypotheses are "not confirmed" and the summary says why. |
+| Completeness | Exactly one row per arm for each of the seeds 801–815, with no duplicates and no others. |
+| T1 | Confirmed only if the run is complete and mapped-ckpt has strictly fewer mean resident pages per revoked tenant at 5 s on **at least 12 of the 15 seeds**. A seed where an arm failed, was OOM-killed or was not measured, or where the two arms tie, counts as not better. The sign test over usable pairs is reported only. |
+| T2 | Confirmed only if the run is complete and **all 15** mapped-ckpt runs pass. Each must exit 0 with no OOM kill, 0 integrity failures and 0 authority violations, with evidence VALID W1 and 0 private pages held. A missing or failed run fails T2, and its reasons are listed per seed. |
+| Self-test | `scripts/vre15_transfer.sh` runs `python -m vre15.cgroups --selftest --with-temp-swap`. All three checks are required, with a temporary 256 MiB swap file if no swap is active; the file is removed afterwards. |
+| Preconditions | The script refuses to start unless the machine is cgroup v2 and tracked files match the commit. |
+| Recorded | The manifest records the git commit, whether tracked files were modified, and the analyzer's SHA-256. The summary repeats them. |
+
+**Applied to H15's run `20261011T181835Z`** (seeds 701–715, cgroup v1,
+with the version check off): 13 of 15 seeds better, 0 worse and 2 unusable,
+from native warm-up kills. That meets the 12-of-15 bar, so the H15 result
+holds under the amended rules.
+
+**Reporting rule:** missing runs, OOM kills, invalid evidence or fewer than
+12 wins stay part of the result. No seeds are replaced or added.
 
 ### Still untested
 

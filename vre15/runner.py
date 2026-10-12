@@ -55,6 +55,23 @@ KERNEL_PAGED = ("native", "native-steered", "native-pageout", "envelope-headroom
 PER_TENANT_BYTES = 1_200_000            # VRE-1E measured 1.10 MB; small margin
 
 
+def code_info() -> dict:
+    """The exact code a run used: git commit, whether tracked files differ
+    from it, and the analyzer's hash. safe.directory is set because the
+    runner runs as root in a clone owned by another user."""
+    repo = HERE.parent
+
+    def git(*a):
+        p = subprocess.run(["git", "-c", "safe.directory=*", "-C", str(repo), *a],
+                           capture_output=True, text=True)
+        return p.stdout.strip() if p.returncode == 0 else None
+
+    import hashlib
+    status = git("status", "--porcelain", "--untracked-files=no")
+    return {"git_head": git("rev-parse", "HEAD"), "tracked_files_modified": None if status is None else bool(status),
+            "transfer_py_sha256": hashlib.sha256((HERE / "transfer.py").read_bytes()).hexdigest()}
+
+
 def host_info() -> dict:
     from importlib.metadata import version
     lru = pathlib.Path("/sys/kernel/mm/lru_gen/enabled")
@@ -196,7 +213,7 @@ def main() -> int:
     if os.geteuid() != 0:
         print("needs root (cgroups, swap, page cache)", file=sys.stderr)
         return 2
-    host = host_info()
+    host, code = host_info(), code_info()
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = args.out / run_id
     out.mkdir(parents=True)
@@ -297,6 +314,7 @@ def main() -> int:
     (out / "manifest.json").write_text(json.dumps({
         "run_id": run_id, "finished_at": datetime.now(timezone.utc).isoformat(),
         "host": host,
+        "code": code,
         "params": vars(args) | {"out": str(args.out), "per_tenant_bytes": PER_TENANT_BYTES,
                                 "page_cluster_in_effect": args.page_cluster if args.page_cluster is not None
                                 else int(pc_saved)},
