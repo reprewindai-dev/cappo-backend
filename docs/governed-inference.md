@@ -20,6 +20,8 @@ nothing.
    `--api-key-env` and stored encrypted with `VAULT_MASTER_KEY`.
 3. Set `EXECUTOR_MODE` to anything but `echo` and `LLM_MODEL` to the model to run
    (for Ollama, a model you have pulled, e.g. `llama3.2`).
+4. Set `RUNTIME_KIND` and `RUNTIME_INSTANCE` (see `.env.example`). Without them every
+   run is refused with `409 RUNTIME_OWNERSHIP_CONFLICT` / `RUNTIME_IDENTITY_UNAVAILABLE`.
 
 CAPPO's own "managed local Ollama" provider (`LLM_PROVIDER_NAME=ollama` /
 `LLM_FALLBACK_PROVIDER_NAME=ollama`) stays fail-closed until its local authorizer
@@ -56,3 +58,11 @@ A lease is single-use: a second call with it is refused (`token_replay`).
 - The provider set is bound into the execution identity from the package definition.
   A `scope.allowed_provider_set` sent by the caller is overwritten, and the executor
   refuses any provider outside the bound set.
+
+## End-to-end check
+
+`scripts/e2e_governed_inference.py` drives a running CAPPO over HTTP the way Capability
+OS does: discovery, mount, a real model call, then replay, provider widening,
+tampering, missing signature, missing identity, execution mismatch, another
+workspace, a terminated mount and an anonymous call. It is for a local test
+deployment, since it needs the private JWT and gatekeeper keys (see its docstring).
