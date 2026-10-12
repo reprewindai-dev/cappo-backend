@@ -1,0 +1,11 @@
+{
+ "issuer_keys": {
+  "ed25519:e4f6abe33a0f094c": "9iiLVSXygz0P9Ft2V351EfZP_S8VoBvJiXWd6nKbAVI"
+ },
+ "witness_keys": {
+  "ed25519:26616aa0df54e1dd": "d4fghrr4x5Kapy-H9-zeoLmAhBw8ewgKKBtuu8hUUHM"
+ },
+ "auditor_keys": {
+  "ed25519:44358b649b7104fc": "E5tLXsdEeZbgq8unopwibs5wLyF-6glp_p6GLeyhThI"
+ }
+}
