@@ -2,6 +2,9 @@
 # Run the VRE-1.5 residency and evidence checks on any Linux machine
 # (including WSL2). Root is not needed, except for --with-swap.
 #
+# On Windows, run it inside WSL (open "Ubuntu", or type `wsl` in PowerShell),
+# from a clone in the Linux home directory, not in PowerShell.
+#
 #   scripts/vre15_check.sh              # set up .venv if needed, run the tests,
 #                                       # verify the committed evidence bundle
 #   sudo scripts/vre15_check.sh --with-swap
@@ -27,11 +30,16 @@ py=.venv/bin/python
 if [[ ! -x "$py" ]]; then
   echo "== creating .venv and installing the project (one time)"
   if command -v uv >/dev/null; then
-    uv venv -q .venv
+    uv venv -q --python 3.12 .venv            # uv downloads Python 3.12 if the system has none
     uv pip install -q -p "$py" -e ".[dev]" -r vre1/requirements.txt
-  else
+  elif python3 -c 'import sys, venv, ensurepip; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
     python3 -m venv .venv
     "$py" -m pip install -q -e ".[dev]" -r vre1/requirements.txt
+  else
+    echo "Needs Python 3.11+ with venv, and this system's python3 is $(python3 --version 2>&1)." >&2
+    echo "Easiest fix (no sudo): install uv, then run this script again:" >&2
+    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.local/bin/env" >&2
+    exit 2
   fi
 fi
 
