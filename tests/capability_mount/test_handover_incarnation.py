@@ -62,3 +62,30 @@ def test_atomic_handover_chains_history_head_fences_predecessor_and_allows_succe
     assert res_k2.json()["decision"] == "allow"
     assert res_k2.json()["consequence"]["target_invoked"] is True
     assert (tmp_path / "handover-record.json").exists()
+
+
+def test_advance_epoch_refuses_omitted_authority_epoch(client, tmp_path: Path) -> None:
+    """Proves Auditor Gap 1 closure:
+    Once a mount's authority_epoch is advanced past 1 via /advance-epoch,
+    a stale holder cannot bypass epoch fencing by omitting authority_epoch (sending None).
+    """
+    mount, _adapter = prepare(client, tmp_path)
+    mount_id = mount["mount"]["id"]
+
+    adv = client.post(f"/v1/capability/mounts/{mount_id}/advance-epoch")
+    assert adv.status_code == 200, adv.text
+    assert adv.json()["authority_epoch"] == 2
+
+    # Stale holder omits authority_epoch altogether
+    payload_omit = execute_payload(mount, operation_id="op_omit_epoch", resource="omit-epoch-record")
+    payload_omit.pop("authority_epoch", None)
+    res_omit = client.post(
+        f"/v1/capability/mounts/{mount_id}/execute",
+        json=payload_omit,
+    )
+    assert res_omit.status_code == 200
+    assert res_omit.json()["decision"] == "deny"
+    assert res_omit.json()["reason"] == "stale_authority_epoch"
+    assert res_omit.json()["consequence"]["target_invoked"] is False
+    assert not (tmp_path / "omit-epoch-record.json").exists()
+

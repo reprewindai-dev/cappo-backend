@@ -724,6 +724,15 @@ class MountRegistry:
                 runtime_key_thumbprint=runtime_key_thumbprint,
                 state_root=state_root,
             )
+            genesis_history_head = hashlib.sha256(
+                f"genesis:{mount.id}:{token.token_id}:1".encode("utf-8")
+            ).hexdigest()
+            mount = mount.model_copy(
+                update={
+                    "incarnation": 1,
+                    "history_head": genesis_history_head,
+                }
+            )
             
             from cappo_backend.security.biscuit import mint_biscuit_capability
             
@@ -1343,16 +1352,18 @@ class MountRegistry:
             record: MountRecord | None,
         ) -> tuple[Decision, str, str | None, dict[str, Any]]:
             # Preflight failures must NOT consume the nonce or terminate the mount.
+            res = payload(
+                record=record,
+                decision=Decision.DENY,
+                reason=reason,
+                terminated=False,
+            )
+            db.commit()
             return (
                 Decision.DENY,
                 reason,
                 None,
-                payload(
-                    record=record,
-                    decision=Decision.DENY,
-                    reason=reason,
-                    terminated=False,
-                ),
+                res,
             )
 
         row = self._row(mount_id, lock=True)
@@ -1374,13 +1385,24 @@ class MountRegistry:
         if record.mount.state_root is not None and state_root != record.mount.state_root:
             return preflight_deny("state_root_mismatch", record)
             
+        from cappo_backend.models.capability_lease import CapabilityLease
+        lease = (
+            db.query(CapabilityLease)
+            .filter(CapabilityLease.mount_id == mount_id)
+            .order_by(CapabilityLease.authority_epoch.desc())
+            .first()
+        )
+        effective_epoch = max(
+            (lease.authority_epoch or 1) if lease is not None else 1,
+            (row.authority_epoch or 1) if not row.terminated else 1,
+        )
         if authority_epoch is not None:
-            from cappo_backend.models.capability_lease import CapabilityLease
-            lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
-            if lease and authority_epoch < lease.authority_epoch:
+            if authority_epoch < effective_epoch:
                 return preflight_deny("stale_authority_epoch", record)
-            if not row.terminated and (row.authority_epoch or 1) > 1 and authority_epoch < row.authority_epoch:
-                return preflight_deny("stale_authority_epoch", record)
+        elif effective_epoch > 1:
+            # Once a mount's authority epoch has advanced past 1, callers may not
+            # bypass epoch fencing by omitting authority_epoch.
+            return preflight_deny("stale_authority_epoch", record)
 
         if (
             not row.terminated
@@ -1452,17 +1474,19 @@ class MountRegistry:
                     if latest.intent_hash != expected_intent
                     else f"idempotency_replay:{latest.state}"
                 )
+                res_payload = payload(
+                    record=record,
+                    decision=Decision.DENY,
+                    reason=replay_reason,
+                    consequence_state=latest.state,
+                    receipt_id=latest.receipt_id,
+                )
+                db.commit()
                 return (
                     Decision.DENY,
                     replay_reason,
                     latest.state,
-                    payload(
-                        record=record,
-                        decision=Decision.DENY,
-                        reason=replay_reason,
-                        consequence_state=latest.state,
-                        receipt_id=latest.receipt_id,
-                    ),
+                    res_payload,
                 )
 
         invoked_here = False
@@ -1552,6 +1576,7 @@ class MountRegistry:
         should_terminate = not (
             reason.startswith("idempotency_replay:")
             or reason == "consequence_already_started"
+            or (reason == "nonce_replayed" and bool(self._in_flight_operations(mount_id)))
         )
         terminated = False
         if should_terminate:

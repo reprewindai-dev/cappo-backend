@@ -39,18 +39,21 @@ class AuditService:
         self._settings = settings or get_settings()
 
     def _latest_hash(self) -> str | None:
-        all_hashes = list(self._db.execute(select(AuditEvent.log_hash)).scalars())
-        if not all_hashes:
-            return None
-        referenced = set(
-            self._db.execute(
-                select(AuditEvent.previous_log_hash).where(
-                    AuditEvent.previous_log_hash.isnot(None)
-                )
-            ).scalars()
-        )
-        tails = [value for value in all_hashes if value not in referenced]
-        return tails[0] if tails else all_hashes[-1]
+        from sqlalchemy.orm import aliased
+
+        child = aliased(AuditEvent)
+        tail = self._db.execute(
+            select(AuditEvent.log_hash)
+            .outerjoin(child, child.previous_log_hash == AuditEvent.log_hash)
+            .where(child.log_id.is_(None))
+            .order_by(AuditEvent.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if tail is not None:
+            return tail
+        return self._db.execute(
+            select(AuditEvent.log_hash).order_by(AuditEvent.created_at.desc()).limit(1)
+        ).scalar_one_or_none()
 
     def record(
         self,
