@@ -1550,3 +1550,69 @@ every tenant that has no authority at trace start, which is a revocation
 at t = 0. Pre-registration T1/T2 tests the H15 mechanism as committed, so
 the transfer test runs unchanged.
 
+
+### Result: runs `20261012T104244Z` (run 1) and `20261012T110108Z` (run 2)
+
+Both runs used commit `f96adba`, with tracked files unmodified, on this
+repository's cloud host (cgroup v1). The verdict is from `python -m
+vre15.audit_prereg`, saved as `20261012T110108Z/audit-summary.json`. All
+15 runs exited 0, with no OOM kills, no integrity failures and no
+authority violations.
+
+| Hypothesis | Outcome | Per seed (991–995) |
+|---|---|---|
+| A1: under the audit, mapped-ckpt keeps no private state after authority | **confirmed** | 5 of 5 |
+| A2: the auditor sees the control's retained state | **confirmed** | 5 of 5 |
+| A3: warm-up state precedes authority, and `--record-ws` is the cause | **confirmed** | 5 of 5 |
+
+**Run 1 (with `--record-ws`).**
+- **mapped-ckpt:**
+  - every bundle verifies `VALID W1+A1`, with 412–440 revocations per seed;
+  - 383–409 checkable gaps after authority per seed, all watched;
+  - no private page in any of them, and 0 records contradicted.
+- **mapped (control):** private pages in every checkable gap after authority, 100% on every seed.
+- **Before the first window (both arms):** private pages in every checkable gap, 290–294 per seed.
+
+**Run 2 (without `--record-ws`, mapped-ckpt).**
+- 300 gaps before the first window per seed, none with a private page.
+- Every bundle verifies `VALID W1+A1`.
+- After authority: the same 383–409 checkable gaps, all watched and all clean.
+- The revocation counts match run 1 seed for seed.
+
+**Reported, not deciding.**
+- **Sweeps:** 360 per run. Each took 3.8–4.5 ms at p50 and at most 55 ms.
+- **Interactive deadlines:** 99.76–99.99% met in all 15 runs.
+- **Interactive p99:**
+  - mapped: 1.7–2.7 ms;
+  - mapped-ckpt in run 1: 5.2–7.7 ms;
+  - mapped-ckpt in run 2: 4.4–25.1 ms, the high end at seed 994.
+
+Single runs are noisy here, so no claim is made about cost.
+
+**What this establishes**, for the image-backed regions on this host:
+- **Mechanism, A1 and A2:** within 1 s of a window ending, mapped-ckpt
+  releases every page a tenant changed, until its next window. This is
+  read from the kernel by a process that is neither the runtime nor its
+  key holder.
+- **Evidence:** none of the runtime's 2,138 signed release records
+  (5 seeds × 412–440, run 1) was contradicted.
+- **Auditor:** the same auditor sees retained state when it is there. In
+  the control it found private pages in 100% of checkable gaps, so a clean
+  result is not a blind one.
+
+This is E3, not E4: the observer is independent, but administrative
+control is not.
+
+**What it found that the runtime's own evidence could not:** with
+`--record-ws`, every tenant holds private state from warm-up until its
+first revocation. That is state with no tenant authority, and the journal
+never covers it. Run 2 confirms the cause: without the warm-up recording,
+the gap is empty. So "residency follows authority" holds from a tenant's
+first revocation on, not from trace start, whenever setup writes tenant
+memory.
+
+**Not changed by this result:**
+- The transfer test (T1/T2) still tests the H15 mechanism as committed.
+- The fix (a revocation at t = 0 for every tenant without authority) is
+  the next step and gets its own pre-registration.
+- Nothing here is about cgroup v2.
