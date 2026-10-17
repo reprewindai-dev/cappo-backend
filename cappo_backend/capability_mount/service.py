@@ -321,6 +321,7 @@ class MountRegistry:
                     intent_hash=intent_hash,
                     state=ConsequenceState.AUTHORIZED.value,
                     version=0,
+                    authority_epoch=row.authority_epoch if row else 1,
                     receipt_id=receipt_id,
                     mount_id=mount.id,
                     execution_id=token.execution_id,
@@ -372,7 +373,20 @@ class MountRegistry:
                 db.commit()
                 return False  # Already advanced past AUTHORIZED
 
+            is_stale_epoch = (
+                fence_row is not None
+                and latest.authority_epoch is not None
+                and fence_row.authority_epoch != latest.authority_epoch
+            )
+
             if fence_row is None or fence_row.terminated:
+                refusal_reason = "mount_terminated"
+            elif is_stale_epoch:
+                refusal_reason = "stale_authority_epoch"
+            else:
+                refusal_reason = None
+
+            if refusal_reason is not None:
                 try:
                     proof_hash = build_proof_subject_hash(
                         operation_id=operation_id,
@@ -382,7 +396,7 @@ class MountRegistry:
                         consequence_identity=latest.receipt_id or "unknown",
                         canonical_asserted_proposition=(
                             f"failed {latest.action} on {latest.resource or '*'} "
-                            "with_proof fence_refusal"
+                            f"with_proof fence_refusal ({refusal_reason})"
                         ),
                     )
                     # _SITE: begin_consequence_fence
@@ -393,6 +407,7 @@ class MountRegistry:
                             intent_hash=latest.intent_hash,
                             state=ConsequenceState.FAILED.value,
                             version=latest.version + 1,
+                            authority_epoch=fence_row.authority_epoch if fence_row else latest.authority_epoch,
                             receipt_id=latest.receipt_id,
                             mount_id=latest.mount_id,
                             execution_id=latest.execution_id,
@@ -401,7 +416,7 @@ class MountRegistry:
                             resource=latest.resource,
                             # Certain: the refusal is decided here, before dispatch.
                             completion_proof_type="fence_refusal",
-                            error_summary="mount_terminated",
+                            error_summary=refusal_reason,
                             proof_subject_hash=proof_hash,
                         )
                     )
@@ -416,10 +431,10 @@ class MountRegistry:
                     receipt_id=latest.receipt_id,
                     action=latest.action,
                     decision=Decision.DENY.value,
-                    reason="mount_terminated",
+                    reason=refusal_reason,
                     proof_type="fence_refusal",
                 )
-                raise ExecutionTerminatedError("mount_terminated")
+                raise ExecutionTerminatedError(refusal_reason)
 
             try:
                 proof_hash = build_proof_subject_hash(
@@ -437,6 +452,7 @@ class MountRegistry:
                     intent_hash=latest.intent_hash,
                     state=ConsequenceState.STARTED.value,
                     version=latest.version + 1,
+                    authority_epoch=fence_row.authority_epoch if fence_row else latest.authority_epoch,
                     receipt_id=latest.receipt_id,
                     mount_id=latest.mount_id,
                     execution_id=latest.execution_id,
@@ -556,6 +572,7 @@ class MountRegistry:
                     intent_hash=latest.intent_hash,
                     state=target.value,
                     version=latest.version + 1,
+                    authority_epoch=latest.authority_epoch,
                     receipt_id=latest.receipt_id,
                     mount_id=latest.mount_id,
                     execution_id=latest.execution_id,
@@ -1980,6 +1997,7 @@ class MountRegistry:
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor, []
 
         row.terminated = True
+        row.authority_epoch = (row.authority_epoch or 1) + 1
         mark_mount_revoked(mount_id)
         
         from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
