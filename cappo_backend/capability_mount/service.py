@@ -2057,6 +2057,90 @@ class MountRegistry:
         db.commit()
         return new_epoch
 
+    def handover_incarnation(
+        self,
+        mount_id: str,
+        *,
+        decision_hash: str,
+        reason: str = "successor_handover",
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomically advance the mount's authority epoch, chain its continuity history_head,
+        and mint a fresh single-commit token_id and nonce for the successor incarnation (K1 -> K2).
+        """
+        db = self._db()
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            db.commit()
+            raise ValueError(f"unknown_mount: {mount_id}")
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            db.commit()
+            raise PermissionError("owner_mismatch")
+        if row.terminated:
+            db.commit()
+            raise RuntimeError("cannot handover incarnation on terminated mount")
+
+        previous_epoch = row.authority_epoch or 1
+        new_epoch = previous_epoch + 1
+        mount_data = dict(row.mount_json or {})
+        token_data = dict(row.token_json or {})
+
+        previous_history_head = str(
+            mount_data.get("history_head")
+            or hashlib.sha256(f"genesis:{mount_id}:{row.token_id}:{previous_epoch}".encode("utf-8")).hexdigest()
+        )
+        new_token_id = f"tok_{secrets.token_hex(12)}"
+        new_nonce = secrets.token_urlsafe(18)
+        new_history_head = hashlib.sha256(
+            f"{previous_history_head}:{mount_id}:{previous_epoch}->{new_epoch}:{decision_hash}:{new_token_id}".encode("utf-8")
+        ).hexdigest()
+
+        incarnation = int(mount_data.get("incarnation") or 1) + 1
+        mount_data["incarnation"] = incarnation
+        mount_data["previous_history_head"] = previous_history_head
+        mount_data["history_head"] = new_history_head
+        mount_data["decision_hash"] = decision_hash
+        mount_data["handover_reason"] = reason
+
+        token_data["token_id"] = new_token_id
+        token_data["nonce"] = new_nonce
+
+        row.authority_epoch = new_epoch
+        row.token_id = new_token_id
+        row.token_nonce = new_nonce
+        row.nonce_consumed = False
+        row.mount_json = mount_data
+        row.token_json = token_data
+
+        from cappo_backend.models.capability_lease import CapabilityLease
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
+        if lease is not None and (lease.authority_epoch or 0) < new_epoch:
+            lease.authority_epoch = new_epoch
+
+        record = self._record(row)
+        anchor = self.anchor.anchor(
+            "handover_incarnation",
+            action="handover",
+            decision=Decision.ALLOW.value,
+            reason=reason,
+            mount=record.mount,
+            token=record.token,
+        )
+        db.commit()
+        return {
+            "mount_id": mount_id,
+            "incarnation": incarnation,
+            "previous_authority_epoch": previous_epoch,
+            "authority_epoch": new_epoch,
+            "token_id": new_token_id,
+            "nonce": new_nonce,
+            "previous_history_head": previous_history_head,
+            "history_head": new_history_head,
+            "decision_hash": decision_hash,
+            "anchor_status": anchor.status,
+        }
+
 
 def load_packages_from_json(raw: str | None) -> list[CapabilityPackage]:
     """Load explicitly configured packages; an absent catalog is intentionally empty."""

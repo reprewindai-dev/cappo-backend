@@ -181,6 +181,28 @@ class AdvanceEpochResponse(BaseModel):
     authority_epoch: int
 
 
+class HandoverIncarnationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision_hash: str = Field(min_length=8, max_length=128)
+    reason: str = Field(default="successor_handover", min_length=1, max_length=128)
+
+
+class HandoverIncarnationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mount_id: str
+    incarnation: int
+    previous_authority_epoch: int
+    authority_epoch: int
+    token_id: str
+    nonce: str
+    previous_history_head: str
+    history_head: str
+    decision_hash: str
+    anchor_status: str
+
+
 class RedeemRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -780,6 +802,32 @@ def advance_mount_epoch(
         mount_id=mount_id,
         authority_epoch=new_epoch,
     )
+
+
+@router.post("/mounts/{mount_id}/handover", response_model=HandoverIncarnationResponse)
+def handover_mount_incarnation(
+    mount_id: str,
+    body: HandoverIncarnationRequest,
+    request: Request,
+    registry: MountRegistry = Depends(get_registry),
+) -> HandoverIncarnationResponse:
+    principal, workspace = _caller(request)
+    try:
+        result = registry.handover_incarnation(
+            mount_id,
+            decision_hash=body.decision_hash,
+            reason=body.reason,
+            owner_principal=principal,
+            owner_workspace=workspace,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return HandoverIncarnationResponse(**result)
 
 
 @router.post("/redeem", response_model=RedeemResponse)

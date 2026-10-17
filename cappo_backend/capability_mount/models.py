@@ -183,6 +183,12 @@ class Mount(ContractModel):
     boot_instance_id: str | None = None
     runtime_key_thumbprint: str | None = None
     state_root: str | None = None
+    # --- Continuity Lineage (D0 -> D3 -> D0 Incarnation Handover) ---
+    incarnation: int = 1
+    previous_history_head: str | None = None
+    history_head: str | None = None
+    decision_hash: str | None = None
+    handover_reason: str | None = None
 
 
 class EphemeralScopedToken(ContractModel):
