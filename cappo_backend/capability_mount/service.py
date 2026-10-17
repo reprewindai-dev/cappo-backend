@@ -379,10 +379,10 @@ class MountRegistry:
                 and fence_row.authority_epoch != latest.authority_epoch
             )
 
-            if fence_row is None or fence_row.terminated:
-                refusal_reason = "mount_terminated"
-            elif is_stale_epoch:
+            if is_stale_epoch:
                 refusal_reason = "stale_authority_epoch"
+            elif fence_row is None or fence_row.terminated:
+                refusal_reason = "mount_terminated"
             else:
                 refusal_reason = None
 
@@ -1375,6 +1375,8 @@ class MountRegistry:
             return preflight_deny("state_root_mismatch", record)
             
         if authority_epoch is not None:
+            if row.authority_epoch is not None and authority_epoch < row.authority_epoch:
+                return preflight_deny("stale_authority_epoch", record)
             from cappo_backend.models.capability_lease import CapabilityLease
             lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
             if lease and authority_epoch < lease.authority_epoch:
@@ -2013,6 +2015,31 @@ class MountRegistry:
         if in_flight:
             return Decision.ALLOW, "terminated_in_flight", anchor, in_flight
         return Decision.ALLOW, "terminated", anchor, []
+
+    def advance_epoch(
+        self,
+        mount_id: str,
+        *,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+    ) -> int:
+        """Monotonically advance the authority epoch of an active mount without terminating it."""
+        db = self._db()
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            db.commit()
+            raise ValueError(f"unknown_mount: {mount_id}")
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            db.commit()
+            raise PermissionError("owner_mismatch")
+        if row.terminated:
+            db.commit()
+            raise RuntimeError("cannot advance epoch on terminated mount")
+
+        row.authority_epoch = (row.authority_epoch or 1) + 1
+        new_epoch = row.authority_epoch
+        db.commit()
+        return new_epoch
 
 
 def load_packages_from_json(raw: str | None) -> list[CapabilityPackage]:
