@@ -379,10 +379,10 @@ class MountRegistry:
                 and fence_row.authority_epoch != latest.authority_epoch
             )
 
-            if is_stale_epoch:
-                refusal_reason = "stale_authority_epoch"
-            elif fence_row is None or fence_row.terminated:
+            if fence_row is None or fence_row.terminated:
                 refusal_reason = "mount_terminated"
+            elif is_stale_epoch:
+                refusal_reason = "stale_authority_epoch"
             else:
                 refusal_reason = None
 
@@ -1375,11 +1375,11 @@ class MountRegistry:
             return preflight_deny("state_root_mismatch", record)
             
         if authority_epoch is not None:
-            if row.authority_epoch is not None and authority_epoch < row.authority_epoch:
-                return preflight_deny("stale_authority_epoch", record)
             from cappo_backend.models.capability_lease import CapabilityLease
             lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
             if lease and authority_epoch < lease.authority_epoch:
+                return preflight_deny("stale_authority_epoch", record)
+            if not row.terminated and (row.authority_epoch or 1) > 1 and authority_epoch < row.authority_epoch:
                 return preflight_deny("stale_authority_epoch", record)
 
         if (
@@ -1495,6 +1495,7 @@ class MountRegistry:
             # permit is bound to the target CAPPO is actually dispatching to.
             return adapter.dispatch(self._with_permit(context, record.mount.id, target_ref))
 
+        target_rejection: ValueError | None = None
         try:
             # CAPPO's binding is the sole owner of authorization and execution.
             result = record.binding.consequence(
@@ -1506,6 +1507,11 @@ class MountRegistry:
         except PolicyError as exc:
             decision = Decision.DENY
             reason = str(exc)
+        except ValueError as exc:
+            # The target refused its own input (e.g. invalid_target_resource). Only
+            # reported as a governed deny below if the FSM recorded a definite FAILED;
+            # otherwise it propagates exactly as before.
+            target_rejection = exc
         except Exception:
             raise
 
@@ -1515,6 +1521,11 @@ class MountRegistry:
             .order_by(ConsequenceExecutionEvent.version.desc())
             .limit(1)
         ).scalar_one_or_none()
+        if target_rejection is not None:
+            if latest is None or latest.state != ConsequenceState.FAILED.value:
+                raise target_rejection
+            decision = Decision.DENY
+            reason = f"target_rejected:{target_rejection}"
         consequence_state = latest.state if latest is not None else None
         receipt_id = latest.receipt_id if latest is not None else None
         anchoring = {
@@ -2005,7 +2016,7 @@ class MountRegistry:
         from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
         lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
         if lease and lease.lease_state in (LeaseState.ISSUED.value, LeaseState.ACTIVE.value):
-            current_epoch = lease.revocation_epoch + 1
+            current_epoch = max(lease.revocation_epoch + 1, lease.authority_epoch or 0)
             # "terminate" explicitly means stopping it before natural expiration, 
             # so we use REVOKED and bump the revocation epoch.
             lease.transition_state(LeaseState.REVOKED, current_epoch)
@@ -2038,6 +2049,11 @@ class MountRegistry:
 
         row.authority_epoch = (row.authority_epoch or 1) + 1
         new_epoch = row.authority_epoch
+        from cappo_backend.models.capability_lease import CapabilityLease
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
+        if lease is not None and (lease.authority_epoch or 0) < new_epoch:
+            # Callers present the lease's generation; keep it aligned with the mount's.
+            lease.authority_epoch = new_epoch
         db.commit()
         return new_epoch
 
