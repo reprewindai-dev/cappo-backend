@@ -1268,7 +1268,8 @@ separately.
 
 - That the runtime measured honestly. The issuer key is the runtime's, and
   the witness checks history, not memory. This is evidence level E2: the
-  supervisor is trusted.
+  supervisor is trusted. "Independent residency audit" below adds a second
+  observer for this.
 - Anything about copies of tenant state outside the governed region.
 - Behaviour on WSL2 / cgroup v2.
 
@@ -1397,9 +1398,221 @@ holds under the amended rules.
 **Reporting rule:** missing runs, OOM kills, invalid evidence or fewer than
 12 wins stay part of the result. No seeds are replaced or added.
 
+**Where it runs (2026-10-12, before any run):**
+`.github/workflows/vre15-transfer.yml` runs the unchanged
+`scripts/vre15_transfer.sh` on a GitHub-hosted `ubuntu-24.04` runner.
+
+Why that machine:
+- It uses cgroup v2 and gives root through sudo.
+- It serves nothing.
+- Nobody involved in this work controls its kernel.
+
+The workflow:
+1. records the machine (kernel, cgroup, MGLRU, swap, CPU and memory);
+2. runs the check script;
+3. runs the transfer test;
+4. re-verifies every new evidence bundle from an empty directory;
+5. uploads the complete run directory and log as an artifact, kept 90
+   days.
+
+It is never run on the self-hosted runner. The rules above are unchanged.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
   long enough for swap to matter more than reclaim.
 - Other hosts. The noise above may be specific to this VM's storage and
   reclaim behaviour.
+
+## Independent residency audit
+
+The evidence above is the runtime's own measurement, signed with the
+runtime's key (E2). The auditor adds a second observer that does not rely
+on it.
+
+### What the auditor is
+
+`vre15/audit.py` runs as its own process, outside the tenant cgroup. It
+imports nothing from the runtime, and its Ed25519 key exists only in its
+memory. Every 250 ms it:
+
+1. reads `/proc/<runtime>/maps` and finds each tenant's region as the
+   kernel lists it: the mappings of that tenant's image file;
+2. reads `/proc/<runtime>/pagemap` over those mappings and counts private
+   pages, meaning copy-on-write copies or swapped pages. That is tenant
+   state the image does not hold;
+3. appends a hash-chained record of the sweep. When the runtime's request
+   loop ends, it seals and signs the log.
+
+The runtime contributes only a clock file: when the trace started and when
+the request loop ended. The auditor records when each appeared, and the
+verifier rejects a declared time more than 1 s from when it appeared.
+
+`verify_evidence.py --audit` joins the log with the authority schedule and
+the revocation records, offline and still standalone:
+
+| Verdict | When |
+|---|---|
+| `REJECTED_RESIDENCY_CONTRADICTED` | A sweep that ran wholly after a record said "released" saw private pages of that tenant before its next window. |
+| `REJECTED_RESIDENCY_OUTLIVED_AUTHORITY` | Private pages were seen more than 1 s (`GRACE_S`) after a window ended and before the next one began. |
+| `REJECTED_AUDIT_*` | The log is broken, unsealed, signed by an unpinned key, ends early, or its schedule differs from the records. |
+| `VALID`, profile `W1+A1` | None of the above. |
+
+Private pages before a tenant's first window are reported, not rejected,
+because the journal makes no claim about them. `--audit-only` reads a log
+on its own, for an arm with no journal.
+
+**Independence.** The observation is independent: the kernel's page
+tables, read by another process under another key. Administrative control
+is not: same machine, same root, same author. That is E3, not E4.
+
+### Tests
+
+`tests/test_vre15_audit.py` runs four small runtimes. Each is a real
+process with one region mapped over its image, watched by a real auditor
+process. Only the honest one verifies.
+
+| Runtime | Behaviour | Verdict |
+|---|---|---|
+| honest | revokes at window end (`revoke.py`) and journals it | `VALID L1+A1`; the gap was watched |
+| liar | writes pages back but keeps them, then signs "0 held" | the journal alone verifies `VALID`; with the audit, `REJECTED_RESIDENCY_CONTRADICTED` (5 private pages) |
+| late | revokes honestly 1.3 s after the window ends | `REJECTED_RESIDENCY_OUTLIVED_AUTHORITY` |
+| never | never revokes, no journal (control) | `--audit-only`: private state outside authority |
+
+The tests also cover:
+- tampering (erased observations, a missing seal, a foreign key, no log);
+- the CLI run from an empty directory;
+- the pre-registered analyzer below, on synthetic manifests.
+
+### Smoke run (exploratory): seed 990, 30 s, 16 MiB
+
+Run with `--policies mapped mapped-ckpt --record-ws --probe-revoked
+--evidence --audit`. It is not kept, because seed 990 is not part of any
+test.
+
+| Arm | Checkable gaps after authority | Watched | With private pages | Gaps before first authority with private pages (of 196 checkable) |
+|---|---|---|---|---|
+| mapped (no revocation) | 141 | 141 | 172 gaps, counted over all gaps including short ones (the checkable-only count was added after this run) | 294 of all gaps |
+| mapped-ckpt | 143 | 143 | 0; bundle `VALID W1+A1`, 300 revocations | 293 of all gaps |
+
+Sweeps took 4 ms (p50), 15 ms at most, which is about 1.6% of one CPU.
+
+What it suggests, pending the test below:
+- The auditor tells the arms apart after authority ends.
+- Neither arm is clean before a tenant's first window. Reading
+  `host.py`, the likely cause is `--record-ws`: warm-up runs every tenant
+  under no authority, and that state stays private until the tenant's
+  first revocation. If so, residency follows authority only from the first
+  revocation on. That is a gap in the mechanism, found by the auditor and
+  not by the runtime's own evidence.
+
+## Pre-registered: independent residency audit (fixed before the run)
+
+Written and committed before any audited run with these seeds.
+
+- **Where:** this repository's cloud host, cgroup v1. The audit tests the
+  evidence, not the kernel, so v1 is enough. The transfer test still needs
+  cgroup v2.
+- **Settings:** 16 MiB, informative trace, 300 tenants, 90 s at 250 req/s;
+  `--probe-revoked --rotate-order --evidence --audit`. Sweep period
+  250 ms, grace 1 s; a gap counts as checkable when it is at least 1 s
+  long after the grace.
+- **Seeds:** 991–995. These are fresh and not 801–815.
+- **Run 1:** `--record-ws`, policies mapped and mapped-ckpt (10 runs).
+- **Run 2:** without `--record-ws`, mapped-ckpt only (5 runs).
+
+**Hypotheses**
+
+| Hypothesis | Claim | Confirmed only if, in every one of the 5 seeds |
+|---|---|---|
+| A1 | Under an independent observer, mapped-ckpt keeps no private state after authority. | Run 1's mapped-ckpt bundle verifies `VALID W1+A1`, it has at least 100 checkable gaps after authority, and every one of them was watched. |
+| A2 | The auditor sees the control's retained state, so A1 cannot be a blind auditor. | Run 1's mapped run has at least 100 checkable gaps after authority, and private pages in at least 50% of them. |
+| A3 | Warm-up state precedes authority, and `--record-ws` is the cause. | In run 1, both arms show private pages in at least 50% of checkable gaps before the first window. In run 2, mapped-ckpt shows none in any gap before the first window and verifies `VALID W1+A1`. |
+
+**Shared rules**
+- A run that is missing, duplicated, killed or OOM-killed fails the
+  hypothesis it belongs to.
+- Parameters that differ from the above fail all three.
+
+**Analysis:** `python -m vre15.audit_prereg <run 1 manifest> <run 2 manifest>`.
+
+**Reporting rule:** every outcome is reported as it comes out. If A3's
+second half fails, the cause is something other than `--record-ws` and
+stays open.
+
+**What this cannot show, whatever the outcome:**
+- state outside the image mappings;
+- anything done by a process with the same root privileges;
+- behaviour on cgroup v2.
+
+**If A3 holds, the fix is a separate, pre-registered step:** check out
+every tenant that has no authority at trace start, which is a revocation
+at t = 0. Pre-registration T1/T2 tests the H15 mechanism as committed, so
+the transfer test runs unchanged.
+
+
+### Result: runs `20261012T104244Z` (run 1) and `20261012T110108Z` (run 2)
+
+Both runs used commit `f96adba`, with tracked files unmodified, on this
+repository's cloud host (cgroup v1). The verdict is from `python -m
+vre15.audit_prereg`, saved as `20261012T110108Z/audit-summary.json`. All
+15 runs exited 0, with no OOM kills, no integrity failures and no
+authority violations.
+
+| Hypothesis | Outcome | Per seed (991–995) |
+|---|---|---|
+| A1: under the audit, mapped-ckpt keeps no private state after authority | **confirmed** | 5 of 5 |
+| A2: the auditor sees the control's retained state | **confirmed** | 5 of 5 |
+| A3: warm-up state precedes authority, and `--record-ws` is the cause | **confirmed** | 5 of 5 |
+
+**Run 1 (with `--record-ws`).**
+- **mapped-ckpt:**
+  - every bundle verifies `VALID W1+A1`, with 412–440 revocations per seed;
+  - 383–409 checkable gaps after authority per seed, all watched;
+  - no private page in any of them, and 0 records contradicted.
+- **mapped (control):** private pages in every checkable gap after authority, 100% on every seed.
+- **Before the first window (both arms):** private pages in every checkable gap, 290–294 per seed.
+
+**Run 2 (without `--record-ws`, mapped-ckpt).**
+- 300 gaps before the first window per seed, none with a private page.
+- Every bundle verifies `VALID W1+A1`.
+- After authority: the same 383–409 checkable gaps, all watched and all clean.
+- The revocation counts match run 1 seed for seed.
+
+**Reported, not deciding.**
+- **Sweeps:** 360 per run. Each took 3.8–4.5 ms at p50 and at most 55 ms.
+- **Interactive deadlines:** 99.76–99.99% met in all 15 runs.
+- **Interactive p99:**
+  - mapped: 1.7–2.7 ms;
+  - mapped-ckpt in run 1: 5.2–7.7 ms;
+  - mapped-ckpt in run 2: 4.4–25.1 ms, the high end at seed 994.
+
+Single runs are noisy here, so no claim is made about cost.
+
+**What this establishes**, for the image-backed regions on this host:
+- **Mechanism, A1 and A2:** within 1 s of a window ending, mapped-ckpt
+  releases every page a tenant changed, until its next window. This is
+  read from the kernel by a process that is neither the runtime nor its
+  key holder.
+- **Evidence:** none of the runtime's 2,138 signed release records
+  (5 seeds × 412–440, run 1) was contradicted.
+- **Auditor:** the same auditor sees retained state when it is there. In
+  the control it found private pages in 100% of checkable gaps, so a clean
+  result is not a blind one.
+
+This is E3, not E4: the observer is independent, but administrative
+control is not.
+
+**What it found that the runtime's own evidence could not:** with
+`--record-ws`, every tenant holds private state from warm-up until its
+first revocation. That is state with no tenant authority, and the journal
+never covers it. Run 2 confirms the cause: without the warm-up recording,
+the gap is empty. So "residency follows authority" holds from a tenant's
+first revocation on, not from trace start, whenever setup writes tenant
+memory.
+
+**Not changed by this result:**
+- The transfer test (T1/T2) still tests the H15 mechanism as committed.
+- The fix (a revocation at t = 0 for every tenant without authority) is
+  the next step and gets its own pre-registration.
+- Nothing here is about cgroup v2.

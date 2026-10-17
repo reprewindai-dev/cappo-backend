@@ -559,6 +559,7 @@ class Host:
         swap0, maj0, tmaj0 = vmstat(), majflt(), thread_majflt()
         start = time.perf_counter()
         start_wall = time.time()
+        write_clock(self.spec.get("clock"), {"start_wall": start_wall})
         if self.spec.get("evidence"):
             from vre15 import evidence
             ev = self.spec["evidence"]
@@ -600,6 +601,7 @@ class Host:
             self.last[t] = max(at, self.last[t])
             results.append([t, round((done - at) * 1000, 3), self.env[t]["class"], True])
         wall = time.perf_counter() - start
+        write_clock(self.spec.get("clock"), {"start_wall": start_wall, "end_wall": time.time()})
         swap1, maj1, tmaj1 = vmstat(), majflt(), thread_majflt()
         reclaim = prefetch = None
         if self.release_q:
@@ -827,6 +829,17 @@ class Openings:
             due.append(self.q[self.i][1])
             self.i += 1
         return due
+
+
+def write_clock(path, clock):
+    """Audited runs: tell the residency auditor (vre15/audit.py) when the
+    trace started and when the request loop ended, in wall-clock time."""
+    if not path:
+        return
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(clock, f)
+    os.replace(tmp, path)
 
 
 def vmstat():

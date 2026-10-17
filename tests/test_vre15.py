@@ -2,6 +2,7 @@
 
 import json
 import pathlib
+import re
 
 from vre15 import traces
 from vre15.runner import KERNEL_PAGED
@@ -154,10 +155,15 @@ def test_committed_evidence_bundles_verify_offline():
     assert bundles
     for b in bundles:
         trust = json.loads(pathlib.Path(str(b).replace(".evidence.json", ".trust.json")).read_text())
-        v = verify_evidence.verify_bundle(json.loads(b.read_text()), trust, require_witness=True)
-        assert v["verdict"] == "VALID" and v["profile"] == "W1", (b, v)
-        row = next(r for r in json.loads((b.parent / "manifest.json").read_text())["summary"]["vre15"]
-                   if "evidence" in r)
+        audit_log = pathlib.Path(str(b).replace(".evidence.json", ".audit.jsonl"))
+        audit = verify_evidence.read_jsonl(audit_log) if audit_log.exists() else None
+        v = verify_evidence.verify_bundle(json.loads(b.read_text()), trust, require_witness=True,
+                                          audit=audit, require_audit=audit is not None)
+        assert v["verdict"] == "VALID" and v["profile"] == ("W1+A1" if audit else "W1"), (b, v)
+        rows = [r for r in json.loads((b.parent / "manifest.json").read_text())["summary"]["vre15"]
+                if "evidence" in r]
+        seed = re.search(r"-s(\d+)-", b.name)
+        row = rows[0] if len(rows) == 1 else next(r for r in rows if r["seed"] == int(seed.group(1)))
         assert row["evidence"]["verdict"] == "VALID" and row["evidence"]["revocations"] == v["revocations"]
         # CAPPO's own EEE verifier, written independently, agrees on every envelope.
         from cappo_backend.services.eee import EEEVerifier, VerificationVerdict
@@ -167,3 +173,14 @@ def test_committed_evidence_bundles_verify_offline():
             report = cappo.verify(rec["body"]["envelope"])
             assert report.verdict == VerificationVerdict.VALID_WITH_UNRESOLVED_REFS, (b, rec["seq"], report)
             assert report.reasons == ["REVOCATION_NOT_CHECKED"]
+
+
+def test_committed_control_audits_read_offline():
+    """Audit logs of arms without a journal (vre15/audit.py, --audit-only)
+    are intact and signed by their pinned auditor key."""
+    from vre15 import verify_evidence
+    for log in sorted(RUNS.glob("*/*.audit.jsonl")):
+        if pathlib.Path(str(log).replace(".audit.jsonl", ".evidence.json")).exists():
+            continue                                    # checked with its bundle above
+        trust = json.loads(pathlib.Path(str(log).replace(".audit.jsonl", ".trust.json")).read_text())
+        assert verify_evidence.audit_only(verify_evidence.read_jsonl(log), trust)["verdict"] == "AUDIT_READ", log
