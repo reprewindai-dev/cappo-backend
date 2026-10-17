@@ -1392,10 +1392,13 @@ class MountRegistry:
             .order_by(CapabilityLease.authority_epoch.desc())
             .first()
         )
-        effective_epoch = max(
-            (lease.authority_epoch or 1) if lease is not None else 1,
-            (row.authority_epoch or 1) if not row.terminated else 1,
-        )
+        # Two counters exist: the lease epoch (issued at 0) and the mount row epoch (starts at 1).
+        # A caller presenting the epoch it was issued must stay valid until authority actually
+        # advances, so the initial values do not raise the bar: only an advanced mount epoch (> 1)
+        # or the lease epoch itself does.
+        lease_epoch = (lease.authority_epoch or 0) if lease is not None else 0
+        row_epoch = (row.authority_epoch or 1) if not row.terminated else 1
+        effective_epoch = max(lease_epoch, row_epoch if row_epoch > 1 else 0)
         if authority_epoch is not None:
             if authority_epoch < effective_epoch:
                 return preflight_deny("stale_authority_epoch", record)
