@@ -1738,3 +1738,35 @@ image left untouched.
 - crash safety under power loss: only process kills were tested.
 
 Per `00_VEKLOM_BIBLE.md`, none of this supports "100% production ready".
+
+### After the fix: runs `20261018T002424Z` and `20261018T002629Z` (exploratory)
+
+These are exploratory runs, not pre-registered, on commit `f008a7b` with
+tracked files unmodified, on this cloud host (cgroup v1). The settings
+match the earlier committed runs, so the comparison is like for like:
+- `20261018T002424Z` repeats `20261011T231257Z`: seed 402, `--evidence`;
+- `20261018T002629Z` repeats run 1 of the audit test for seeds 991–992,
+  with `--audit`.
+
+**Behaviour is unchanged:**
+- Every bundle verifies (`VALID W1`, and `VALID W1+A1` with the audit),
+  with the same revocation counts: 415, 436 and 426.
+- 0 integrity failures and 0 authority violations.
+- The auditor watched every checkable gap after authority (399 of 399 and
+  392 of 392) and found no private page and no contradicted record.
+- **The checkpoint digest sequence is identical to the run before the fix,
+  for all three seeds.** The fix changes how state reaches the image, not
+  what reaches it.
+
+**Cost (single runs, so only indicative):**
+
+| Run | Seed | Checkpoint p50 | Checkpoint max | Lag p50 | Lag max | Interactive deadlines met | p99 | Nothing resident at 5 s |
+|---|---|---|---|---|---|---|---|---|
+| before fix (`20261011T231257Z`) | 402 | 2.7 ms | 8.2 ms | 7 ms | 72 ms | 99.75% | 16.4 ms | 94.8% |
+| after fix (`20261018T002424Z`) | 402 | 4.4 ms | 43.6 ms | 9 ms | 89 ms | 99.83% | 9.0 ms | 91.9% |
+| before fix (`20261012T104244Z`) | 991 / 992 | 2.3 / 2.4 ms | 108 / 11 ms | 5 / 6 ms | 110 / 53 ms | 99.93 / 99.85% | 5.2 / 5.9 ms | 93.0 / 92.5% |
+| after fix (`20261018T002629Z`) | 991 / 992 | 4.2 / 4.2 ms | 108 / 109 ms | 7 / 8 ms | 110 / 113 ms | 99.98 / 99.98% | 7.6 / 7.6 ms | 96.1 / 95.8% |
+
+A checkpoint takes about 1.8 ms longer at the median, as expected from the
+extra write and syncs. Revocation lag rises by about 2 ms at the median.
+Deadlines met stay within the run-to-run noise already documented here.
