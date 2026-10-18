@@ -13,7 +13,7 @@
 #
 # What runs:
 #   1. tests/test_vre15.py, tests/test_vre15_revoke.py, tests/test_vre15_evidence.py,
-#      tests/test_vre15_audit.py
+#      tests/test_vre15_audit.py, tests/test_vre15_crash.py (a known defect, xfail)
 #   2. vre15/verify_evidence.py on every committed evidence bundle, copied into an
 #      empty directory with only its trust store, the way a third party would run it.
 set -euo pipefail
@@ -67,7 +67,7 @@ fi
 
 echo "== tests"
 "$py" -m pytest -q -rs tests/test_vre15.py tests/test_vre15_revoke.py tests/test_vre15_evidence.py \
-  tests/test_vre15_audit.py
+  tests/test_vre15_audit.py tests/test_vre15_crash.py
 
 echo "== offline verification of committed evidence bundles"
 status=0

@@ -1616,3 +1616,80 @@ memory.
 - The fix (a revocation at t = 0 for every tenant without authority) is
   the next step and gets its own pre-registration.
 - Nothing here is about cgroup v2.
+
+## Due diligence (2026-10-18)
+
+The question asked: is VRE-1.5 complete, stress-tested and safe, or is it
+marketing? Everything below was checked on the bytes that are on GitHub,
+not on a working copy.
+
+### Checked
+
+- **A clean clone** of `claude/epic-clarke-jnefup` at `297bf99`, in a new
+  virtual environment, imports its own code. `scripts/vre15_check.sh`:
+  32 passed, 1 skipped (the swap test needs `--with-swap`). All 11
+  committed bundles verify from an empty directory: one `VALID W1` and ten
+  `VALID W1+A1` with their auditor logs.
+- **Changes by other agents:**
+  - Antigravity made one commit touching VRE code, `4a4a5de` on
+    `claude/live-residency-demo`, unmerged. It adds `vre15/live/`, a
+    browser demo, and changes nothing in the mechanism, the evidence code
+    or any result. No other branch changes VRE code that this branch lacks.
+- **The demo (label: DEMO), as written:**
+  - its page counts are the runtime's own measurement (E2, no auditor);
+  - "writes without authority are refused" is the demo server's own check
+    in Python. The memory itself stays writable, so the kernel does not
+    enforce the refusal;
+  - it listens on `0.0.0.0` without authentication, so anyone who can
+    reach the port can grant or revoke.
+
+  It says it uses a demo supervisor and key, not CAPPO, which is accurate.
+  It should not run on a public address as it is.
+
+### Found: a checkpoint is not crash-atomic (new, not previously documented)
+
+`revoke.revoke` writes modified pages into the image one run at a time,
+then syncs. A process killed between those writes leaves the image torn:
+some pages of the new state, some of the old. No receipt is written and
+nothing records that the image is torn.
+
+In a real process killed at its 3rd and at its 6th page write (of 8), the
+image held 2 and 5 of the 8 new pages. Without the kill, it held 8 of 8.
+`tests/test_vre15_crash.py` records this as `xfail(strict=True)`: it fails
+today, and the marker must come off when the defect is fixed.
+
+**What it affects:**
+- The claim "state preserved exactly" holds for every completed run. It
+  does not hold across a crash during a revocation.
+- None of the measured results change. No run crashed, and every run
+  checked integrity against a reference replay.
+
+**Fix, not yet made:** write the modified pages to a sidecar redo log,
+fsync, apply them to the image, fsync, then drop the log. Mapping an image
+replays a complete log first. This changes `revoke.py`, which the
+pre-registered transfer test measures, so it needs either an amendment
+there or its own pre-registered step.
+
+### Where VRE-1.5 stands
+
+| Claim | Status | Grade / label |
+|---|---|---|
+| Fewer missed deadlines than native kernel paging (the performance thesis) | **Disconfirmed** in every pre-registered test | — |
+| Authority enforced: 0 requests served outside authority | Observed in every run | E2, VERIFIED_REPO |
+| State preserved exactly | Observed in every completed run. Not across a crash mid-revocation (above). | E2, VERIFIED_REPO; crash: disconfirmed |
+| Revoked state leaves memory (H15), and an outside observer agrees (A1, A2) | Confirmed by pre-registered tests | E3, VERIFIED_REPO, on this cloud host (cgroup v1) |
+| Private state before a tenant's first authority | A real gap, confirmed (A3). The fix is not yet made. | E3 |
+| Each revocation is signed, witnessed and verifies offline | Observed. Tamper and liar cases rejected in tests. | Artifact integrity, not behaviour |
+| The same holds on WSL2 / cgroup v2, where production runs | **Not measured.** GitHub Actions billing blocks the runner. | UNVERIFIED |
+| The live demo | A demo | DEMO |
+
+**Not shown anywhere:**
+- E4: enforcement at a real sink, with independent readback, under an
+  adversarial condition;
+- independence of administrative control: the auditor shares the machine
+  and root with the runtime;
+- state outside the image mappings;
+- long endurance runs (runs here last 90 s);
+- behaviour under crash, beyond the defect above.
+
+Per `00_VEKLOM_BIBLE.md`, none of this supports "100% production ready".
