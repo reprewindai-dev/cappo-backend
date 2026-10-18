@@ -1,0 +1,17 @@
+{
+  "_note": "Shared Veklom permit-v2 / target-redeem-v1 contract vector. TEST-ONLY keys, deliberately public. Both cappo-backend and demo-arena must reproduce every derived value byte for byte.",
+  "expected_permit_hex": "69c742d3cc658862520e92b225c90e4de9e3b3c7b8b613abc312698384d48b21",
+  "expected_redeem_message_hex": "76656b6c6f6d2d7461726765742d72656465656d2d76310a6f702d766563746f722d303030310a656531643830326437633133643439363135623139393032373130356661363730386337363230386530653061653066626463343363633339343033613364330a323634616138316166663434623261633333303061656631343132376265346634393136303038636630393936633238343035366230373734393839336161390a6172656e612e70726f7465637465642d64617461736574",
+  "expected_redeem_message_utf8": "veklom-target-redeem-v1\nop-vector-0001\nee1d802d7c13d49615b199027105fa6708c76208e0e0ae0fbdc43cc39403a3d3\n264aa81aff44b2ac3300aef14127be4f4916008cf0996c284056b07749893aa9\narena.protected-dataset",
+  "expected_signature_hex": "cd229789a30ddac1a7ea1c860cfb0d7eae895776554097e30915920d2c21fb040f25b169308eb7252f479595f3ba81a112ac9d28c9eb0a18751086135580e806",
+  "mount_id": "mnt_vector0001",
+  "operation_id": "op-vector-0001",
+  "payload_sha256": "ee1d802d7c13d49615b199027105fa6708c76208e0e0ae0fbdc43cc39403a3d3",
+  "payload_utf8": "{\"fields\":{\"note\":\"approved-by-veklom\"},\"op\":\"modify\",\"operation_id\":\"op-vector-0001\",\"record_id\":42}",
+  "permit_key_hex": "ae03317ac7f4ef42369f1a4dedf63951b00216b4b0ce1ba7621355f1fba57184",
+  "receipt_id": "rcpt_vector0001",
+  "target_private_seed_hex": "38191b3b05ac8e4c1c2a8ddae4f47b614f7aea4af4b335ab9e5be7cee1e96a8e",
+  "target_public_key_hex": "efcc450908e768056f8abd02a6e03d3dc4effc927a7c681b6a93fe0db4fd5e3b",
+  "target_ref": "arena.protected-dataset",
+  "wrong_target_ref": "arena.other-target"
+}

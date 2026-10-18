@@ -1,0 +1,14 @@
+{
+  "ephemeral_execution_id": "exec_abc",
+  "profile_id": "profile_123",
+  "workload_identifier": "wimse://veklom.local/prod/payment/worker/process",
+  "task_id": "task_xyz",
+  "candidate_act_hash": "hash_123",
+  "issued_at": 1700000000,
+  "expires_at": 1700003600,
+  "jti": "jti_456",
+  "key_id": "key_789",
+  "cnf": {
+    "jwk": {}
+  }
+}

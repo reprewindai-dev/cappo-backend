@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from cappo_backend.db.session import get_session
+from cappo_backend.db.session import get_session, get_unscoped_session
 from cappo_backend.models.pgl_certificate import PGLCertificate
 from cappo_backend.models.pgl_ledger_event import PGLLedgerEvent
 from cappo_backend.models.vnp_models import (
@@ -58,7 +58,7 @@ CANONICAL_VNP_REGIONS = ["us-east", "us-west", "eu-west", "ap-southeast", "ap-no
 
 
 @router.get("/methodology")
-async def get_vnp_methodology(db: Session = Depends(get_session)) -> dict[str, Any]:
+async def get_vnp_methodology(db: Session = Depends(get_unscoped_session)) -> dict[str, Any]:
     """Evidence-labelled VNP runtime manifest; never synthesize connectivity."""
     probe_count = len(db.execute(select(ProbeEvent.id)).scalars().all())
     telemetry_count = len(db.execute(select(RegionalTelemetry.id)).scalars().all())
@@ -102,7 +102,7 @@ async def get_vnp_methodology(db: Session = Depends(get_session)) -> dict[str, A
 
 
 @router.get("/metrics")
-async def get_vnp_metrics(db: Session = Depends(get_session)) -> dict[str, Any]:
+async def get_vnp_metrics(db: Session = Depends(get_unscoped_session)) -> dict[str, Any]:
     """Unified live metrics query backed by stored VNP registry and telemetry."""
     timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -255,7 +255,7 @@ async def vnp_proxy_gateway(
 
 
 @router.get("/leaderboard")
-async def get_vnp_leaderboard(db: Session = Depends(get_session)) -> list[dict[str, Any]]:
+async def get_vnp_leaderboard(db: Session = Depends(get_unscoped_session)) -> list[dict[str, Any]]:
     """Get the current API performance rankings."""
     rankings = db.execute(
         select(PerformanceLeaderboard)
@@ -275,7 +275,7 @@ async def get_vnp_leaderboard(db: Session = Depends(get_session)) -> list[dict[s
 
 
 @router.get("/validators")
-async def get_vnp_validators(db: Session = Depends(get_session)) -> list[dict[str, Any]]:
+async def get_vnp_validators(db: Session = Depends(get_unscoped_session)) -> list[dict[str, Any]]:
     """Get the list of registered validators."""
     validators = db.execute(select(VNPValidator)).scalars().all()
     return [
@@ -292,7 +292,7 @@ async def get_vnp_validators(db: Session = Depends(get_session)) -> list[dict[st
 @router.get("/incidents")
 async def get_vnp_incidents(
     status: str | None = None,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_unscoped_session)
 ) -> list[dict[str, Any]]:
     """Get the list of protocol incidents."""
     stmt = select(VNPIncident)

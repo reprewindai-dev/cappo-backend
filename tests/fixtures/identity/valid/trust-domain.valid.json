@@ -1,0 +1,5 @@
+{
+  "trust_domain": "veklom.local",
+  "description": "Local",
+  "issuer_uri": "https://identity.veklom.local"
+}

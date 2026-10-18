@@ -50,7 +50,8 @@ COPY --chown=cappo:cappo entrypoint.sh /app/entrypoint.sh
 
 # Ensure entrypoint script is executable on Linux even when built from a
 # Windows checkout, and own everything in /app.
-RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && chown -R cappo:cappo /app
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && chown -R cappo:cappo /app \
+    && mkdir -p /var/lib/cappo /var/lib/cappo-effects && chown -R cappo:cappo /var/lib/cappo /var/lib/cappo-effects
 
 # Switch to non-root user
 USER cappo

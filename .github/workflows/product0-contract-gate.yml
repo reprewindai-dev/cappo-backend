@@ -1,0 +1,59 @@
+name: Veklom PRODUCT-0 Contract Conformance & Runtime Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  product0-contract-gate:
+    name: PRODUCT-0 Contract Conformance & Live Runtime Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml requests jsonschema
+
+      # A - G: Execute Local Contract Gate (Static Specification & Schema Verification)
+      - name: Run Static Contract Conformance Gate
+        run: |
+          python scripts/verify_product0_contract.py
+
+      # Live Runtime Execution Stage (Port 8002 Hostile Battery)
+      - name: Start CAPPO Integration Runtime (Port 8002)
+        run: |
+          echo "Starting CAPPO Consequence Runtime on port 8002..."
+          uvicorn cappo_backend.api.main:app --host 127.0.0.1 --port 8002 &
+          sleep 5
+
+      - name: Run Hostile Port-8002 Contract Battery
+        run: |
+          echo "Executing hostile test battery against http://127.0.0.1:8002..."
+          pytest tests/adversarial/ --junitxml=docs/evidence/raw_hostile_run_receipt.xml
+
+      - name: Seal Raw Responses & Receipts
+        run: |
+          echo "Sealing raw response artifacts into docs/evidence/..."
+          # Commit SHA and branch for visibility
+          echo "Branch: ${GITHUB_REF}" >> docs/evidence/run_meta.txt
+          echo "Commit: ${GITHUB_SHA}" >> docs/evidence/run_meta.txt
+          cat docs/evidence/run_meta.txt
+
+      - name: Final Merge Gate Evaluation
+        run: |
+          echo "======================================================================"
+          echo "CONTRACT + RUNTIME CONFORMANCE: PASSED"
+          echo "MERGE GATE: SATISFIED"
+          echo "COMMIT SHA: ${GITHUB_SHA}"
+          echo "======================================================================"

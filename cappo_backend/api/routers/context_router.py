@@ -1,12 +1,13 @@
-import httpx
 import time
+from typing import Any, Dict
+
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any
 
+from cappo_backend.config import get_settings
 from cappo_backend.core.governance.context_shaper import ContextShaper
 from cappo_backend.core.governance.jurisdiction import JurisdictionResolver
-from cappo_backend.config import get_settings
 
 router = APIRouter(prefix="/v1/context", tags=["context"])
 

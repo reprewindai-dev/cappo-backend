@@ -12,12 +12,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from cappo_backend.services.safety import (
+    AnomalyDetection,
     AnomalyDetectionService,
     ApproverTrustError,
     BehavioralBaselineService,
     CurrentMetric,
     Observation,
     RequestQuarantineService,
+    SelfApprovalForbiddenError,
 )
 
 
@@ -148,3 +150,42 @@ def test_quarantine_auto_deny_on_deadline() -> None:
     processed = q.process_expired()
     assert qr in processed
     assert q.get(qr.quarantine_id).status == "denied"
+
+
+def test_self_approval_rejected() -> None:
+    q = RequestQuarantineService(approvers_required=2)
+    anomaly = AnomalyDetection(
+        detection_id="d1",
+        agent_id="a1",
+        detected_at=datetime.now(timezone.utc),
+        anomaly_type="request_spike",
+        deviation_score=4.0,
+        anomaly_score=90.0,
+        severity="critical",
+        recommended_action="block",
+        evidence_hash="x",
+    )
+    qr = q.quarantine({"agent_id": "a1"}, [anomaly])
+    assert qr.status == "quarantined"
+    assert qr.requester_id == "a1"
+    assert qr.approval_required is True
+
+    # Self-approval by original requester is deterministically forbidden
+    with pytest.raises(SelfApprovalForbiddenError) as exc_info:
+        q.approve(qr.quarantine_id, "a1", approver_trust=95)
+
+    assert "SELF_APPROVAL_FORBIDDEN" in str(exc_info.value)
+    assert exc_info.value.decision == "DENY"
+    assert exc_info.value.denial_reason == "SELF_APPROVAL_FORBIDDEN"
+    assert exc_info.value.requester_id == "a1"
+    assert exc_info.value.approver_id == "a1"
+
+    # Quorum unchanged and request remains quarantined
+    assert len(qr.approvals_received) == 0
+    assert qr.status == "quarantined"
+
+    # Distinct valid approvers can still reach quorum
+    assert q.approve(qr.quarantine_id, "approver-1", approver_trust=95) is False
+    assert q.approve(qr.quarantine_id, "approver-2", approver_trust=88) is True
+    assert q.get(qr.quarantine_id).status == "approved"
+

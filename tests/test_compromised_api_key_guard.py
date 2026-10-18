@@ -7,7 +7,6 @@ from pydantic import ValidationError
 
 from cappo_backend.config import Settings
 
-
 COMPROMISED = "cappo_internal_exec_key_veklom_2026"
 
 

@@ -1,0 +1,12 @@
+{
+  "action": "record.create",
+  "arguments": {
+    "content": "activation-v1-allowed",
+    "mount": "mnt_c4e88e3c664d4ef4a70378a54b7a5a81"
+  },
+  "nonce": "<REDACTED>",
+  "operation_id": "op-mount-a-create",
+  "resource": "allowed-record",
+  "target_ref": "activation.local-record",
+  "token_id": "<REDACTED>"
+}

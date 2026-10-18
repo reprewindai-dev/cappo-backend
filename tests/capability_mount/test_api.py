@@ -242,3 +242,24 @@ def test_expired_mount_status_is_not_live(client: TestClient) -> None:
     assert status.json()["decision"] == "deny"
     assert status.json()["reason"] == "expired"
     assert status.json()["token"] is None
+
+def test_expired_mount_action_is_denied(client: TestClient) -> None:
+    anchor = prepare(client)
+    response = client.post("/v1/capability/mounts", json=mount_payload(1))
+    body = response.json()
+    time.sleep(1.1)
+
+    attempted_action = client.post(
+        f"/v1/capability/mounts/{body['mount']['id']}/actions",
+        json={
+            "token_id": body['token']['token_id'],
+            "nonce": body['token']['nonce'],
+            "action": "contact.read",
+        },
+    )
+    assert attempted_action.json()["decision"] == "deny"
+    assert attempted_action.json()["reason"] == "token_expired"
+    
+    # Assert no side-effect evidence beyond the deny anchor (no execution evidence consumed)
+    assert [event["event_type"] for event in anchor.events] == ["mount", "action_decision"]
+    assert anchor.events[-1]["decision"] == "deny"

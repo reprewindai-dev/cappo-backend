@@ -1,8 +1,8 @@
 import base64
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-import pytest
 
 from cappo_backend.services.canonical import (
     canonical_json,

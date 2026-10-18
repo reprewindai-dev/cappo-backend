@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Replay JTI Record",
+  "type": "object",
+  "properties": {
+    "jti": { "type": "string" },
+    "ephemeral_execution_id": { "type": "string" },
+    "audience": { "type": "string" },
+    "seen_at": { "type": "integer" },
+    "expires_at": { "type": "integer" }
+  },
+  "required": [
+    "jti",
+    "ephemeral_execution_id",
+    "audience",
+    "seen_at",
+    "expires_at"
+  ],
+  "additionalProperties": false
+}

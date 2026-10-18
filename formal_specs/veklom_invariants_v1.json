@@ -1,0 +1,54 @@
+﻿{
+  "schema_version": "veklom.invariants.v1",
+  "status": "FROZEN",
+  "invariants": [
+    {
+      "id": "INV-AUTH-01",
+      "name": "Authority Monotonicity (Non-Expansion)",
+      "description": "Effective child authority must be a subset of parent authority, which must be a subset of the governing policy ceiling. Authority cannot expand through delegation.",
+      "falsifiable_claim": "EffectiveAuthority(child) <= EffectiveAuthority(parent) <= PolicyCeiling"
+    },
+    {
+      "id": "INV-AUTH-02",
+      "name": "Composition Intersection",
+      "description": "The composition of individually-valid constraints must not widen effective authority. Evaluation must use intersection (AND), not union (OR).",
+      "falsifiable_claim": "EffectiveAuthority(A U B) = EffectiveAuthority(A) INTERSECT EffectiveAuthority(B)"
+    },
+    {
+      "id": "INV-AUTH-03",
+      "name": "Metadata Authority Resilience",
+      "description": "Database metadata, reputation, or trust scores cannot recreate, resurrect, or expand authority beyond the cryptographic credential.",
+      "falsifiable_claim": "EffectiveAuthority(DB_Metadata_Only) = NULL"
+    },
+    {
+      "id": "INV-AUTH-04",
+      "name": "Offline Parent Containment",
+      "description": "Offline execution capabilities cannot exceed the online parent's constraints, and reconciliation-required limits block offline progression.",
+      "falsifiable_claim": "OfflineAuthority <= OnlineAuthority"
+    },
+    {
+      "id": "INV-TRUTH-01",
+      "name": "P5 Explicit Finality",
+      "description": "No system component may record a COMPLETED_SUCCESS state without valid completion proof that is cryptographically bound to the specific operation.",
+      "falsifiable_claim": "State(COMPLETED_SUCCESS) IMPLIES EXISTS CryptographicReceipt"
+    },
+    {
+      "id": "INV-TRUTH-02",
+      "name": "P5 Outcome Uncertainty",
+      "description": "If communication drops after dispatch but before finality, the state must explicitly be OUTCOME_UNKNOWN and cannot be optimistically upgraded.",
+      "falsifiable_claim": "Dispatch AND NOT Receipt IMPLIES State(OUTCOME_UNKNOWN)"
+    },
+    {
+      "id": "INV-EVID-01",
+      "name": "Tamper-Evident Ledger Integrity",
+      "description": "Evidence records must be secured in a Merkle tree such that any historical mutation explicitly triggers a structural verification failure.",
+      "falsifiable_claim": "Mutate(Ledger_t) IMPLIES Verify(Ledger_t+1) = FALSE"
+    },
+    {
+      "id": "INV-EXEC-01",
+      "name": "Fail-Closed Execution Isolation",
+      "description": "Hostile execution workloads attempting to breach process or container boundaries without explicit capability grants must be denied and yield an isolated failure.",
+      "falsifiable_claim": "BreachAttempt(Boundary) IMPLIES DENY AND Effect = NULL"
+    }
+  ]
+}

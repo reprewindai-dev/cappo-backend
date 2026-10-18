@@ -1,0 +1,13 @@
+{
+  "authority_id": "auth_123",
+  "scope_hash": "scope_hash_val",
+  "policy_decision_hash": "pol_hash_val",
+  "candidate_act_hash": "act_hash_val",
+  "destination_hash": "dest_hash_val",
+  "rights": [
+    "truth.transition"
+  ],
+  "issued_at": 1700000000,
+  "expires_at": 1700003600,
+  "proof_of_possession": "pop_sig"
+}

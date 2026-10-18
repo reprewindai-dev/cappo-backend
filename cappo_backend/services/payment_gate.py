@@ -39,7 +39,9 @@ class PaymentGate:
             self._redis = redis_client
         else:
             import os
+
             import redis
+
             from cappo_backend.config import get_settings
             
             s = settings or get_settings()

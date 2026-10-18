@@ -1,8 +1,8 @@
 """Benchmarks router — API Trust Rankings derived from real execution data.
 
 Aggregates GovernedRun execution statistics by provider to produce a live
-leaderboard. Falls back to seed data when no runs exist yet, but that seed
-data is clearly marked and will be replaced as real runs accumulate.
+leaderboard. Only providers with governed runs are listed, and only measured
+values are reported: an empty board means nothing has been measured yet.
 """
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import Float, cast, desc, func
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from cappo_backend.db.session import get_session
+from cappo_backend.db.session import get_session, get_unscoped_session
 from cappo_backend.models.audit_event import AuditEvent
 from cappo_backend.models.governed_run import GovernedRun
 
@@ -185,36 +185,44 @@ _PROVIDER_SEED = {
 }
 
 
+class _ProviderStat:
+    """One provider's aggregate, computed in Python so it works on SQLite and Postgres alike."""
+
+    def __init__(self, result_payload: dict) -> None:
+        self.result_payload = result_payload
+        self.run_count = 0
+        self._latency_total = 0.0
+        self._latency_n = 0
+
+    @property
+    def avg_latency(self) -> float:
+        return self._latency_total / self._latency_n if self._latency_n else 0.0
+
+
 def _get_provider_stats(db: Session) -> list:
-    return (
-        db.query(
-            GovernedRun.result_payload,
-            func.count(GovernedRun.run_id).label("run_count"),
-            func.avg(
-                cast(
-                    func.json_extract(GovernedRun.result_payload, "$.latency_ms"),
-                    Float
-                )
-            ).label("avg_latency"),
-        )
-        .filter(GovernedRun.result_payload.isnot(None))
-        .group_by(
-            func.json_extract(GovernedRun.result_payload, "$.provider")
-        )
-        .all()
-    )
+    # json_extract() exists only in SQLite; on Postgres it raised and the route returned 500.
+    stats: dict[str, _ProviderStat] = {}
+    rows = db.query(GovernedRun.result_payload).filter(GovernedRun.result_payload.isnot(None)).all()
+    for (payload,) in rows:
+        if not isinstance(payload, dict):
+            continue
+        key = payload.get("provider", "unknown")
+        stat = stats.setdefault(key, _ProviderStat(payload))
+        stat.run_count += 1
+        latency = payload.get("latency_ms")
+        if isinstance(latency, (int, float)):
+            stat._latency_total += float(latency)
+            stat._latency_n += 1
+    return list(stats.values())
 
 
 def _get_error_run_count(db: Session, provider_key: str) -> int:
-    return (
-        db.query(func.count(GovernedRun.run_id))
-        .filter(
-            GovernedRun.state.in_(["failed", "error", "law0_violation"]),
-            func.json_extract(GovernedRun.result_payload, "$.provider") == provider_key
-        )
-        .scalar()
-        or 0
+    rows = (
+        db.query(GovernedRun.result_payload)
+        .filter(GovernedRun.state.in_(["failed", "error", "law0_violation"]))
+        .all()
     )
+    return sum(1 for (payload,) in rows if isinstance(payload, dict) and payload.get("provider") == provider_key)
 
 
 def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, error_run_count: int) -> dict:
@@ -247,11 +255,10 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
     dev_score = max(0, int(seed["devScore"] * trust_score_pct - latency_penalty))
 
     # sla and uptime as percentages (99.95 not 0.9995) for VNP frontend
+    # Only measured values are reported: the success rate observed across this provider's
+    # governed runs. No seed baseline is blended in and no SLA is asserted on the provider's behalf.
     real_uptime = round((1 - error_rate) * 100, 2)
-    alpha = min(1.0, run_count / 100.0)
-    blended_uptime = alpha * real_uptime + (1 - alpha) * seed["uptime24h"]
-    blended_sla = seed["sla"]
-    status_str = "Excellent" if blended_uptime >= 99.9 else "Nominal" if blended_uptime >= 99.0 else "Degraded"
+    status_str = "Excellent" if real_uptime >= 99.9 else "Nominal" if real_uptime >= 99.0 else "Degraded"
 
     return {
         "id": provider_key,
@@ -260,10 +267,21 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
         "p50": round(avg_lat, 1) if avg_lat > 0 else seed["p50"],
         "p95": round(avg_lat * 1.25, 1) if avg_lat > 0 else seed["p95"],
         "p99": round(avg_lat * 1.4, 1) if avg_lat > 0 else seed["p99"],
-        "sla": round(blended_sla, 2),
+        # An SLA is a provider's commitment and uptime needs continuous monitoring; Veklom has
+        # neither. It reports only what it observed: successes out of governed-run attempts.
+        "sla": None,
         "drift": seed["drift"],
         "sovereignTier": seed["sovereignTier"],
-        "complianceLabels": seed["complianceLabels"],
+        # Veklom does not certify providers; compliance labels are never asserted here.
+        "complianceLabels": [],
+        "measured": True,
+        "runCount": run_count,
+        "observedSuccess": {
+            "succeeded": run_count - error_run_count,
+            "attempts": run_count,
+            "percent": real_uptime,
+            "basis": "governed runs recorded by this Veklom deployment",
+        },
         "govScore": gov_score,
         "devScore": dev_score,
         "endpointUrl": seed["endpointUrl"],
@@ -271,41 +289,15 @@ def _build_provider_data(provider_key: str, run_count: int, avg_lat: float, erro
         "mcpSchema": seed["mcpSchema"],
         "provider": seed["provider"],
         "throughput": int(seed["throughput"] * (1 - error_rate)),
-        "uptime24h": round(blended_uptime, 2),
+        "uptime24h": None,
         "totalStaked": seed["totalStaked"],
         "status": status_str,
     }
 
 
-def _fill_missing_seed_providers(real_providers: dict[str, dict]) -> None:
-    for key, seed in _PROVIDER_SEED.items():
-        if key not in real_providers:
-            real_providers[key] = {
-                "id": key,
-                "name": seed["name"],
-                "category": seed["category"],
-                "p50": seed["p50"],
-                "p95": seed["p95"],
-                "p99": seed["p99"],
-                "sla": seed["sla"],
-                "drift": seed["drift"],
-                "sovereignTier": seed["sovereignTier"],
-                "complianceLabels": seed["complianceLabels"],
-                "govScore": seed["govScore"],
-                "devScore": seed["devScore"],
-                "endpointUrl": seed["endpointUrl"],
-                "description": seed["description"],
-                "mcpSchema": seed["mcpSchema"],
-                "provider": seed["provider"],
-                "throughput": seed["throughput"],
-                "uptime24h": seed["uptime24h"],
-                "totalStaked": seed["totalStaked"],
-                "status": seed["status"],
-            }
-
 
 @router.get("/leaderboard")
-async def get_leaderboard(db: Session = Depends(get_session)):
+async def get_leaderboard(db: Session = Depends(get_unscoped_session)):
     """Live API Trust Rankings derived from real GovernedRun execution data.
 
     Returns a flat JSON array of BenchApi objects directly, matching Next.js SWR.
@@ -326,8 +318,8 @@ async def get_leaderboard(db: Session = Depends(get_session)):
             provider_key, run_count, avg_lat, error_run_count
         )
 
-    # Fill in seed providers not yet seen in real runs
-    _fill_missing_seed_providers(real_providers)
+    # Providers with no governed runs are not listed. Seed rows used to fill the board,
+    # which published unmeasured SLAs and compliance labels as if observed (2026-10-08).
 
     # Sort by overall trust score derived from gov + dev + compliance
     def Math_round_trust(val):
@@ -349,7 +341,7 @@ async def get_leaderboard(db: Session = Depends(get_session)):
 
 
 @router.get("/staking/markets")
-def get_markets(db: Session = Depends(get_session)):
+def get_markets(db: Session = Depends(get_unscoped_session)):
     """SLA Staking Prediction Markets — derived from real execution reliability.
 
     Returns a flat JSON array of StakingMarket objects directly, matching Next.js SWR.

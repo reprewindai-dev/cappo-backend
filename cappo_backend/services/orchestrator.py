@@ -371,23 +371,34 @@ class RunOrchestrator:
         self._transition(run, RunState.EAT_MINTED)
 
     def execute_run(self, run: GovernedRun) -> dict[str, Any]:
-        """Enforce LAW 0, then run the executor.
-
-        The gateway check fires *before* the side effect (the executor call):
-        an invalid/missing EI raises ``EIValidationError`` while the run is still
-        ROUTED, so ``run_governed`` transitions it to FAILED and no side effect
-        occurs. This is the enforcement contract from the EI Plan -Enforcement
+        """Execute the governed action and record the result.
+        
+        This method spans the final boundary of the CAPPO/Governance
         scope ("before any side-effecting tool call").
         """
         self._enforce_law0(run)
         self._enforce_runtime_ownership(run)
         self._transition(run, RunState.EXECUTING)
-        result = self._executor.execute(
-            _execution_request(run.request_payload or {}, run.execution_identity or {})
-        )
-        run.result_payload = result
-        self._transition(run, RunState.EXECUTED)
-        return result
+        
+        # Durably commit the EXECUTING state BEFORE dispatching.
+        # This closes the crash window: if the process dies during execution,
+        # the system re-reads the database and knows it is OUTCOME_UNKNOWN.
+        self._db.commit()
+        
+        try:
+            result = self._executor.execute(
+                _execution_request(run.request_payload or {}, run.execution_identity or {})
+            )
+            run.result_payload = result
+            self._transition(run, RunState.EXECUTED)
+            self._db.commit()
+            return result
+        except Exception:
+            # If execution fails gracefully within the process,
+            # the outer run_governed will catch it and transition to FAILED,
+            # but we should ensure the transaction is clean.
+            self._db.rollback()
+            raise
 
     def _enforce_law0(self, run: GovernedRun) -> None:
         if self._gateway is None:
@@ -480,6 +491,9 @@ class RunOrchestrator:
         outcome_hash = sha256_json({"state": RunState.EXECUTED.value, "result": result})
         pre_cert_id = (run.pgl_identity or {}).get("pre_execution_certificate_id", "")
         governance_decision = _require_governance_decision(run)
+        # The model the executor actually used, if it reported one. Surfaced as
+        # accountable provenance in the post-execution attestation; never invented.
+        model_used = result.get("model") if isinstance(result, dict) else None
 
         params = PostCertificateParams(
             pre_certificate_id=pre_cert_id,
@@ -497,6 +511,7 @@ class RunOrchestrator:
             output_hash=output_hash,
             outcome_hash=outcome_hash,
             input_hash=run.hashes.get("input_hash"),
+            model_used=model_used if isinstance(model_used, str) else None,
         )
         post_cert = self._pgl.mint_post_certificate(params)
 

@@ -1,0 +1,25 @@
+{
+  "milestone": "LINUX-FALSIFIER-1",
+  "verdict": "VALID",
+  "lease_identifier": "lease-b7b1a131",
+  "evidence_packet": {
+    "A_binding_digest": "fcb6686b91763daf2f80a96312d154da0af67606c358459bcf0ba51ecc9a2fe6",
+    "A_pidfd_termination_result": "ESRCH (Process terminated)",
+    "old_cgroup_identity": 3991,
+    "new_cgroup_identity": 4035,
+    "B_binding_digest": "3ddaea0998a20878231c9336183518883bfd421684ce7d1a643c1e9d3cc309a1",
+    "rejected_dispatch": {
+      "binding_comparison_result": "pidfd: ESRCH (Process terminated), cg_id: 4035 != 3991",
+      "dispatch_decision": "DENY"
+    },
+    "legitimate_dispatch": {
+      "binding_comparison_result": "pidfd: OK, cg_id: 4035 == 4035",
+      "dispatch_decision": "ALLOW"
+    },
+    "consequences": {
+      "target_state_before": 0,
+      "substituted_execution_consequences": 0,
+      "legitimate_execution_consequences": 1
+    }
+  }
+}

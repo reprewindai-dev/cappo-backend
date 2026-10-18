@@ -12,6 +12,8 @@ from cappo_backend.capability_mount.service import AnchorResult
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.services.audit_service import AuditService
 
+_PGL_EVENT_TYPE = "custom"
+
 
 class AuditPGLAnchor:
     """Stage local evidence and synchronously confirm one external PGL append.
@@ -34,6 +36,7 @@ class AuditPGLAnchor:
         reason: str,
         mount: Mount | None,
         token: EphemeralScopedToken | None,
+        **kwargs: Any,
     ) -> AnchorResult:
         payload: dict[str, Any] = {
             "event_type": event_type,
@@ -44,6 +47,11 @@ class AuditPGLAnchor:
             "package_ref": mount.package_ref if mount else None,
             "execution_id": token.execution_id if token else None,
         }
+        # Consequence-outcome events carry the operation identity so the ledger can
+        # thread authority (mount, decision, terminate) and outcome for one consequence.
+        for key in ("operation_id", "receipt_id", "consequence_state", "proof_type"):
+            if kwargs.get(key) is not None:
+                payload[key] = kwargs[key]
         try:
             event = AuditService(self.db, settings=self.settings).record(
                 f"capability_mount_{event_type}",
@@ -58,9 +66,15 @@ class AuditPGLAnchor:
         url = self.settings.pgl_ledger_url
         if not url:
             return AnchorResult(
-                "unconfirmed",
+                "pending_reconciliation",
                 anchor_id=event.log_hash,
                 detail="external PGL is not configured",
+            )
+        if not self.settings.pgl_ledger_agent_id:
+            return AnchorResult(
+                "pending_reconciliation",
+                anchor_id=event.log_hash,
+                detail="PGL_LEDGER_AGENT_ID is not configured",
             )
 
         try:
@@ -71,20 +85,65 @@ class AuditPGLAnchor:
                 f"{url.rstrip('/')}/api/v1/ledger/events",
                 headers=headers,
                 json={
-                    "agent_id": token.execution_id if token else "cappo-system",
-                    "event_type": event_type,
+                    "agent_id": self.settings.pgl_ledger_agent_id,
+                    "event_type": _PGL_EVENT_TYPE,
                     "actor": "cappo-backend",
                     "summary": f"Capability mount {event_type}",
-                    "details": payload | {"log_hash": event.log_hash},
+                    "details": payload
+                    | {
+                        "log_hash": event.log_hash,
+                        "schema_version": "cappo.capability_mount.v1",
+                    },
                     "idempotency_key": event.log_hash,
                 },
                 timeout=self.settings.pgl_ledger_timeout_ms / 1000,
             )
-            response.raise_for_status()
+            if not 200 <= response.status_code < 300:
+                response.raise_for_status()
         except Exception:
             return AnchorResult(
-                "unconfirmed",
+                "pending_reconciliation",
                 anchor_id=event.log_hash,
                 detail="external PGL append unconfirmed",
             )
-        return AnchorResult("confirmed", anchor_id=event.log_hash)
+
+        try:
+            body = response.json()
+        except (TypeError, ValueError):
+            return AnchorResult(
+                "pending_reconciliation",
+                anchor_id=event.log_hash,
+                detail="external PGL response lacked event_hash",
+            )
+
+        if not isinstance(body, dict) or body.get("persisted") is not True:
+            return AnchorResult(
+                "pending_reconciliation",
+                anchor_id=event.log_hash,
+                detail="external PGL response lacked event_hash",
+            )
+        event_hash = body.get("event_hash")
+        if not isinstance(event_hash, str) or not event_hash.strip():
+            return AnchorResult(
+                "pending_reconciliation",
+                anchor_id=event.log_hash,
+                detail="external PGL response lacked event_hash",
+            )
+        if event_type == "terminate":
+            # Keep the external reference locally so a repeated terminate can hand
+            # back the same confirmed anchor instead of "not_applicable".
+            try:
+                AuditService(self.db, settings=self.settings).record(
+                    "capability_mount_terminate_anchor",
+                    {"mount_id": payload["mount_id"], "log_hash": event.log_hash, "pgl_event_hash": event_hash},
+                    workspace_id=mount.scope.workspace if mount else None,
+                    run_id=token.execution_id if token else None,
+                    forward_to_gnomledger=False,
+                )
+            except Exception:
+                pass
+        return AnchorResult(
+            "confirmed",
+            anchor_id=event.log_hash,
+            external_ref=event_hash,
+        )

@@ -1,0 +1,125 @@
+{
+ "run_at": "2026-10-11T04:40:38.106691+00:00",
+ "python": "3.13.16",
+ "sqlite": "3.45.1",
+ "platform": "Linux-6.18.44-fc-v114-x86_64-with-glibc2.39",
+ "code_sha256": {
+  "__init__.py": "f10da4acf9181849df3e3261d2cc51e530fb93ed572465f0edc508a5c0504a3c",
+  "canon.py": "8fab1c5b0be563666499e3e662d9cf4d21630331f35882dc95572b686239ec87",
+  "cli.py": "2d15d71f40f4fe61919b08a265e50b61da79a2e8cd210e55e3977c843dc871db",
+  "coordinator.py": "c1e8fee9869351d251bb6463391e857359a1fd6326be284b6ba5a0f13e9a9482",
+  "journal.py": "f5e68a77007bf1200533d08c0393564ceb08d5e313305941e1bd676281426b17",
+  "prove.py": "8247af0ab15b0e59a6af6256bdea304beea48abab1cc66dff2890cb6776b27e3",
+  "state_adapter.py": "413bcb92e2b1bc9ab1e8926c6c093b951c92eb267b8fd76a71e230c148d1aa18",
+  "states.py": "e9c245dc10a302fca642c09f448e30b825d78830f47d5fb840958cadca07620f",
+  "verify.py": "5f972078cb414ad6ad07b5f74409323a12be6a6ca6a670b9657f4ec236f9d317"
+ },
+ "runs": {
+  "normal": {
+   "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+   "set": [
+    "alpha",
+    "1"
+   ],
+   "first_submit_exit": 0,
+   "first_submit_stdout": "{\"intent_id\": \"299ccc7c-862c-4bf6-888f-0583fafca266\", \"state\": \"FINALIZED\", \"replayed\": false, \"certificate\": {\"alg\": \"Ed25519\", \"kid\": \"ed25519:e6b72fdb423ace14\", \"payload\": {\"protocol\": \"veklom.vdb.c1.finality/v1\", \"intent_id\": \"299ccc7c-862c-4bf6-888f-0583fafca266\", \"intent_hash\": \"sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a\", \"namespace\": \"ns:veklom:c1:proof\", \"authority_kid\": \"ed25519:fb5b1f7f2a5ff6ec\", \"expected_generation\": 0, \"pre_root\": \"sha256:ef6b1710cfab35659943540b3d96fd377c47e146f2f01d5271d1b52725081050\", \"payload_commitment\": \"sha256:906b7c768bee3c91eead08ad8c5670ecb50e42437562381931acea88c32298d7\", \"post_generation\": 1, \"post_root\": \"sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4\", \"physical\": {\"adapter\": \"sqlite-wal/v1\", \"journal_mode\": \"wal\", \"synchronous\": \"FULL\", \"store_id\": \"39f0455b-be19-4486-b3f9-4b9f09ae1531\", \"applied_row\": {\"intent_id\": \"299ccc7c-862c-4bf6-888f-0583fafca266\", \"intent_hash\": \"sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a\", \"generation\": 1, \"post_root\": \"sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4\"}}, \"journal\": {\"prepared_seq\": 0, \"prepared_hash\": \"sha256:df3fea4be6e1befecd7ddf622a3b11b66a740939422754604b096c41332858c8\", \"committed_seq\": 2, \"committed_hash\": \"sha256:3b5c36ab8733339b52b6f837ecbeff0252939be139c4d3ac23d9c44903c905ee\"}, \"finalized_at\": \"2026-10-11T04:40:37.291Z\", \"finalizer_kid\": \"ed25519:e6b72fdb423ace14\"}, \"sig\": \"SzN3yiOjJg4ZQ9UES8SrerWaRKwOrCEx0HkQQ8xNH5weT9pQ4ZK9dTdagxpTqnJEAtIisYzFKssVUJEtsK5oCg\"}}",
+   "clean_room": {
+    "exit_code": 0,
+    "result": {
+     "verdict": "VALID_FINALIZED",
+     "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+     "post_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4",
+     "checks_passed": [
+      "structure",
+      "journal_chain",
+      "state_machine",
+      "intent_signature",
+      "certificate_signature",
+      "intent_binding",
+      "authority_window",
+      "state_roots",
+      "generation",
+      "payload",
+      "receipt_binding"
+     ]
+    },
+    "command": "python -I verify.py bundle.json trust_store.json",
+    "room_contents": [
+     "bundle.json",
+     "trust_store.json",
+     "verify.py"
+    ]
+   }
+  },
+  "crash_c_recovered": {
+   "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+   "set": [
+    "beta",
+    "2"
+   ],
+   "first_submit_exit": 77,
+   "first_submit_stdout": "",
+   "after_crash_generation": 2,
+   "after_crash_applied": 1,
+   "retry_result": "FINALIZED",
+   "clean_room": {
+    "exit_code": 0,
+    "result": {
+     "verdict": "VALID_FINALIZED",
+     "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+     "post_root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c",
+     "checks_passed": [
+      "structure",
+      "journal_chain",
+      "state_machine",
+      "intent_signature",
+      "certificate_signature",
+      "intent_binding",
+      "authority_window",
+      "state_roots",
+      "generation",
+      "payload",
+      "receipt_binding"
+     ]
+    },
+    "command": "python -I verify.py bundle.json trust_store.json",
+    "room_contents": [
+     "bundle.json",
+     "trust_store.json",
+     "verify.py"
+    ]
+   }
+  }
+ },
+ "final_state": {
+  "namespace": "ns:veklom:c1:proof",
+  "generation": 2,
+  "root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c",
+  "entries": [
+   [
+    "alpha",
+    "1"
+   ],
+   [
+    "beta",
+    "2"
+   ]
+  ]
+ },
+ "journal_kinds": [
+  "PREPARED",
+  "COMMITTING",
+  "COMMITTED",
+  "FINALIZED",
+  "PREPARED",
+  "COMMITTING",
+  "COMMIT_UNCERTAIN",
+  "COMMITTED",
+  "FINALIZED"
+ ],
+ "files_sha256": {
+  "crash_c_recovered.bundle.json": "67467036844def7e586c0a8a09781b2e8ffb8690e33f43a1ff6401dc09d31b2e",
+  "normal.bundle.json": "f666a220720b1ab3ba2ea70dc0f35e4841845f1949ebbd9fba58ecb650247433",
+  "trust_store.json": "bc1e4362007e1b90e1d1082a2a767d6fd13087d39ab256965efb6d10d70d588b"
+ }
+}

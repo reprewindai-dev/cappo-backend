@@ -20,6 +20,7 @@ class ContractModel(BaseModel):
 
 class TokenType(str, Enum):
     EPHEMERAL_SCOPED = "ephemeral_scoped"
+    PERSISTENT_SERVICE = "persistent_service"
 
 
 class LifecycleState(str, Enum):
@@ -38,12 +39,26 @@ class Decision(str, Enum):
     ALLOW = "allow"
     DENY = "deny"
 
+class CandidateEvaluationResult(ContractModel):
+    decision: Decision
+    permitted_candidates: list[str]
+    rejected_candidates: dict[str, str]
+    authority_reference: str | None = None
+    binding_constraints_digest: str | None = None
 
 class CapabilityPackage(ContractModel):
     id: str = Field(pattern=r"^[A-Za-z0-9._-]+@v[0-9]+$")
     family: str = Field(min_length=1)
     title: str = Field(min_length=1)
     purpose: str = Field(min_length=1)
+    
+    # CANONICAL VOCABULARY DEFINITION:
+    # CAPPO unifies execution consequences into a single `action` identifier.
+    # An action is a granular, atomic string identifying the governed consequence.
+    # It often embeds both the operation and the resource type (e.g. "contact.read").
+    # CAPPO does NOT separate 'operation' (read) and 'resource path' (/contacts/1)
+    # during policy evaluation; if finer-grained resource scoping is needed,
+    # it must be represented as distinct action strings or via capability bounds.
     reads: list[str] = Field(default_factory=list)
     writes: list[str] = Field(default_factory=list)
     blocked: list[str] = Field(default_factory=list)
@@ -52,6 +67,16 @@ class CapabilityPackage(ContractModel):
 
     external_send_actions: list[str] = Field(default_factory=list)
     suppression_required_actions: list[str] = Field(default_factory=list)
+    # The registered consequence target this package's writes act on. When set,
+    # execute refuses any other target_ref, and discovery publishes it so a
+    # contract can name the target without the caller inventing it.
+    target_ref: str | None = Field(default=None, min_length=1)
+    # Work that runs before its consequence (e.g. a compute job whose result is then committed)
+    # must first claim an atomic, CAPPO-recorded right to start: POST .../start-claim. Execute
+    # then refuses an operation that did not claim the start (start_not_claimed). The claim takes
+    # the same mount-row lock as terminate(), so revocation lands either before the claim (the
+    # work never starts) or after it.
+    requires_start_claim: bool = False
 
     @field_validator(
         "reads",
@@ -83,24 +108,40 @@ class CapabilityPackage(ContractModel):
         return actions
 
 
+class BoundOperationSpec(ContractModel):
+    """The one exact operation a mount is requested for (an ABIDE contract step)."""
+
+    target_ref: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    resource: str = Field(min_length=1)
+    arguments: dict[str, JsonValue] = Field(default_factory=dict)
+
+
 class MountScope(ContractModel):
     workspace: str = Field(min_length=1)
     project: str = Field(min_length=1)
     reads: list[str] | None = None
     writes: list[str] | None = None
+    resources: list[str] | None = None
     blocked: list[str] = Field(default_factory=list)
+    # When set, the mount authorizes exactly this operation: its action, its one
+    # resource, its package's target, and (via the envelope digest) its arguments.
+    operation: BoundOperationSpec | None = None
 
 
 class Grants(ContractModel):
     reads: list[str] = Field(default_factory=list)
     writes: list[str] = Field(default_factory=list)
+    resources: list[str] = Field(default_factory=list)
     blocked: list[str] = Field(default_factory=list)
     external_send: list[str] = Field(default_factory=list)
     suppression_required: list[str] = Field(default_factory=list)
+    # Digest of the one operation this mount may perform (envelope.py); None = not envelope-bound.
+    envelope_digest: str | None = None
 
 
 class MountToken(ContractModel):
-    type: TokenType = TokenType.EPHEMERAL_SCOPED
+    type: TokenType
     ttl_seconds: int = Field(ge=1, le=600)
 
 
@@ -137,13 +178,24 @@ class Mount(ContractModel):
     grants: Grants
     policy: MountPolicy
     lifecycle: Lifecycle = Field(default_factory=Lifecycle)
+    # --- Substrate Bindings ---
+    substrate_id: str | None = None
+    boot_instance_id: str | None = None
+    runtime_key_thumbprint: str | None = None
+    state_root: str | None = None
 
 
 class EphemeralScopedToken(ContractModel):
+    type: Literal[TokenType.EPHEMERAL_SCOPED] = TokenType.EPHEMERAL_SCOPED
     token_id: str = Field(min_length=1)
     mount_id: str = Field(min_length=1)
     execution_id: str = Field(min_length=1)
     package_ref: str = Field(min_length=1)
+    # --- Substrate Bindings ---
+    substrate_id: str | None = None
+    boot_instance_id: str | None = None
+    runtime_key_thumbprint: str | None = None
+    state_root: str | None = None
     scope: TokenDescriptorScope
     grants: Grants
     policy: MountPolicy
@@ -153,6 +205,7 @@ class EphemeralScopedToken(ContractModel):
     single_use: Literal[True] = True
     nonce_consumed: bool = False
     nonce: str = Field(min_length=1)
+    biscuit_token: str | None = Field(default=None, exclude=True)
 
     @field_validator("expires_at")
     @classmethod
@@ -172,3 +225,29 @@ class ExecutionAuditEvent(ContractModel):
     ts: datetime
     prev_hash: str | None
     event_hash: str = Field(min_length=1)
+
+
+class PersistentServiceToken(ContractModel):
+    type: Literal[TokenType.PERSISTENT_SERVICE] = TokenType.PERSISTENT_SERVICE
+    token_id: str = Field(min_length=1)
+    mount_id: str = Field(min_length=1)
+    execution_id: str = Field(min_length=1)
+    package_ref: str = Field(min_length=1)
+    scope: TokenDescriptorScope
+    grants: Grants
+    policy: MountPolicy
+    issued_at: datetime
+    expires_at: datetime
+    ttl_seconds: int = Field(ge=1)
+    single_use: Literal[False] = False
+    nonce_consumed: bool = False
+    nonce: str = Field(min_length=1)
+    biscuit_token: str | None = Field(default=None, exclude=True)
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_after_issue(cls, value: datetime, info: ValidationInfo) -> datetime:
+        issued_at = info.data.get("issued_at")
+        if isinstance(issued_at, datetime) and value <= issued_at:
+            raise ValueError("expires_at must be after issued_at")
+        return value

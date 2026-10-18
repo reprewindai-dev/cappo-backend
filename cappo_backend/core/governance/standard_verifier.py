@@ -1,6 +1,7 @@
 import os
+from typing import Any, Dict, List
+
 import yaml
-from typing import List, Dict, Any
 
 
 class StandardVerifier:

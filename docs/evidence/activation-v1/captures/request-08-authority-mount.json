@@ -1,0 +1,32 @@
+{
+  "execution_scope": {
+    "blocked": [],
+    "project": "activation-v1",
+    "reads": [
+      "record.read"
+    ],
+    "resources": [
+      "*"
+    ],
+    "workspace": "workspace-activation-v1",
+    "writes": [
+      "record.create"
+    ]
+  },
+  "package_ref": "activation@v1",
+  "policy": {
+    "default": "deny",
+    "mode": "draft_only"
+  },
+  "requested_action_scope": {
+    "blocked": [],
+    "reads": [
+      "record.read"
+    ],
+    "writes": [
+      "record.create"
+    ]
+  },
+  "role": "ephemeral_executor",
+  "ttl_seconds": 300
+}

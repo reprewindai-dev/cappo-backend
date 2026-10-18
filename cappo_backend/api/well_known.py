@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from cappo_backend.core.governance.context_shaper import ContextShaper
 
 router = APIRouter()

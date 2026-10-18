@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
 import httpx
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from cappo_backend.config import Settings
+import pytest
+
 from cappo_backend.services.executor import (
-    ResilientExecutor,
     ProviderRateLimitedError,
-    ProviderCredentialRejectedError,
-    ProviderPolicyRejectedError,
+    ResilientExecutor,
 )
 from cappo_backend.services.providers import OpenAICompatExecutor, Provider
+
 
 def test_provider_429_retries_and_raises_rate_limited() -> None:
     # Set up mock transport that returns 429

@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from cappo_backend.config import Settings
 from cappo_backend.db.base import Base
-from cappo_backend.db.session import get_session
+from cappo_backend.db.session import get_session, get_unscoped_session
 from cappo_backend.main import app
 
 _test_engine = create_engine(
@@ -25,8 +25,18 @@ _TestSession = sessionmaker(bind=_test_engine, autoflush=False, expire_on_commit
 
 @pytest.fixture(autouse=True)
 def _create_tables() -> Iterator[None]:
-    import cappo_backend.models  # noqa: F401 — register models
+    import cappo_backend.models  # noqa: F401 — register models on Base
     Base.metadata.create_all(_test_engine)
+    # Seed the merkle_leaf_sequence singleton row (id=1, next_value=0).
+    # This mirrors what the production migration does.  Must not reset on an
+    # existing DB with committed receipts — safe here because the table is
+    # re-created fresh for every test.
+    from sqlalchemy import text
+    with _test_engine.connect() as conn:
+        conn.execute(
+            text("INSERT OR IGNORE INTO merkle_leaf_sequence (id, next_value) VALUES (1, 0)")
+        )
+        conn.commit()
     yield
     Base.metadata.drop_all(_test_engine)
 
@@ -95,18 +105,22 @@ def client(db: Session, settings: Settings) -> TestClient:
                 request.scope["auth_workspace"] = workspace
             if "auth_principal" not in request.scope:
                 request.scope["auth_principal"] = "test:principal"
+            if "caller_spiffe_id" not in request.scope:
+                request.scope["caller_spiffe_id"] = "spiffe://example.org/workload/cappo-backend"
             return await call_next(request)
 
     def _override_session() -> Iterator[Session]:
         yield db
 
     app.dependency_overrides[get_session] = _override_session
+    app.dependency_overrides[get_unscoped_session] = _override_session
     from cappo_backend.config import get_settings as _gs
     from cappo_backend.main import create_app
 
     # Create a fresh app instance with test settings so middlewares get the right config
     test_app = create_app(settings)
     test_app.dependency_overrides[get_session] = _override_session
+    test_app.dependency_overrides[get_unscoped_session] = _override_session
     test_app.dependency_overrides[_gs] = lambda: settings
 
     # Add workspace injection outermost so it runs before AuthMiddleware.

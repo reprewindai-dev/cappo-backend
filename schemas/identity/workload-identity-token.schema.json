@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Workload Identity Token (Payload)",
+  "type": "object",
+  "properties": {
+    "iss": { "type": "string" },
+    "sub": { 
+      "type": "string",
+      "pattern": "^wimse://[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+$"
+    },
+    "aud": { "type": "string" },
+    "exp": { "type": "integer" },
+    "iat": { "type": "integer" },
+    "jti": { "type": "string" },
+    "cnf": {
+      "type": "object",
+      "properties": {
+        "jwk": { "type": "object" }
+      }
+    }
+  },
+  "required": ["iss", "sub", "exp", "iat", "jti", "cnf"],
+  "additionalProperties": false
+}

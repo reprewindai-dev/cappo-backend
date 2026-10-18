@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 # In a mature system this would be parsed from YAML files, but we define them here as structured dicts
 CAPABILITY_POLICIES: List[Dict[str, Any]] = [

@@ -1,8 +1,11 @@
 """Model for storing tenant-specific LLM provider API keys."""
 
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, JSON, UniqueConstraint
-from cappo_backend.db.base import Base
 from datetime import datetime, timezone
+
+from sqlalchemy import JSON, Column, DateTime, Integer, String, UniqueConstraint
+
+from cappo_backend.db.base import Base
+
 
 def _utcnow():
     return datetime.now(timezone.utc)

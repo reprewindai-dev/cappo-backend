@@ -1,0 +1,12 @@
+{
+  "htm": "POST",
+  "htu": "https://api.veklom.local/submit",
+  "body_hash": "b_hash",
+  "wit_hash": "w_hash",
+  "ect_hash": "e_hash",
+  "authority_hash": "a_hash",
+  "jti": "jti_wpt",
+  "cnf": {
+    "jwk": {}
+  }
+}

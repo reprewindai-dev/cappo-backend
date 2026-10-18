@@ -1,0 +1,70 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "0e7f36433e35ae49",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "f943acb5-52ca-4132-983e-0f91d0f3d02a",
+   "execution_id": "a6dcbba7-2b35-4231-ad75-b9c1a4defe45",
+   "scenario": "expired_authority",
+   "role": "attacker",
+   "issued_at": 1791690648,
+   "expires_at": 1791690647,
+   "workload": {
+    "module": "normal_ok",
+    "module_sha256": "1668aba740f5041447b86aceb3bc1825e5fdc6e1369d433d8267f3611e1f809c",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 67108864,
+    "compute_fuel": 50000000,
+    "wall_deadline_ms": 100,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "LPcJasWVvQHAvdvYJ8VbTKxeXjW5EcOE6vvQ1DX6eCeQQJtvxOeqHoHoAipIwQjkcPPFo77DIWblXwQTmPdQDA=="
+ },
+ "boundary": null,
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "a6dcbba7-2b35-4231-ad75-b9c1a4defe45",
+  "boundary_digest": null,
+  "refusal": {
+   "stage": "authority",
+   "reasons": [
+    "authority_expired"
+   ]
+  },
+  "released": false,
+  "released_at_ns": null,
+  "deadline_at_ns": null,
+  "reaped_at_ns": null,
+  "counters_before": null,
+  "counters_after": null,
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": null,
+   "signal": null
+  },
+  "runtime_report": null,
+  "untrusted_guest_output": null,
+  "residual_procs": [],
+  "teardown": null,
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "c5c47bfd1a253bb7",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "a6dcbba7-2b35-4231-ad75-b9c1a4defe45",
+   "envelope_digest": "0be3dee2c636f5b9273413bb49629a5b354f52f1739cbbf5e45b74cc8f9421fe",
+   "boundary_digest": null,
+   "evidence_digest": "83a864cbf41f3e46716ac0d060b991e482f002f54ee6799da736af1491d7568e",
+   "outcome": "AUTHORITY_REFUSED",
+   "evidence_level": "E2"
+  },
+  "sig": "6sLNmIWi8NHqDox0Oi1Qzuq8dfQIDPX5BX4Ex9TRW2YuWUkf4HY6VJkSytCbhD7QD3r//0z2NOOPUWwA6Ss4CQ=="
+ }
+}

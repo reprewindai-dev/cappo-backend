@@ -80,7 +80,7 @@ def test_dependency_probes_start_concurrently(monkeypatch) -> None:
         async def probe(name: str) -> dict[str, object]:
             nonlocal started
             started += 1
-            if started == 3:
+            if started == 2:
                 all_started.set()
             await release.wait()
             return {"name": name, "host": "configured", "state": "healthy", "latency_ms": 0.0}
@@ -107,6 +107,6 @@ def test_dependency_probes_start_concurrently(monkeypatch) -> None:
         release.set()
         result = await asyncio.wait_for(request, timeout=0.5)
 
-        assert [item["name"] for item in result["dependencies"]] == ["database", "pgl", "byos"]
+        assert [item["name"] for item in result["dependencies"]] == ["database", "pgl"]
 
     asyncio.run(exercise())

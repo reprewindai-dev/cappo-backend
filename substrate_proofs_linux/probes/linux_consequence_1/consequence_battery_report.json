@@ -1,0 +1,27 @@
+{
+  "milestone": "LINUX-CONSEQUENCE-1",
+  "verdict": "VALID",
+  "battery": [
+    {
+      "Proof": "LC1-A",
+      "Experiment": "Normal finality",
+      "Result": true
+    },
+    {
+      "Proof": "LC1-B",
+      "Experiment": "Crash-before-dispatch",
+      "Result": true
+    },
+    {
+      "Proof": "LC1-C/D",
+      "Experiment": "Crash-after-dispatch & Recon",
+      "Result": true
+    },
+    {
+      "Proof": "LC1-E",
+      "Experiment": "Duplicate suppression",
+      "Result": true
+    }
+  ],
+  "total_mutations_enforced": 2
+}

@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import socket
-import pytest
 from unittest.mock import patch
-import httpx
+
+import pytest
+
 from cappo_backend.security.ssrf import (
-    validate_endpoint,
     EndpointClass,
     SSRFValidationError,
     is_safe_url,
+    validate_endpoint,
 )
 from cappo_backend.services.providers import OpenAICompatExecutor
+
 
 def mock_getaddrinfo(ip_list: list[str]):
     def side_effect(host, port, *args, **kwargs):

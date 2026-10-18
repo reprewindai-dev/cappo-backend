@@ -6,7 +6,7 @@ import base64
 import hashlib
 import re
 from datetime import UTC, datetime
-from typing import Mapping
+from typing import Iterable, Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -51,11 +51,14 @@ def verify_rfc9421_request(
     body: bytes,
     public_key_hex: str,
     max_age_seconds: int = 5,
+    required_header_components: Iterable[str] = (),
 ) -> None:
     """Verify the CAPPO consequence-bearing request signature profile.
 
     Request integrity is independent from semantic authorization.  The caller
     must run CAPPO's authority evaluation only after this succeeds.
+    ``required_header_components`` names trust-bearing headers the signature must
+    also cover (lower-case), on top of the method, target URI and body digest.
     """
     if method.upper() != "POST":
         raise SignatureVerificationError("only POST may use the CAPPO execution request profile")
@@ -63,7 +66,8 @@ def verify_rfc9421_request(
         headers=headers,
         body=body,
         public_key_hex=public_key_hex,
-        required_components={"@method", "@target-uri", "content-digest"},
+        required_components={"@method", "@target-uri", "content-digest"}
+        | {name.lower() for name in required_header_components},
         derived={"@method": method.upper(), "@target-uri": target_uri},
         max_age_seconds=max_age_seconds,
     )

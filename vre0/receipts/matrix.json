@@ -1,0 +1,46 @@
+{
+  "ram_bomb": {
+    "outcome": "ENVELOPE_MEMORY_EXCEEDED",
+    "expected": "ENVELOPE_MEMORY_EXCEEDED",
+    "passed": true,
+    "binding_verified": true,
+    "oom_kill_delta": 1,
+    "evidence_source": "oom_kill_delta=1 rc=-9 cgroup memory.events",
+    "configured_memory_max": 67108864,
+    "envelope_digest": "4131d650be6e01289af2cc243ce04545ae1ea6d0cba0a9edaff55a77a36b5e32",
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/87c17e69-03b4-4bbb-97dd-9dc5e726d19d"
+  },
+  "spin_fuel": {
+    "outcome": "ENVELOPE_COMPUTE_EXHAUSTED",
+    "expected": "ENVELOPE_COMPUTE_EXHAUSTED",
+    "passed": true,
+    "binding_verified": true,
+    "oom_kill_delta": 0,
+    "evidence_source": "wasmtime_fuel_trap",
+    "configured_memory_max": 67108864,
+    "envelope_digest": "d424b4664e41084b545d01b12e9367c64ca16356995d96538779a2feb4404165",
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/cc4e3896-f038-42b7-8e09-cd2d39b4dc7e"
+  },
+  "deadline_stall": {
+    "outcome": "ENVELOPE_DEADLINE_EXCEEDED",
+    "expected": "ENVELOPE_DEADLINE_EXCEEDED",
+    "passed": true,
+    "binding_verified": true,
+    "oom_kill_delta": 0,
+    "evidence_source": "wall_deadline_timer",
+    "configured_memory_max": 67108864,
+    "envelope_digest": "41a79c0ee2657ad20c4a934120612df0863a6aa17aee7b142496aa3ac8660256",
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/0be5a22e-bd29-49fc-b333-3e97f3afbef3"
+  },
+  "normal_ok": {
+    "outcome": "COMPLETED",
+    "expected": "COMPLETED",
+    "passed": true,
+    "binding_verified": true,
+    "oom_kill_delta": 0,
+    "evidence_source": "wasmtime_normal_return",
+    "configured_memory_max": 67108864,
+    "envelope_digest": "74a5d1f74e90c476bb347a0178101bc9ad0c70b3c58d49722635ecb4d130251d",
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/6b99700e-08ed-4907-8d88-1bdb72390627"
+  }
+}

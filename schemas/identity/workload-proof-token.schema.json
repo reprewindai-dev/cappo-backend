@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Workload Proof Token",
+  "type": "object",
+  "properties": {
+    "htm": { "type": "string" },
+    "htu": { "type": "string" },
+    "body_hash": { "type": "string" },
+    "wit_hash": { "type": "string" },
+    "ect_hash": { "type": "string" },
+    "authority_hash": { "type": "string" },
+    "jti": { "type": "string" },
+    "cnf": {
+      "type": "object",
+      "properties": {
+        "jwk": { "type": "object" }
+      }
+    }
+  },
+  "required": [
+    "htm",
+    "htu",
+    "body_hash",
+    "wit_hash",
+    "ect_hash",
+    "authority_hash",
+    "jti",
+    "cnf"
+  ],
+  "additionalProperties": false
+}

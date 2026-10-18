@@ -34,6 +34,8 @@ def _prod(**overrides) -> Settings:
         runtime_kind="amphoteric",
         runtime_instance="prod-runtime",
         vault_master_key="prod-secure-vault-master-key-32-chars",
+        biscuit_root_private_key_hex="cd" * 32,
+        redis_url="redis://cache:6379/0",
     )
     base.update(overrides)
     return Settings(**base)
@@ -102,6 +104,17 @@ class TestProductionFailClosed:
     def test_short_vault_master_key_rejected(self) -> None:
         with pytest.raises(InsecureProductionConfigError, match="at least 32"):
             _prod(vault_master_key="short-key").validate_production()
+
+    def test_missing_redis_url_rejected(self) -> None:
+        # Without Redis the /v1/exec replay cache is a MockReplayCache that
+        # accepts every jti; production must not boot into that posture.
+        with pytest.raises(InsecureProductionConfigError, match="REDIS_URL"):
+            _prod(redis_url="").validate_production()
+        with pytest.raises(InsecureProductionConfigError, match="REDIS_URL"):
+            _prod(redis_url="   ").validate_production()
+
+    def test_redis_url_set_is_not_a_problem(self) -> None:
+        _prod(redis_url="rediss://managed.example:6380").validate_production()
 
     def test_multiple_problems_aggregated(self) -> None:
         with pytest.raises(InsecureProductionConfigError) as exc:
