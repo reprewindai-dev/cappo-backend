@@ -30,7 +30,7 @@ def test_zra_3_stale_handle_replay(db):
     )
     svc.register_package(pkg)
     
-    mount_record, anchor, error = svc.request_mount(
+    mount_record, anchor, error, _holder_credential = svc.request_mount(
         package_ref="pkg_test_zra3@v1",
         scope=MountScope(workspace="ws1", project="proj1"),
         role="tester",
@@ -82,7 +82,7 @@ def test_zra_3_multiple_handle_invalidation(db):
     )
     svc.register_package(pkg)
     
-    mount_record_a, _, _ = svc.request_mount(
+    mount_record_a, _, _, _holder_credential = svc.request_mount(
         package_ref="pkg_multi@v1",
         scope=MountScope(workspace="ws1", project="proj1"),
         role="tester",
@@ -126,7 +126,7 @@ def test_zra_3_post_termination_reissuance(db):
     )
     svc.register_package(pkg)
     
-    mount_record_a, _, _ = svc.request_mount(
+    mount_record_a, _, _, _holder_credential = svc.request_mount(
         package_ref="pkg_reissue@v1",
         scope=MountScope(workspace="ws1", project="proj1"),
         role="tester",

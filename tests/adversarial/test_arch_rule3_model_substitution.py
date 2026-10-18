@@ -33,7 +33,7 @@ def test_arch_rule_3_model_substitution_invariance(db):
     models = ["qwen", "claude", "gpt-4", "local-llama-3"]
     
     for model_id in models:
-        mount_record, anchor, error = svc.request_mount(
+        mount_record, anchor, error, _holder_credential = svc.request_mount(
             package_ref="pkg_test_model_sub@v1",
             scope=MountScope(workspace="ws1", project="proj1"),
             role="tester",

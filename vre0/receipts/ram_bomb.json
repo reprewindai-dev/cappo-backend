@@ -1,0 +1,38 @@
+{
+  "receipt_id": "d67f7658-0931-4446-bcd7-7759cd58956a",
+  "envelope_digest": "4131d650be6e01289af2cc243ce04545ae1ea6d0cba0a9edaff55a77a36b5e32",
+  "execution_uuid": "87c17e69-03b4-4bbb-97dd-9dc5e726d19d",
+  "scenario": "ram_bomb",
+  "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/87c17e69-03b4-4bbb-97dd-9dc5e726d19d",
+  "host_pid": 480,
+  "configured_memory_max_bytes": 67108864,
+  "configured_fuel_budget": 50000000,
+  "envelope_memory_max_bytes": 67108864,
+  "envelope_fuel_budget": 50000000,
+  "binding_verified": true,
+  "binding_failure_reason": null,
+  "host_survived": true,
+  "workload_contained": true,
+  "outcome": "ENVELOPE_MEMORY_EXCEEDED",
+  "outcome_evidence_source": "oom_kill_delta=1 rc=-9 cgroup memory.events",
+  "evidence": {
+    "execution_uuid": "87c17e69-03b4-4bbb-97dd-9dc5e726d19d",
+    "host_pid": 480,
+    "pid_tree": [
+      481
+    ],
+    "cgroup_path": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/vre0-supervisor-1788967439.service/executions/87c17e69-03b4-4bbb-97dd-9dc5e726d19d",
+    "configured_memory_max_bytes": 67108864,
+    "configured_fuel_budget": 50000000,
+    "peak_memory_bytes": 67108864,
+    "memory_max_at_termination": 67108864,
+    "exit_code": -9,
+    "exit_signal": null,
+    "oom_killed": true,
+    "fuel_trap_reason": null,
+    "deadline_exceeded": false,
+    "materialization_ts": 1788967440.459861,
+    "termination_ts": 1788967440.6260443
+  },
+  "issued_at": 1788967440.6264527
+}

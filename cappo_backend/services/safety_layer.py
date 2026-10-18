@@ -1,7 +1,8 @@
 import hashlib
 import json
+import threading
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from cappo_backend.models.mcpapi_v2 import (
@@ -83,16 +84,17 @@ class AnomalyDetectionService:
             severity = Severity.MEDIUM
             action = RecommendedAction.QUARANTINE
 
+        now = datetime.now(timezone.utc)
         evidence_hash = hashlib.sha256(json.dumps({
             "agent_id": agent_id,
             "anomaly_type": anomaly_type.value,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": now.isoformat()
         }).encode()).hexdigest()
 
         return AnomalyDetection(
             detection_id=str(uuid.uuid4()),
             agent_id=agent_id,
-            detected_at=datetime.utcnow().isoformat() + "Z",
+            detected_at=now.isoformat(),
             anomaly_type=anomaly_type,
             baseline=baseline,
             current_metric=current_metric,
@@ -109,18 +111,29 @@ class AnomalyDetectionService:
 
 class RequestQuarantineService:
     def __init__(self):
+        self._lock = threading.RLock()
         self.quarantined: Dict[str, QuarantinedRequest] = {}
         self.HOLD_DURATION_MS = 60 * 60 * 1000 # 1 hour
         self.DEFAULT_APPROVERS_REQUIRED = 2
 
-    def quarantine(self, request: Dict[str, Any], anomalies: List[AnomalyDetection], trust_suppression: Optional[Dict[str, Any]] = None) -> QuarantinedRequest:
+    def quarantine(
+        self,
+        request: Dict[str, Any],
+        anomalies: List[AnomalyDetection],
+        trust_suppression: Optional[Dict[str, Any]] = None,
+        requester_id: Optional[str] = None,
+    ) -> QuarantinedRequest:
+        from cappo_backend.services.safety import extract_requester_identities
+
         reasons = [a.anomaly_type.value for a in anomalies]
         approval_required = any(a.severity in [Severity.HIGH, Severity.CRITICAL] for a in anomalies)
-        
+        bound_requester_id, bound_identities = extract_requester_identities(request, requester_id=requester_id)
+
+        now = datetime.now(timezone.utc)
         qr = QuarantinedRequest(
             quarantine_id=str(uuid.uuid4()),
             original_request=request,
-            original_timestamp=datetime.utcnow().isoformat() + "Z",
+            original_timestamp=now.isoformat(),
             quarantine_reason=f"Anomalies detected: {', '.join(reasons)}",
             anomalies_detected=anomalies,
             trust_suppression_applied=trust_suppression.get("applied", False) if trust_suppression else False,
@@ -128,14 +141,114 @@ class RequestQuarantineService:
             approval_required=approval_required,
             approvers_required=self.DEFAULT_APPROVERS_REQUIRED,
             approvals_received=[],
-            approval_deadline=(datetime.utcnow() + timedelta(hours=1)).isoformat() + "Z",
-            status=QuarantineStatus.QUARANTINED
+            approval_deadline=(now + timedelta(hours=1)).isoformat(),
+            status=QuarantineStatus.QUARANTINED,
+            requester_id=bound_requester_id,
+            bound_identities=bound_identities,
         )
-        self.quarantined[qr.quarantine_id] = qr
+        with self._lock:
+            self.quarantined[qr.quarantine_id] = qr
         return qr
 
     def get_quarantined(self, quarantine_id: str) -> Optional[QuarantinedRequest]:
-        return self.quarantined.get(quarantine_id)
+        with self._lock:
+            return self.quarantined.get(quarantine_id)
+
+    def approve(
+        self,
+        quarantine_id: str,
+        approver_id: str,
+        *,
+        approver_trust: float = 100.0,
+        authenticated_approver_id: Optional[str] = None,
+    ) -> bool:
+        from cappo_backend.services.safety import (
+            ApproverTrustError,
+            SelfApprovalForbiddenError,
+            extract_leaf_identity,
+            extract_requester_identities,
+            normalize_identity,
+        )
+
+        with self._lock:
+            qr = self.quarantined.get(quarantine_id)
+            if qr is None or qr.status != QuarantineStatus.QUARANTINED:
+                return False
+
+            effective_approver = (
+                str(authenticated_approver_id).strip()
+                if authenticated_approver_id and str(authenticated_approver_id).strip()
+                else (str(approver_id).strip() if approver_id and str(approver_id).strip() else None)
+            )
+            if not effective_approver or not normalize_identity(effective_approver):
+                raise ValueError("Approver identity is required and cannot be blank")
+
+            clean_approver = str(approver_id).strip() if approver_id else effective_approver
+
+            # Assemble all bound requester & delegation chain identities
+            all_bound: set[str] = set()
+            for b in getattr(qr, "bound_identities", []):
+                norm = normalize_identity(b)
+                if norm:
+                    all_bound.add(norm)
+            if qr.requester_id:
+                norm = normalize_identity(qr.requester_id)
+                if norm:
+                    all_bound.add(norm)
+            _, fallback_idents = extract_requester_identities(qr.original_request)
+            for fb in fallback_idents:
+                norm = normalize_identity(fb)
+                if norm:
+                    all_bound.add(norm)
+
+            # Enforce Requester/Approver Separation against both authoritative and claimed identities
+            check_identities = [effective_approver]
+            if clean_approver and clean_approver != effective_approver:
+                check_identities.append(clean_approver)
+
+            # Expand check_identities with leaf identities if present (SPIFFE, URN, scoped)
+            expanded_checks: list[str] = []
+            for ident in check_identities:
+                if ident not in expanded_checks:
+                    expanded_checks.append(ident)
+                leaf = extract_leaf_identity(ident)
+                if leaf and leaf not in expanded_checks:
+                    expanded_checks.append(leaf)
+
+            for ident in expanded_checks:
+                if normalize_identity(ident) in all_bound:
+                    raise SelfApprovalForbiddenError(
+                        f"SELF_APPROVAL_FORBIDDEN: requester identity '{ident}' cannot approve own request (bound identities={sorted(all_bound)})",
+                        requester_id=qr.requester_id or ident,
+                        approver_id=ident,
+                        decision="DENY",
+                        denial_reason="SELF_APPROVAL_FORBIDDEN",
+                    )
+
+            if approver_trust < 80.0:
+                raise ApproverTrustError(f"approver {effective_approver} trust {approver_trust} < 80.0")
+
+            recorded_approver = effective_approver
+            # Case-insensitive and whitespace/unicode-normalized deduplication to prevent M-of-N quorum bypass
+            if not any(normalize_identity(existing) == normalize_identity(recorded_approver) for existing in qr.approvals_received):
+                qr.approvals_received.append(recorded_approver)
+
+            if qr.approval_required and len(qr.approvals_received) >= qr.approvers_required:
+                qr.status = QuarantineStatus.APPROVED
+                qr.resolution_timestamp = datetime.now(timezone.utc).isoformat()
+                qr.resolution_reason = "Quorum of approvers reached"
+                return True
+            return False
+
+    def deny(self, quarantine_id: str, reason: str) -> bool:
+        with self._lock:
+            qr = self.quarantined.get(quarantine_id)
+            if qr is None:
+                return False
+            qr.status = QuarantineStatus.DENIED
+            qr.resolution_timestamp = datetime.now(timezone.utc).isoformat()
+            qr.resolution_reason = reason
+            return True
 
 # ============================================================================
 # APPROVAL QUORUM SERVICE
@@ -155,7 +268,7 @@ class ApprovalQuorumService:
             current_approvals={},
             required_count=required_count,
             threshold_reached=False,
-            approval_deadline=(datetime.utcnow() + timedelta(hours=1)).isoformat() + "Z",
+            approval_deadline=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             escalation_path=escalation_path or [],
             escalation_triggered=False
         )

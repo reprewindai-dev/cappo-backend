@@ -1,7 +1,16 @@
+# ruff: noqa
 import time
-from typing import Optional, List
+from typing import List, Optional
+
+from cappo_backend.identity.models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
+
 from .errors import *
-from cappo_backend.identity.models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
+
 
 class CappoPreauthorizationEnforcer:
     def __init__(self, replay_cache):
@@ -116,6 +125,9 @@ class CappoPreauthorizationEnforcer:
 
         if "truth.transition" == requested_right and "truth.transition" not in authority.rights:
             raise RightNotGrantedError(**base_kwargs)
+
+        if authority and getattr(authority, 'inbound_truth_state', 'ADMISSIBLE') != getattr(authority, 'required_truth_state', 'ADMISSIBLE'):
+            raise Exception('InboundTruthRequirementFailed: Context certification state is below required policy.')
 
         # All checks passed, CAPPO preauthorization successful.
         return True

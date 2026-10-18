@@ -1,12 +1,27 @@
 import time
+
 import pytest
+
 from cappo_backend.identity import (
-    WIDMiddlewareContext, RouteClassification, IdentityValidator, ReplayCache,
-    MissingWorkloadIdentityError, MissingExecutionContextError, MissingWorkloadProofError,
-    MissingAuthorityError, TokenExpiredError, AudienceMismatchError, BodyHashMismatchError,
-    RequestBindingMismatchError, CandidateActMismatchError, AuthorityHashMismatchError,
-    ReplayDeniedError, MalformedWorkloadIdentifierError, ProfileOnlyDeniedError
+    AudienceMismatchError,
+    AuthorityHashMismatchError,
+    BodyHashMismatchError,
+    CandidateActMismatchError,
+    IdentityValidator,
+    MalformedWorkloadIdentifierError,
+    MissingAuthorityError,
+    MissingExecutionContextError,
+    MissingWorkloadIdentityError,
+    MissingWorkloadProofError,
+    ProfileOnlyDeniedError,
+    ReplayCache,
+    ReplayDeniedError,
+    RequestBindingMismatchError,
+    RouteClassification,
+    TokenExpiredError,
+    WIDMiddlewareContext,
 )
+
 
 @pytest.fixture
 def replay_cache():
@@ -147,7 +162,8 @@ def test_12_uri_mismatch(validator):
                     wit_payload=make_valid_wit(), ect_payload=make_valid_ect(), wpt_payload=wpt)
 
 def test_13_candidate_act_mismatch(validator):
-    import json, hashlib
+    import hashlib
+    import json
     auth = make_valid_authority()
     auth["candidate_act_hash"] = "wrong"
     wpt = make_valid_wpt()
@@ -173,7 +189,8 @@ def test_15_malformed_workload_identifier(validator):
         ctx.enforce("/data", "GET", "t1", "/data", "", wit_payload=wit, ect_payload=make_valid_ect())
 
 def test_16_profile_only_authority_denied(validator):
-    import json, hashlib
+    import hashlib
+    import json
     auth = make_valid_authority()
     auth["ephemeral_execution_id"] = ""
     wpt = make_valid_wpt()
@@ -207,7 +224,8 @@ def test_19_valid_governed_request_passes(validator):
     ctx.enforce("/data", "GET", "t1", "/data", "", wit_payload=make_valid_wit(), ect_payload=make_valid_ect())
 
 def test_20_valid_consequence_request_passes(validator):
-    import json, hashlib
+    import hashlib
+    import json
     auth = make_valid_authority()
     wpt = make_valid_wpt()
     wpt["authority_hash"] = hashlib.sha256(json.dumps(auth, sort_keys=True).encode()).hexdigest()

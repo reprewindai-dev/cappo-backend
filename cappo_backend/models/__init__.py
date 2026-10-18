@@ -9,6 +9,7 @@ from cappo_backend.models.capability_action_receipt import CapabilityActionRecei
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_lease import CapabilityLease
 from cappo_backend.models.capability_mount import CapabilityMount
+from cappo_backend.models.consequence_redemption import ConsequenceRedemption
 from cappo_backend.models.consequence_execution import (
     ConsequenceExecutionEvent,
     ConsequenceInvariantViolation,
@@ -53,8 +54,8 @@ from cappo_backend.models.x402_consumed_payment import X402ConsumedPayment
 # P5 Execution-Truth Invariant models — must be imported so Base.metadata sees them
 from cappo_backend.p5.models import P5Event, P5Operation, P5Outbox  # noqa: F401
 
-
 __all__ = [
+    "ConsequenceRedemption",
     "FreeRunQuota",
     "AuditEvent",
     "CapabilityActionReceipt",
@@ -96,6 +97,10 @@ __all__ = [
     "RuntimePathAssignment",
 ]
 
-from cappo_backend.models.tenant_provider_credential import TenantProviderCredential
-from cappo_backend.models.n8n_governed_target_models import ExecutionRegistry, RevocationPolicy, LeaseStateRecord
 from cappo_backend.models.kms_models import KMSKeyRecord
+from cappo_backend.models.n8n_governed_target_models import (
+    ExecutionRegistry,
+    LeaseStateRecord,
+    RevocationPolicy,
+)
+from cappo_backend.models.tenant_provider_credential import TenantProviderCredential

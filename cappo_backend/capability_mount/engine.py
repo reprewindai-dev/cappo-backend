@@ -9,6 +9,8 @@ from secrets import token_hex
 from typing import Callable, Protocol, TypeVar
 from uuid import uuid4
 
+from .effects import validate_resource
+from .envelope import operation_envelope_digest
 from .errors import (
     ExecutionTerminatedError,
     MountError,
@@ -80,6 +82,12 @@ class CapabilityProfile:
     def is_blocked(self, action: str) -> bool:
         return action in self._grants.blocked
 
+    def covers_resource(self, resource: object) -> bool:
+        """An empty resource grant is unbounded (legacy mounts); otherwise exact match only."""
+        if not self._grants.resources:
+            return True
+        return resource is not None and str(resource) in self._grants.resources
+
 
 class Mounter:
     """Create a package-bound mount and short-lived token descriptor."""
@@ -132,6 +140,10 @@ class Mounter:
         *,
         role: str = "ephemeral_executor",
         execution_id: str | None = None,
+        substrate_id: str | None = None,
+        boot_instance_id: str | None = None,
+        runtime_key_thumbprint: str | None = None,
+        state_root: str | None = None,
     ) -> tuple[Mount, EphemeralScopedToken]:
         if ttl < 1 or ttl > self.MAX_TTL_SECONDS:
             raise MountError(f"ttl must be between 1 and {self.MAX_TTL_SECONDS} seconds")
@@ -143,16 +155,49 @@ class Mounter:
         package_writes = set(package.writes)
         requested_reads = set(scope.reads) if scope.reads is not None else package_reads
         requested_writes = set(scope.writes) if scope.writes is not None else package_writes
+        if scope.resources is not None:
+            if not scope.resources:
+                # An empty list would read as "unbounded"; refuse rather than widen.
+                raise MountError("resources, when given, must name at least one resource")
+            for resource in scope.resources:
+                try:
+                    validate_resource(resource)
+                except ValueError as exc:
+                    raise MountError("invalid_resource") from exc
+        granted_writes = package_writes & requested_writes
+        granted_resources = set(scope.resources or [])
+        envelope_digest: str | None = None
+        operation = scope.operation
+        if operation is not None:
+            # A bound operation is the whole authority: its one action, its one
+            # resource, its package's own target, and its exact arguments.
+            if not package.target_ref or operation.target_ref != package.target_ref:
+                raise MountError("operation_target_not_bound_to_package")
+            if operation.action not in granted_writes:
+                raise MountError("operation_action_not_granted")
+            try:
+                validate_resource(operation.resource)
+            except ValueError as exc:
+                raise MountError("invalid_resource") from exc
+            if scope.resources is not None and granted_resources != {operation.resource}:
+                raise MountError("operation_resource_mismatch")
+            granted_writes = {operation.action}
+            granted_resources = {operation.resource}
+            envelope_digest = operation_envelope_digest(
+                package_ref=package.id,
+                target_ref=operation.target_ref,
+                action=operation.action,
+                resource=operation.resource,
+                arguments=dict(operation.arguments),
+            )
         grants = Grants(
             reads=sorted(package_reads & requested_reads),
-            writes=sorted(package_writes & requested_writes),
+            writes=sorted(granted_writes),
+            resources=sorted(granted_resources),
+            envelope_digest=envelope_digest,
             blocked=sorted(set(package.blocked) | set(scope.blocked)),
-            external_send=sorted(
-                set(package.external_send_actions) & (package_writes & requested_writes)
-            ),
-            suppression_required=sorted(
-                set(package.suppression_required_actions) & (package_writes & requested_writes)
-            ),
+            external_send=sorted(set(package.external_send_actions) & granted_writes),
+            suppression_required=sorted(set(package.suppression_required_actions) & granted_writes),
         )
         mount_id = f"mnt_{uuid4().hex}"
         resolved_execution_id = execution_id or f"exec_{uuid4().hex}"
@@ -163,6 +208,10 @@ class Mounter:
             mount_id=mount_id,
             execution_id=resolved_execution_id,
             package_ref=package.id,
+            substrate_id=substrate_id,
+            boot_instance_id=boot_instance_id,
+            runtime_key_thumbprint=runtime_key_thumbprint,
+            state_root=state_root,
             scope=TokenDescriptorScope(workspace=scope.workspace, project=scope.project),
             grants=grants,
             policy=selected_policy,
@@ -180,6 +229,10 @@ class Mounter:
             grants=grants,
             policy=selected_policy,
             lifecycle=Lifecycle(),
+            substrate_id=substrate_id,
+            boot_instance_id=boot_instance_id,
+            runtime_key_thumbprint=runtime_key_thumbprint,
+            state_root=state_root,
         )
         return mount, token
 
@@ -231,6 +284,9 @@ class ExecutionBinding:
             )
             self._append(action, Decision.DENY, reason)
             raise PolicyError(reason)
+        if not self._profile.covers_resource(kwargs.get("resource")):
+            self._append(action, Decision.DENY, "resource_not_granted")
+            raise PolicyError("resource_not_granted")
 
         kwargs.pop("approval_token", None)
         kwargs.pop("suppression_confirmed", False)
@@ -332,6 +388,10 @@ class ExecutionBinding:
         if self._begin_consequence:
             try:
                 owned = self._begin_consequence(op_id)
+            except PolicyError as exc:
+                # Refused at the fence (mount terminated after evaluate): nothing ran.
+                self._append(action, Decision.DENY, str(exc))
+                raise
             except Exception:
                 owned = False  # degraded mode — continue but cannot track state
 

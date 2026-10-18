@@ -47,6 +47,7 @@ class AuthorityContext:
         allowed_actions: Set[str],
         allowed_resources: Set[str],
         executor_spiffe_id: str,
+        subject_spiffe_id: str,
         expires_at: Optional[datetime],
         delegation_depth: int,
         max_delegation_depth: int,
@@ -55,6 +56,7 @@ class AuthorityContext:
         self.allowed_actions = allowed_actions
         self.allowed_resources = allowed_resources
         self.executor_spiffe_id = executor_spiffe_id
+        self.subject_spiffe_id = subject_spiffe_id
         self.expires_at = expires_at
         self.delegation_depth = delegation_depth
         self.max_delegation_depth = max_delegation_depth
@@ -190,6 +192,9 @@ class CapabilityLease(Base):
         if self.executor_spiffe_id != biscuit_auth.executor_spiffe_id:
             raise InvariantViolationError("LEASE_CAN_CHANGE_EXECUTOR")
             
+        if self.subject_spiffe_id != biscuit_auth.subject_spiffe_id:
+            raise InvariantViolationError("LEASE_CAN_CHANGE_SUBJECT")
+            
         b_expires = _as_utc(biscuit_auth.expires_at)
         self_expires = _as_utc(self.expires_at)
         if b_expires and self_expires and self_expires.replace(microsecond=0) > b_expires.replace(microsecond=0):
@@ -219,6 +224,7 @@ class CapabilityLease(Base):
             allowed_actions=effective_actions,
             allowed_resources=effective_resources,
             executor_spiffe_id=self.executor_spiffe_id,
+            subject_spiffe_id=self.subject_spiffe_id,
             expires_at=self.expires_at,
             delegation_depth=self.delegation_depth,
             max_delegation_depth=self.max_delegation_depth,

@@ -29,6 +29,7 @@ def _make_biscuit_auth(
     actions: set[str] | None = None,
     resources: set[str] | None = None,
     executor: str = "spiffe://example.org/executor/valid",
+    subject: str = "spiffe://example.org/workload/caller",
     expires_at: datetime | None = None,
     delegation_depth: int = 0,
     max_delegation_depth: int = 1,
@@ -38,6 +39,7 @@ def _make_biscuit_auth(
         allowed_actions=actions or {"contact.read"},
         allowed_resources=resources or {"/contacts/*"},
         executor_spiffe_id=executor,
+        subject_spiffe_id=subject,
         expires_at=expires_at or (_now() + timedelta(minutes=10)),
         delegation_depth=delegation_depth,
         max_delegation_depth=max_delegation_depth,
@@ -49,11 +51,13 @@ def _make_package_auth(
     actions: set[str] | None = None,
     resources: set[str] | None = None,
     executor: str = "spiffe://example.org/executor/valid",
+    subject: str = "spiffe://example.org/workload/caller",
 ) -> AuthorityContext:
     return AuthorityContext(
         allowed_actions=actions or {"contact.read", "contact.write"},
         allowed_resources=resources or {"/contacts/*"},
         executor_spiffe_id=executor,
+        subject_spiffe_id=subject,
         expires_at=_now() + timedelta(hours=1),
         delegation_depth=0,
         max_delegation_depth=1,
@@ -65,6 +69,7 @@ def _make_lease(
     actions: set[str] | None = None,
     resources: set[str] | None = None,
     executor: str = "spiffe://example.org/executor/valid",
+    subject: str = "spiffe://example.org/workload/caller",
     expires_at: datetime | None = None,
     lease_state: str = LeaseState.ACTIVE.value,
     delegation_depth: int = 0,
@@ -79,7 +84,7 @@ def _make_lease(
     lease.capability_id = "test-cap-001"
     lease.policy_version = "1.0"
     lease.execution_identity = "exec-001"
-    lease.subject_spiffe_id = "spiffe://example.org/workload/caller"
+    lease.subject_spiffe_id = subject
     lease.executor_spiffe_id = executor
     lease.biscuit_hash = "testhash"
     lease.issued_at = _now()

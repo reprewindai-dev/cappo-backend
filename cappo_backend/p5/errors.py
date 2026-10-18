@@ -1,5 +1,6 @@
 import time
 
+
 class P5TruthIdentityError(Exception):
     def __init__(self, error_code: str, reason: str, operation_id: str,
                  previous_truth_state: str, attempted_truth_state: str,

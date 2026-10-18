@@ -15,3 +15,12 @@ class TokenExpiredError(PolicyError):
 
 class ExecutionTerminatedError(PolicyError):
     """Raised when an execution has been explicitly terminated."""
+
+
+class TargetRefusedError(PolicyError):
+    """Raised by a target adapter when the target declined to commit the consequence.
+
+    Typically the target redeemed the permit and CAPPO answered DENY (authority ended,
+    payload changed, already redeemed). Nothing was committed: the consequence is recorded
+    FAILED and the caller receives a DENY, not a server error.
+    """

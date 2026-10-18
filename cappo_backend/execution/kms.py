@@ -1,13 +1,14 @@
-import jwt
-import time
-import uuid
 import json
 import os
 import stat
-from typing import Dict, Optional
-from cryptography.hazmat.primitives.asymmetric import ed25519
+import time
+import uuid
+from typing import Optional
+
+import jwt
 from cryptography.hazmat.primitives import serialization
-from sqlalchemy.orm import Session
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
 from cappo_backend.db.session import SessionLocal
 from cappo_backend.models.kms_models import KMSKeyRecord, KMSKeyStatus
 
@@ -113,7 +114,6 @@ class LocalKMSProvider:
             record = KMSKeyRecord(
                 kid=kid,
                 public_bytes=public_bytes,
-                private_bytes=None, # Explicitly dropping DB custody of private keys
                 status=KMSKeyStatus.ACTIVE,
                 created_at=now
             )

@@ -1,0 +1,122 @@
+{
+ "run_id": "20261011T052029Z-concurrent",
+ "finished_at": "2026-10-11T05:20:49.564910+00:00",
+ "host": {
+  "kernel": "6.18.44-fc-v114",
+  "nproc": 4,
+  "python": "3.13.16",
+  "wasmtime_py": "44.0.0"
+ },
+ "tenants": 64,
+ "rounds": 10,
+ "logical_mib_each": 4.0,
+ "summary": {
+  "vre1c": [
+   {
+    "concurrency": 1,
+    "restore_ms_per_tenant": {
+     "p50": 19.136,
+     "p95": 24.316,
+     "p99": 24.316,
+     "max": 24.316,
+     "n": 10
+    },
+    "batch_wall_ms": {
+     "p50": 62.311,
+     "p95": 71.806,
+     "p99": 71.806,
+     "max": 71.806,
+     "n": 10
+    },
+    "batch_settled_resident_bytes_p50": 3870720,
+    "logical_bytes_live": 4194304,
+    "logical_over_resident_live": 1.08,
+    "integrity_failures": 0
+   },
+   {
+    "concurrency": 2,
+    "restore_ms_per_tenant": {
+     "p50": 21.485,
+     "p95": 24.103,
+     "p99": 24.103,
+     "max": 24.103,
+     "n": 20
+    },
+    "batch_wall_ms": {
+     "p50": 61.322,
+     "p95": 87.313,
+     "p99": 87.313,
+     "max": 87.313,
+     "n": 10
+    },
+    "batch_settled_resident_bytes_p50": 7847936,
+    "logical_bytes_live": 8388608,
+    "logical_over_resident_live": 1.07,
+    "integrity_failures": 0
+   },
+   {
+    "concurrency": 4,
+    "restore_ms_per_tenant": {
+     "p50": 18.278,
+     "p95": 21.767,
+     "p99": 21.801,
+     "max": 21.801,
+     "n": 40
+    },
+    "batch_wall_ms": {
+     "p50": 60.815,
+     "p95": 69.434,
+     "p99": 69.434,
+     "max": 69.434,
+     "n": 10
+    },
+    "batch_settled_resident_bytes_p50": 16130048,
+    "logical_bytes_live": 16777216,
+    "logical_over_resident_live": 1.04,
+    "integrity_failures": 0
+   },
+   {
+    "concurrency": 8,
+    "restore_ms_per_tenant": {
+     "p50": 29.379,
+     "p95": 36.702,
+     "p99": 39.084,
+     "max": 39.084,
+     "n": 80
+    },
+    "batch_wall_ms": {
+     "p50": 134.505,
+     "p95": 142.85,
+     "p99": 142.85,
+     "max": 142.85,
+     "n": 10
+    },
+    "batch_settled_resident_bytes_p50": 32006144,
+    "logical_bytes_live": 33554432,
+    "logical_over_resident_live": 1.05,
+    "integrity_failures": 0
+   },
+   {
+    "concurrency": 16,
+    "restore_ms_per_tenant": {
+     "p50": 46.567,
+     "p95": 67.926,
+     "p99": 85.811,
+     "max": 93.837,
+     "n": 160
+    },
+    "batch_wall_ms": {
+     "p50": 239.166,
+     "p95": 277.457,
+     "p99": 277.457,
+     "max": 277.457,
+     "n": 10
+    },
+    "batch_settled_resident_bytes_p50": 65024000,
+    "logical_bytes_live": 67108864,
+    "logical_over_resident_live": 1.03,
+    "integrity_failures": 0
+   }
+  ]
+ }
+}

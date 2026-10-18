@@ -1,0 +1,104 @@
+{
+  "anchoring": {
+    "anchor_id": "ab166b38316dd42024cd686c6e70f0dc51a64534757a841a157909a8ce966c27",
+    "status": "confirmed"
+  },
+  "decision": "allow",
+  "expires_at": "2026-09-01T13:43:26.611782Z",
+  "mount": {
+    "grants": {
+      "blocked": [
+        "record.delete"
+      ],
+      "external_send": [],
+      "reads": [
+        "record.read"
+      ],
+      "resources": [],
+      "suppression_required": [],
+      "writes": [
+        "record.create",
+        "record.delete"
+      ]
+    },
+    "id": "mnt_922551abe82a4313a4876725fbb6fce0",
+    "lifecycle": {
+      "state": "mounted",
+      "unmount_on": [
+        "task_complete",
+        "token_expiry",
+        "explicit_terminate"
+      ]
+    },
+    "package_ref": "activation@v1",
+    "policy": {
+      "default": "deny",
+      "mode": "draft_only",
+      "persistent_memory_allowed": false,
+      "require_human_approval_for_external_send": true,
+      "require_suppression_check": true
+    },
+    "role": "ephemeral_executor",
+    "scope": {
+      "blocked": [],
+      "project": "activation-v1",
+      "reads": [
+        "record.read"
+      ],
+      "resources": [
+        "*"
+      ],
+      "workspace": "workspace-activation-v1",
+      "writes": [
+        "record.create",
+        "record.delete"
+      ]
+    },
+    "token": {
+      "ttl_seconds": 300,
+      "type": "ephemeral_scoped"
+    }
+  },
+  "nonce_consumed": false,
+  "reason": "mounted",
+  "token": {
+    "biscuit_token": "<REDACTED>",
+    "execution_id": "exec_3a87652e93f04633bbe7d29be18c124b",
+    "expires_at": "2026-09-01T13:43:26.611782Z",
+    "grants": {
+      "blocked": [
+        "record.delete"
+      ],
+      "external_send": [],
+      "reads": [
+        "record.read"
+      ],
+      "resources": [],
+      "suppression_required": [],
+      "writes": [
+        "record.create",
+        "record.delete"
+      ]
+    },
+    "issued_at": "2026-09-01T13:38:26.611782Z",
+    "mount_id": "mnt_922551abe82a4313a4876725fbb6fce0",
+    "nonce": "<REDACTED>",
+    "nonce_consumed": false,
+    "package_ref": "activation@v1",
+    "policy": {
+      "default": "deny",
+      "mode": "draft_only",
+      "persistent_memory_allowed": false,
+      "require_human_approval_for_external_send": true,
+      "require_suppression_check": true
+    },
+    "scope": {
+      "project": "activation-v1",
+      "workspace": "workspace-activation-v1"
+    },
+    "single_use": true,
+    "token_id": "<REDACTED>",
+    "ttl_seconds": 300
+  },
+  "ttl_seconds": 300
+}

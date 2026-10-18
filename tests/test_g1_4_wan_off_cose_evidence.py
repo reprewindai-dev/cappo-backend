@@ -92,7 +92,7 @@ def test_g1_4_wan_off_cose_evidence_continuity(db: Session):
     )
     
     reg = _build_registry(db)
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(
             workspace="ws_1",
@@ -142,7 +142,7 @@ def test_g1_4_wan_off_cose_evidence_continuity(db: Session):
 
     # Phase 3: WAN OFF execution 2 (new mount to avoid replay block)
     with no_wan():
-        mount_record2, _, _ = reg.request_mount(
+        mount_record2, _, _, _holder_credential = reg.request_mount(
             package_ref=CAPABILITY_ID,
             scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
             role="agent", policy=MountPolicy(), ttl_seconds=TTL,

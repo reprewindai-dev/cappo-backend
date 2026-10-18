@@ -1,4 +1,4 @@
-"""x402 Payment Integration for CAPPO / cAPI.
+﻿"""x402 Payment Integration for CAPPO / cAPI.
 
 Omnipresent X402 Monetization:
   Every API route is monetized except public infrastructure endpoints
@@ -21,7 +21,7 @@ Omnipresent X402 Monetization:
   All prices flow to `veklom_evm_address` (treasury) on Base Mainnet + Sepolia.
   Multi-chain: zkSync, Unichain, Monad gated by x402_networks env var.
 
-  X402FreemiumASGI: 5 free trials per wallet for developer onboarding.
+  Free execution handled by FreeRunQuota.
 
 Payment Protocol Abstraction:
   CAPPO accepts x402 V2 (Payment-Required / Payment-Signature / Payment-Response)

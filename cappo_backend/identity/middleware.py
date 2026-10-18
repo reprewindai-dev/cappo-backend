@@ -1,9 +1,17 @@
+# ruff: noqa
 import json
 from enum import Enum
 from typing import Optional
-from .models import WorkloadIdentityToken, ExecutionContextToken, WorkloadProofToken, AuthorityArtifact
+
 from .errors import *
+from .models import (
+    AuthorityArtifact,
+    ExecutionContextToken,
+    WorkloadIdentityToken,
+    WorkloadProofToken,
+)
 from .validator import IdentityValidator
+
 
 class RouteClassification(Enum):
     PUBLIC = "public"
@@ -26,8 +34,16 @@ class WIDMiddlewareContext:
         wit_payload: Optional[dict] = None,
         ect_payload: Optional[dict] = None,
         wpt_payload: Optional[dict] = None,
-        authority_payload: Optional[dict] = None
+        authority_payload: Optional[dict] = None,
+        lease_execution_id: Optional[str] = None,
     ):
+        """Enforce workload identity for the route's classification.
+
+        A CONSEQUENCE route needs authority. ``lease_execution_id`` is that authority
+        when the caller resolved it server-side from an active capability lease; it is
+        never read from the request. The Execution-Context must then name the leased
+        execution, so identity tokens minted for one execution cannot drive another.
+        """
         if self.classification == RouteClassification.PUBLIC:
             return
             
@@ -53,8 +69,8 @@ class WIDMiddlewareContext:
         wpt = WorkloadProofToken(**wpt_payload)
         
         # In a real system, we compute sha256(authority_token_raw).
-        import json
         import hashlib
+        import json
         if authority_payload:
             auth_bytes = json.dumps(authority_payload, sort_keys=True).encode()
             expected_auth_hash = hashlib.sha256(auth_bytes).hexdigest()
@@ -83,6 +99,11 @@ class WIDMiddlewareContext:
             return
             
         # Consequence requirements
+        if lease_execution_id:
+            if ect.ephemeral_execution_id != lease_execution_id:
+                raise ExecutionContextLeaseMismatchError(route=route, method=method, trace_id=trace_id, workload_identifier=wit.sub, ephemeral_execution_id=ect.ephemeral_execution_id)
+            return
+
         if not authority_payload:
             raise MissingAuthorityError(route=route, method=method, trace_id=trace_id, workload_identifier=wit.sub, ephemeral_execution_id=ect.ephemeral_execution_id)
             

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 
 @dataclass
 class WorkloadIdentityToken:
@@ -53,3 +54,5 @@ class AuthorityArtifact:
     issued_at: int
     expires_at: int
     proof_of_possession: str
+    inbound_truth_state: str = "ADMISSIBLE"
+    required_truth_state: str = "ADMISSIBLE"

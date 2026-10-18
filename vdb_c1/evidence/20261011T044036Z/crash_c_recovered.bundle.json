@@ -1,0 +1,356 @@
+{
+ "protocol": "veklom.vdb.c1.bundle/v1",
+ "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+ "journal": [
+  {
+   "at": "2026-10-11T04:40:37.285Z",
+   "body": {
+    "admission": {
+     "admitted_at": "2026-10-11T04:40:37.285Z",
+     "authority_kid": "ed25519:fb5b1f7f2a5ff6ec",
+     "checks": [
+      "schema",
+      "protocol",
+      "op",
+      "namespace",
+      "kid",
+      "trusted_key",
+      "signature",
+      "validity_window",
+      "ttl"
+     ]
+    },
+    "intent_hash": "sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a",
+    "payload_commitment": "sha256:906b7c768bee3c91eead08ad8c5670ecb50e42437562381931acea88c32298d7",
+    "pre_entries": [],
+    "pre_generation": 0,
+    "pre_root": "sha256:ef6b1710cfab35659943540b3d96fd377c47e146f2f01d5271d1b52725081050",
+    "signed_intent": {
+     "alg": "Ed25519",
+     "kid": "ed25519:fb5b1f7f2a5ff6ec",
+     "payload": {
+      "authority_kid": "ed25519:fb5b1f7f2a5ff6ec",
+      "expected_generation": 0,
+      "expected_root": "sha256:ef6b1710cfab35659943540b3d96fd377c47e146f2f01d5271d1b52725081050",
+      "expires_at": "2026-10-11T04:45:37.179Z",
+      "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+      "issued_at": "2026-10-11T04:40:37.179Z",
+      "key": "alpha",
+      "namespace": "ns:veklom:c1:proof",
+      "op": "UPSERT",
+      "protocol": "veklom.vdb.c1.intent/v1",
+      "value": "1"
+     },
+     "sig": "gvkThSFmThi0HAcHobv7Hqjdb8_IawWvrlwlaffBPQhNrzBAtLZh-hQ79BdQox7dr2WzYDQL8-gfVAd9_jMeBg"
+    },
+    "store_id": "39f0455b-be19-4486-b3f9-4b9f09ae1531"
+   },
+   "hash": "sha256:df3fea4be6e1befecd7ddf622a3b11b66a740939422754604b096c41332858c8",
+   "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+   "kind": "PREPARED",
+   "prev": "genesis",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 0
+  },
+  {
+   "at": "2026-10-11T04:40:37.288Z",
+   "body": {
+    "intent_hash": "sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a"
+   },
+   "hash": "sha256:813d0876349af41d5a93594e642037ed5d5d93eeee0634529ca52609ee4576e4",
+   "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+   "kind": "COMMITTING",
+   "prev": "sha256:df3fea4be6e1befecd7ddf622a3b11b66a740939422754604b096c41332858c8",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 1
+  },
+  {
+   "at": "2026-10-11T04:40:37.291Z",
+   "body": {
+    "applied_row": {
+     "generation": 1,
+     "intent_hash": "sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a",
+     "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+     "post_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4"
+    },
+    "intent_hash": "sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a",
+    "physical": {
+     "adapter": "sqlite-wal/v1",
+     "journal_mode": "wal",
+     "store_id": "39f0455b-be19-4486-b3f9-4b9f09ae1531",
+     "synchronous": "FULL"
+    },
+    "post_entries": [
+     [
+      "alpha",
+      "1"
+     ]
+    ],
+    "post_generation": 1,
+    "post_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4",
+    "recovered": false
+   },
+   "hash": "sha256:3b5c36ab8733339b52b6f837ecbeff0252939be139c4d3ac23d9c44903c905ee",
+   "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+   "kind": "COMMITTED",
+   "prev": "sha256:813d0876349af41d5a93594e642037ed5d5d93eeee0634529ca52609ee4576e4",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 2
+  },
+  {
+   "at": "2026-10-11T04:40:37.292Z",
+   "body": {
+    "certificate": {
+     "alg": "Ed25519",
+     "kid": "ed25519:e6b72fdb423ace14",
+     "payload": {
+      "authority_kid": "ed25519:fb5b1f7f2a5ff6ec",
+      "expected_generation": 0,
+      "finalized_at": "2026-10-11T04:40:37.291Z",
+      "finalizer_kid": "ed25519:e6b72fdb423ace14",
+      "intent_hash": "sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a",
+      "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+      "journal": {
+       "committed_hash": "sha256:3b5c36ab8733339b52b6f837ecbeff0252939be139c4d3ac23d9c44903c905ee",
+       "committed_seq": 2,
+       "prepared_hash": "sha256:df3fea4be6e1befecd7ddf622a3b11b66a740939422754604b096c41332858c8",
+       "prepared_seq": 0
+      },
+      "namespace": "ns:veklom:c1:proof",
+      "payload_commitment": "sha256:906b7c768bee3c91eead08ad8c5670ecb50e42437562381931acea88c32298d7",
+      "physical": {
+       "adapter": "sqlite-wal/v1",
+       "applied_row": {
+        "generation": 1,
+        "intent_hash": "sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a",
+        "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+        "post_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4"
+       },
+       "journal_mode": "wal",
+       "store_id": "39f0455b-be19-4486-b3f9-4b9f09ae1531",
+       "synchronous": "FULL"
+      },
+      "post_generation": 1,
+      "post_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4",
+      "pre_root": "sha256:ef6b1710cfab35659943540b3d96fd377c47e146f2f01d5271d1b52725081050",
+      "protocol": "veklom.vdb.c1.finality/v1"
+     },
+     "sig": "SzN3yiOjJg4ZQ9UES8SrerWaRKwOrCEx0HkQQ8xNH5weT9pQ4ZK9dTdagxpTqnJEAtIisYzFKssVUJEtsK5oCg"
+    },
+    "intent_hash": "sha256:6250cbf7b243cd6a5201191ec201d55b60b7a7cf32624059a01d999d2f3ae58a"
+   },
+   "hash": "sha256:eb939e805a2872e98f80ebd33480f72a903d6eda36ba860b18fd6ff37040f434",
+   "intent_id": "299ccc7c-862c-4bf6-888f-0583fafca266",
+   "kind": "FINALIZED",
+   "prev": "sha256:3b5c36ab8733339b52b6f837ecbeff0252939be139c4d3ac23d9c44903c905ee",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 3
+  },
+  {
+   "at": "2026-10-11T04:40:37.619Z",
+   "body": {
+    "admission": {
+     "admitted_at": "2026-10-11T04:40:37.619Z",
+     "authority_kid": "ed25519:fb5b1f7f2a5ff6ec",
+     "checks": [
+      "schema",
+      "protocol",
+      "op",
+      "namespace",
+      "kid",
+      "trusted_key",
+      "signature",
+      "validity_window",
+      "ttl"
+     ]
+    },
+    "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+    "payload_commitment": "sha256:c9961d6083f716c3b1e198b0a51d4320685fd982a1db907ef04f4602ec378cf7",
+    "pre_entries": [
+     [
+      "alpha",
+      "1"
+     ]
+    ],
+    "pre_generation": 1,
+    "pre_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4",
+    "signed_intent": {
+     "alg": "Ed25519",
+     "kid": "ed25519:fb5b1f7f2a5ff6ec",
+     "payload": {
+      "authority_kid": "ed25519:fb5b1f7f2a5ff6ec",
+      "expected_generation": 1,
+      "expected_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4",
+      "expires_at": "2026-10-11T04:45:37.509Z",
+      "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+      "issued_at": "2026-10-11T04:40:37.509Z",
+      "key": "beta",
+      "namespace": "ns:veklom:c1:proof",
+      "op": "UPSERT",
+      "protocol": "veklom.vdb.c1.intent/v1",
+      "value": "2"
+     },
+     "sig": "Ge74IqW2Hd83kjsORxFrXxCMBDcXt4xp7XDjqEEnydCzYcu51NxPtGeQGzNHehM_IIjAWh-IydAd1TKIbmcsBg"
+    },
+    "store_id": "39f0455b-be19-4486-b3f9-4b9f09ae1531"
+   },
+   "hash": "sha256:477f1f60c8676c9d5143df8d70aaff548d8471a001528f75837bc6cdc3ef9a07",
+   "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+   "kind": "PREPARED",
+   "prev": "sha256:eb939e805a2872e98f80ebd33480f72a903d6eda36ba860b18fd6ff37040f434",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 4
+  },
+  {
+   "at": "2026-10-11T04:40:37.621Z",
+   "body": {
+    "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60"
+   },
+   "hash": "sha256:f7180b43b43807c5c7eae12f10b3b9eff1d3d70bf1646b96c1169a9f74063ea9",
+   "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+   "kind": "COMMITTING",
+   "prev": "sha256:477f1f60c8676c9d5143df8d70aaff548d8471a001528f75837bc6cdc3ef9a07",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 5
+  },
+  {
+   "at": "2026-10-11T04:40:37.718Z",
+   "body": {
+    "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+    "reason": "E_OUTCOME_UNKNOWN_AFTER_CRASH"
+   },
+   "hash": "sha256:f085cabf86fbdd5176c8db591797aa203ea1ccaad8567c1083060e984da9641c",
+   "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+   "kind": "COMMIT_UNCERTAIN",
+   "prev": "sha256:f7180b43b43807c5c7eae12f10b3b9eff1d3d70bf1646b96c1169a9f74063ea9",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 6
+  },
+  {
+   "at": "2026-10-11T04:40:37.719Z",
+   "body": {
+    "applied_row": {
+     "generation": 2,
+     "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+     "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+     "post_root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c"
+    },
+    "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+    "physical": {
+     "adapter": "sqlite-wal/v1",
+     "journal_mode": "wal",
+     "store_id": "39f0455b-be19-4486-b3f9-4b9f09ae1531",
+     "synchronous": "FULL"
+    },
+    "post_entries": [
+     [
+      "alpha",
+      "1"
+     ],
+     [
+      "beta",
+      "2"
+     ]
+    ],
+    "post_generation": 2,
+    "post_root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c",
+    "recovered": true
+   },
+   "hash": "sha256:41559b0e89c9f5c4be7c380c3e99fd8e6ebf2cae11b622a0bb44b3789cb552d7",
+   "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+   "kind": "COMMITTED",
+   "prev": "sha256:f085cabf86fbdd5176c8db591797aa203ea1ccaad8567c1083060e984da9641c",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 7
+  },
+  {
+   "at": "2026-10-11T04:40:37.720Z",
+   "body": {
+    "certificate": {
+     "alg": "Ed25519",
+     "kid": "ed25519:e6b72fdb423ace14",
+     "payload": {
+      "authority_kid": "ed25519:fb5b1f7f2a5ff6ec",
+      "expected_generation": 1,
+      "finalized_at": "2026-10-11T04:40:37.719Z",
+      "finalizer_kid": "ed25519:e6b72fdb423ace14",
+      "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+      "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+      "journal": {
+       "committed_hash": "sha256:41559b0e89c9f5c4be7c380c3e99fd8e6ebf2cae11b622a0bb44b3789cb552d7",
+       "committed_seq": 7,
+       "prepared_hash": "sha256:477f1f60c8676c9d5143df8d70aaff548d8471a001528f75837bc6cdc3ef9a07",
+       "prepared_seq": 4
+      },
+      "namespace": "ns:veklom:c1:proof",
+      "payload_commitment": "sha256:c9961d6083f716c3b1e198b0a51d4320685fd982a1db907ef04f4602ec378cf7",
+      "physical": {
+       "adapter": "sqlite-wal/v1",
+       "applied_row": {
+        "generation": 2,
+        "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+        "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+        "post_root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c"
+       },
+       "journal_mode": "wal",
+       "store_id": "39f0455b-be19-4486-b3f9-4b9f09ae1531",
+       "synchronous": "FULL"
+      },
+      "post_generation": 2,
+      "post_root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c",
+      "pre_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4",
+      "protocol": "veklom.vdb.c1.finality/v1"
+     },
+     "sig": "Yb5bwU5HCBllXCT1uHuMr_-dMsZRVrHCw3gpOTlbkhLX0ASjs2Hvu1aI3Ses3hSjEtkR3aKzyIDReobRziC8AQ"
+    },
+    "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60"
+   },
+   "hash": "sha256:7e3d76354ed9584a888ff61387aff796c6be943370cd39fc1ef530c7098ce1bf",
+   "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+   "kind": "FINALIZED",
+   "prev": "sha256:41559b0e89c9f5c4be7c380c3e99fd8e6ebf2cae11b622a0bb44b3789cb552d7",
+   "protocol": "veklom.vdb.c1.journal/v1",
+   "seq": 8
+  }
+ ],
+ "receipt": {
+  "certificate": {
+   "alg": "Ed25519",
+   "kid": "ed25519:e6b72fdb423ace14",
+   "payload": {
+    "authority_kid": "ed25519:fb5b1f7f2a5ff6ec",
+    "expected_generation": 1,
+    "finalized_at": "2026-10-11T04:40:37.719Z",
+    "finalizer_kid": "ed25519:e6b72fdb423ace14",
+    "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+    "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+    "journal": {
+     "committed_hash": "sha256:41559b0e89c9f5c4be7c380c3e99fd8e6ebf2cae11b622a0bb44b3789cb552d7",
+     "committed_seq": 7,
+     "prepared_hash": "sha256:477f1f60c8676c9d5143df8d70aaff548d8471a001528f75837bc6cdc3ef9a07",
+     "prepared_seq": 4
+    },
+    "namespace": "ns:veklom:c1:proof",
+    "payload_commitment": "sha256:c9961d6083f716c3b1e198b0a51d4320685fd982a1db907ef04f4602ec378cf7",
+    "physical": {
+     "adapter": "sqlite-wal/v1",
+     "applied_row": {
+      "generation": 2,
+      "intent_hash": "sha256:3c313f931af503dcb41e84421ab8eee6b844b2db7a6693daf65b80ee6e325c60",
+      "intent_id": "36f60f5d-2c75-44de-be63-b8f666f6bc33",
+      "post_root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c"
+     },
+     "journal_mode": "wal",
+     "store_id": "39f0455b-be19-4486-b3f9-4b9f09ae1531",
+     "synchronous": "FULL"
+    },
+    "post_generation": 2,
+    "post_root": "sha256:e7b303878e1e86c96210e75e3c5696dee90deb2b9de2cc47ceceba8dce71a62c",
+    "pre_root": "sha256:c71f576cb9a920ca08906f404241df8c3045cf5375b46511f08ea94df01c46a4",
+    "protocol": "veklom.vdb.c1.finality/v1"
+   },
+   "sig": "Yb5bwU5HCBllXCT1uHuMr_-dMsZRVrHCw3gpOTlbkhLX0ASjs2Hvu1aI3Ses3hSjEtkR3aKzyIDReobRziC8AQ"
+  },
+  "certificate_digest": "sha256:79b556e7dbae68bc9e3c9414cf1abd033940b38b94a8df9e07d1ebb79a20eac3"
+ }
+}

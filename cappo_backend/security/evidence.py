@@ -32,14 +32,18 @@ def get_evidence_key_pair() -> ed25519.Ed25519PrivateKey:
 def mint_signed_execution_evidence(
     canonical_receipt: dict,
     key_file: str = ".evidence_root_key",
-    key_id: bytes = b"veklom-evidence-key-v1"
+    key_id: bytes = b"veklom-evidence-key-v1",
+    private_key: ed25519.Ed25519PrivateKey = None
 ) -> bytes:
     payload = cbor2.dumps(canonical_receipt, canonical=True)
     protected_header = cbor2.dumps({1: -8}, canonical=True)
     unprotected_header = {4: key_id}
     sig_structure = ["Signature1", protected_header, b"", payload]
     sig_data = cbor2.dumps(sig_structure, canonical=True)
-    private_key = get_evidence_key_pair()
+    
+    if private_key is None:
+        private_key = get_evidence_key_pair()
+        
     signature = private_key.sign(sig_data)
     cose_sign1 = [protected_header, unprotected_header, payload, signature]
     return cbor2.dumps(cbor2.CBORTag(18, cose_sign1), canonical=True)

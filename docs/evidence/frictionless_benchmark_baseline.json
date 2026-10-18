@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-09-09T23:13:18.763844Z",
+  "git_sha": null,
+  "branch": null,
+  "overall_frictionless_status": "INDETERMINATE",
+  "metrics_evaluated": 7,
+  "metrics_passed": 6,
+  "metrics_failed": 0,
+  "metrics_indeterminate": 1,
+  "metrics": [
+    {
+      "metric_id": "FRIC-01",
+      "threshold": "< 5.0 seconds",
+      "status": "INDETERMINATE",
+      "measured_value": null,
+      "error": "live governed consequence failed: 401 Client Error: Unauthorized for url: http://127.0.0.1:8003/v1/consequence/dispatch"
+    },
+    {
+      "metric_id": "FRIC-02",
+      "threshold": "<= 2 files",
+      "status": "PASS",
+      "measured_value": 1,
+      "evidence": [
+        "cappo_backend/main.py"
+      ]
+    },
+    {
+      "metric_id": "FRIC-03",
+      "threshold": "0 manual steps",
+      "status": "PASS",
+      "measured_value": 0
+    },
+    {
+      "metric_id": "FRIC-04",
+      "threshold": "<= 1 additional component",
+      "status": "PASS",
+      "measured_value": 0,
+      "evidence": []
+    },
+    {
+      "metric_id": "FRIC-05",
+      "threshold": "<= 1 setup call before dispatch",
+      "status": "PASS",
+      "measured_value": 1
+    },
+    {
+      "metric_id": "FRIC-06",
+      "threshold": "<= 1 automated reconciliation call",
+      "status": "PASS",
+      "measured_value": 1,
+      "evidence": {
+        "execution_id": "exec-fric-reconcile",
+        "status": "RECONCILED_SUCCEEDED",
+        "finality_state": "TERMINAL"
+      }
+    },
+    {
+      "metric_id": "FRIC-07",
+      "threshold": "0 known target-secret markers observed in workload capture",
+      "status": "PASS",
+      "measured_value": 0,
+      "evidence": {
+        "capture": "docs\\evidence\\workload_capture.log",
+        "marker_count": 2,
+        "hits": []
+      }
+    }
+  ]
+}

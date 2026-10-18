@@ -38,6 +38,7 @@ class P5Operation(Base):
     current_truth_state: Mapped[str] = mapped_column(String, nullable=False)
     intent_hash: Mapped[str] = mapped_column(String, nullable=False)
     actor_identity: Mapped[str] = mapped_column(String, nullable=False)
+    assurance_level: Mapped[str | None] = mapped_column(String, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
@@ -66,6 +67,7 @@ class P5Event(Base):
     cappo_decision_id: Mapped[str | None] = mapped_column(String, nullable=True)
     event_hash: Mapped[str] = mapped_column(String, nullable=False)
     signature: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assurance_level: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
 

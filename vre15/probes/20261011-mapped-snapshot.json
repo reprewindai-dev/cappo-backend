@@ -1,0 +1,70 @@
+{
+ "kernel": "6.18.44-fc-v114",
+ "wasmtime_py": "44.0.0",
+ "A_B_correctness_isolation": {
+  "restore_digest_matches": true,
+  "evolution_digest_matches": true,
+  "image_matches_memory_sha": true,
+  "image_unchanged_after_guest_writes": true
+ },
+ "C_charging_unconstrained": {
+  "mode": "map",
+  "limit_bytes": 268435456,
+  "swap_forbidden": true,
+  "exit_code": 0,
+  "oom_kills": 0,
+  "seconds": 0.32,
+  "max_usage_bytes": 91668480,
+  "failcnt": 0,
+  "memory_stat": {
+   "cache": 75046912,
+   "rss": 0,
+   "mapped_file": 0,
+   "swap": 0,
+   "total_cache": 75046912,
+   "total_rss": 0,
+   "total_swap": 0
+  },
+  "digest_matches": true
+ },
+ "D_mapped_16MiB_no_swap": {
+  "mode": "map",
+  "limit_bytes": 16777216,
+  "swap_forbidden": true,
+  "exit_code": 0,
+  "oom_kills": 0,
+  "seconds": 0.41,
+  "max_usage_bytes": 16777216,
+  "failcnt": 0,
+  "memory_stat": {
+   "cache": 2744320,
+   "rss": 0,
+   "mapped_file": 0,
+   "swap": 0,
+   "total_cache": 2744320,
+   "total_rss": 0,
+   "total_swap": 0
+  },
+  "digest_matches": true
+ },
+ "D_anon_copy_16MiB_no_swap": {
+  "mode": "copy",
+  "limit_bytes": 16777216,
+  "swap_forbidden": true,
+  "exit_code": -9,
+  "oom_kills": 1,
+  "seconds": 2.72,
+  "max_usage_bytes": 16777216,
+  "failcnt": 0,
+  "memory_stat": {
+   "cache": 192512,
+   "rss": 0,
+   "mapped_file": 0,
+   "swap": 0,
+   "total_cache": 192512,
+   "total_rss": 0,
+   "total_swap": 0
+  },
+  "stderr_tail": ""
+ }
+}

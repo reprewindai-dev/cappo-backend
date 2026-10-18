@@ -47,7 +47,7 @@ def test_zra_1_lease_remains_active_after_termination(db: Session):
     )
 
     # 1. Setup a valid mount
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent",

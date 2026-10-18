@@ -53,7 +53,7 @@ def _setup_binding(db: Session, actions: list[str] | None = None):
     )
     reg.register_package(pkg)
 
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=pkg.id,
         scope=MountScope(workspace="ws", project="proj", reads=[], writes=actions),
         role="agent",

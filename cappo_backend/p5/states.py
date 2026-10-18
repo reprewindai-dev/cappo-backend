@@ -51,3 +51,14 @@ class CAPPOTruthDecision(str, Enum):
     TRUTH_CONSTRAIN = "TRUTH_CONSTRAIN"
     TRUTH_ESCALATE = "TRUTH_ESCALATE"
     TRUTH_DEFER = "TRUTH_DEFER"
+
+class AssuranceLevel(str, Enum):
+    """
+    Evidence Assurance Taxonomy.
+    Cryptography provides tamper-evidence, but assurance classifications define
+    the physical provenance of the finality evidence.
+    """
+    E0_ORCHESTRATOR_ASSERTION = "E0_ORCHESTRATOR_ASSERTION"
+    E1_CONNECTOR_ATTESTED = "E1_CONNECTOR_ATTESTED"
+    E2_TARGET_CONFIRMED = "E2_TARGET_CONFIRMED"
+    E3_INDEPENDENTLY_CORROBORATED = "E3_INDEPENDENTLY_CORROBORATED"

@@ -1,0 +1,151 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "ce149b8514366095",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "20d0d5f4-c912-4da9-a2bb-002596716706",
+   "execution_id": "d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+   "scenario": "output_flood",
+   "role": "attacker",
+   "issued_at": 1791691130,
+   "expires_at": 1791691430,
+   "workload": {
+    "module": "output_flood",
+    "module_sha256": "2c7c3bdb0061907c32ee77db062ab2a1b30cf95d4a8fd93c4c5edbfea84db710",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 67108864,
+    "compute_fuel": 50000000,
+    "wall_deadline_ms": 100,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "C09CV54vuwiqyQ8+U1051AqXoIumO+vTydQ+uWCaqkbAjXye6GOLeK92ljKuQbeOLQtIfdKAoTUc3TgmBp9oCg=="
+ },
+ "boundary": {
+  "kind": "veklom.vre0.boundary/v1",
+  "execution_id": "d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+  "envelope_digest": "654bf38d2afdbe0c1d97f0b75fd808c0835b8cdbae1462d3150bd4a8fb0290a1",
+  "substrate": {
+   "cgroup_version": 1,
+   "kernel": "6.18.44-fc-v114",
+   "boot_id": "d5d4b582-ad72-42c6-a121-c47d4a5b7db8"
+  },
+  "cgroup": {
+   "paths": {
+    "memory": "/sys/fs/cgroup/memory/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+    "cpuacct": "/sys/fs/cgroup/cpuacct/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0"
+   },
+   "relative_paths": {
+    "memory": "/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+    "cpuacct": "/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0"
+   },
+   "inodes": {
+    "memory": 10243,
+    "cpuacct": 4085
+   }
+  },
+  "readback": {
+   "memory_limit_bytes": 67108864,
+   "memory_plus_swap_limit_bytes": 67108864,
+   "oom_kill_disable": 0
+  },
+  "process": {
+   "pid": 2977,
+   "starttime_ticks": 145088,
+   "membership": {
+    "memory": {
+     "expected": "/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+     "observed": "/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+     "match": true
+    },
+    "cpuacct": {
+     "expected": "/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+     "observed": "/vre0-20261011T035711Z/d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+     "match": true
+    }
+   }
+  },
+  "runtime": {
+   "pid": 2977,
+   "module_sha256": "2c7c3bdb0061907c32ee77db062ab2a1b30cf95d4a8fd93c4c5edbfea84db710",
+   "fuel_set": 50000000,
+   "output_max": 4096
+  },
+  "wall_deadline_ms_enforced": 100,
+  "checks": {
+   "memory_not_widened": true,
+   "swap_not_widened": true,
+   "oom_kill_enabled": true,
+   "process_placed": true,
+   "process_is_spawned_child": true,
+   "module_matches_envelope": true,
+   "fuel_not_widened": true,
+   "output_not_widened": true
+  }
+ },
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+  "boundary_digest": "6631fbe605de722c8428d22f5ed35ff14c342aab1df30f5b149165ebdf7d481c",
+  "refusal": null,
+  "released": true,
+  "released_wall_s": 1791691130,
+  "released_at_ns": 1450978693108,
+  "deadline_at_ns": 1451078693108,
+  "reaped_at_ns": 1451009047351,
+  "counters_before": {
+   "oom_kill": 0,
+   "limit_hits": 0,
+   "swap_limit_hits": 0,
+   "usage_bytes": 11751424,
+   "peak_bytes": 11755520,
+   "cpu_ns": 80766712
+  },
+  "counters_after": {
+   "oom_kill": 0,
+   "limit_hits": 0,
+   "swap_limit_hits": 0,
+   "usage_bytes": 700416,
+   "peak_bytes": 11755520,
+   "cpu_ns": 110425484
+  },
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": 5,
+   "signal": null
+  },
+  "runtime_report": {
+   "status": "trap",
+   "trap": "output_limit",
+   "fuel_remaining": 49999740,
+   "fuel_consumed": 260,
+   "output_bytes": 4096
+  },
+  "untrusted_guest_output": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+  "untrusted_guest_output_bytes": 4096,
+  "residual_procs": [],
+  "teardown": {
+   "memory": "removed",
+   "cpuacct": "removed"
+  },
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "b7d2d0a1e520f863",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "d9be38f8-d74a-4336-b7a9-750d5647f7f0",
+   "envelope_digest": "654bf38d2afdbe0c1d97f0b75fd808c0835b8cdbae1462d3150bd4a8fb0290a1",
+   "boundary_digest": "6631fbe605de722c8428d22f5ed35ff14c342aab1df30f5b149165ebdf7d481c",
+   "evidence_digest": "ab67d93bdee5d37efcd3b81731ec81277ba16b0833117a62b9601f6267321971",
+   "outcome": "ENVELOPE_OUTPUT_EXCEEDED",
+   "evidence_level": "E2"
+  },
+  "sig": "Zm5LFrJ+rj7shqpSPbsVaVH59HJfVvZBiS/D5rJMhUC262+JNby3YJDgCkE63VEj6+mlpRBR7DOs0gIPPkxhCw=="
+ }
+}

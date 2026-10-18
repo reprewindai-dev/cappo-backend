@@ -27,6 +27,7 @@ Proof types:
         "reconciliation_api_query"   — post-restart external API query
         "outcome_uncertain"          — process died; no proof available
         "optimistic_claim"           — local DB row lock acquired
+        "fence_refusal"              — mount terminated before STARTED; never dispatched
 """
 
 from __future__ import annotations
@@ -53,18 +54,47 @@ class ConsequenceState(str, enum.Enum):
     OUTCOME_UNKNOWN      = "outcome_unknown"
     RECONCILED_SUCCEEDED = "reconciled_succeeded"
     RECONCILED_FAILED    = "reconciled_failed"
+    
+    # Recovery / Rollback semantics states (Distributed Authority Goal Phase 4)
+    DISPATCHED_UNKNOWN      = "dispatched-unknown"
+    RESTORED                = "restored"
+    STALE_AUTHORITY         = "stale-authority"
+    RECONCILIATION_REQUIRED = "reconciliation-required"
 
 
 # Structural FSM — only these forward transitions are legal in the event stream.
 _ALLOWED_TRANSITIONS: dict[ConsequenceState, set[ConsequenceState]] = {
     # If None (first event), must be AUTHORIZED. Enforced in logic.
     ConsequenceState.AUTHORIZED:      {ConsequenceState.STARTED, ConsequenceState.FAILED},
-    ConsequenceState.STARTED:         {ConsequenceState.SUCCEEDED, ConsequenceState.FAILED, ConsequenceState.OUTCOME_UNKNOWN},
-    ConsequenceState.OUTCOME_UNKNOWN: {ConsequenceState.RECONCILED_SUCCEEDED, ConsequenceState.RECONCILED_FAILED},
+    ConsequenceState.STARTED:         {
+        ConsequenceState.SUCCEEDED, 
+        ConsequenceState.FAILED, 
+        ConsequenceState.OUTCOME_UNKNOWN,
+        ConsequenceState.DISPATCHED_UNKNOWN
+    },
+    ConsequenceState.OUTCOME_UNKNOWN: {
+        ConsequenceState.RECONCILED_SUCCEEDED, 
+        ConsequenceState.RECONCILED_FAILED,
+        ConsequenceState.RESTORED
+    },
+    ConsequenceState.DISPATCHED_UNKNOWN: {
+        ConsequenceState.RESTORED,
+        ConsequenceState.RECONCILIATION_REQUIRED
+    },
+    ConsequenceState.RESTORED: {
+        ConsequenceState.STALE_AUTHORITY,
+        ConsequenceState.RECONCILIATION_REQUIRED
+    },
+    ConsequenceState.RECONCILIATION_REQUIRED: {
+        ConsequenceState.RECONCILED_SUCCEEDED,
+        ConsequenceState.RECONCILED_FAILED,
+        ConsequenceState.STALE_AUTHORITY
+    },
     ConsequenceState.SUCCEEDED:       set(),   # terminal
     ConsequenceState.FAILED:          set(),   # terminal
-    ConsequenceState.RECONCILED_SUCCEEDED: set(),
-    ConsequenceState.RECONCILED_FAILED: set(),
+    ConsequenceState.STALE_AUTHORITY: set(),   # terminal
+    ConsequenceState.RECONCILED_SUCCEEDED: set(), # terminal
+    ConsequenceState.RECONCILED_FAILED: set(),    # terminal
 }
 
 

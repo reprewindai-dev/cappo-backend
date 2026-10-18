@@ -9,6 +9,8 @@ credentials or API keys.
 from __future__ import annotations
 
 import hashlib
+import hmac
+from datetime import datetime, timezone
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -17,6 +19,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from cappo_backend.config import Settings
+from cappo_backend.db.session import SessionLocal
+from cappo_backend.models.capability_mount import CapabilityMount
 
 PUBLIC_PATHS = frozenset(
     {
@@ -27,6 +31,7 @@ PUBLIC_PATHS = frozenset(
         "/runtime/identity",
         "/runtime/probe/cappo",
         "/runtime/probe/pgl",
+        "/runtime/observations",
         "/docs",
         "/redoc",
         "/openapi.json",
@@ -39,6 +44,27 @@ PUBLIC_PATHS = frozenset(
         "/.well-known/capability-beacon-keys.json",
         "/x402/bazaar",
         "/api/v1/pricing",
+        "/api/v1/pricing/",
+        "/healthz",
+        "/readyz",
+        "/protocol.json",
+    }
+)
+
+# Read-only product, catalog and documentation surfaces the public website renders
+# without a credential. GET/HEAD only: every other method on these paths, and every
+# mutation, execution, tenant-specific, raw-log or evidence route, stays authenticated.
+# Approved by the owner on 2026-10-02.
+PUBLIC_GET_PATHS = frozenset(
+    {
+        "/v1/capability/packages",
+        "/v1/vnp/methodology",
+        "/v1/vnp/leaderboard",
+        "/v1/vnp/validators",
+        "/v1/vnp/incidents",
+        "/api/v1/platform/pulse",
+        "/api/v1/benchmarks/leaderboard",
+        "/api/v1/benchmarks/staking/markets",
     }
 )
 
@@ -52,20 +78,42 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._settings = settings
         self._jwt_key = None
-        if settings.jwt_public_verification_key:
+        if settings.jwt_public_verification_key and settings.jwt_algorithm.upper() == "EDDSA":
             try:
                 key_bytes = bytes.fromhex(settings.jwt_public_verification_key)
                 self._jwt_key = Ed25519PublicKey.from_public_bytes(key_bytes)
             except ValueError:
                 self._jwt_key = settings.jwt_public_verification_key
+        elif settings.jwt_public_verification_key:
+            # HMAC algorithms take the shared secret as-is, even when it happens to be hex;
+            # loading it as an Ed25519 key made every signed request fail with a 500.
+            self._jwt_key = settings.jwt_public_verification_key
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self._settings.auth_enabled:
             request.scope["auth_principal"] = "auth-disabled"
+            request.scope["auth_workspace"] = request.headers.get("X-Workspace-ID", "default-local-workspace")
+            request.scope["caller_spiffe_id"] = "spiffe://example.org/workload/cappo-backend"
             return await call_next(request)
 
         path = request.url.path
-        if path in PUBLIC_PATHS or request.method == "OPTIONS":
+        presented = request.headers.get("Authorization", "")
+        # A mount-holder credential (vlm_) is never anonymous: it must go through the
+        # holder branch below so holder-scope restrictions still apply on public reads.
+        anonymous_public_read = (
+            request.method in ("GET", "HEAD")
+            and path in PUBLIC_GET_PATHS
+            and not presented.removeprefix("Bearer ").strip().startswith("vlm_")
+        )
+        if (
+            path in PUBLIC_PATHS
+            or anonymous_public_read
+            or path.startswith("/api/v1/execution/keys/")
+            # Target-side redemption: the caller is a target with no user session; the
+            # permit in the body is the credential and is verified by the handler.
+            or (request.method == "POST" and path == "/v1/capability/redeem")
+            or request.method == "OPTIONS"
+        ):
             return await call_next(request)
 
         api_key = request.headers.get("X-API-Key")
@@ -74,7 +122,44 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not token:
             return JSONResponse({"error": "AUTHENTICATION_REQUIRED"}, status_code=401)
 
-        if token.startswith("eyJ"):
+        if token.startswith("vlm_"):
+            mount_id, separator, secret = token[4:].rpartition(".")
+            if not mount_id or not separator or not secret:
+                return JSONResponse({"error": "HOLDER_CREDENTIAL_INVALID"}, status_code=401)
+
+            db = SessionLocal()
+            try:
+                row = db.get(CapabilityMount, mount_id)
+            finally:
+                db.close()
+
+            if (
+                row is None
+                or not row.holder_secret_hash
+                or not hmac.compare_digest(
+                    hashlib.sha256(secret.encode()).hexdigest(),
+                    row.holder_secret_hash,
+                )
+            ):
+                return JSONResponse({"error": "HOLDER_CREDENTIAL_INVALID"}, status_code=401)
+
+            request.scope["auth_principal"] = f"mount-holder:{mount_id}"
+            request.scope["auth_workspace"] = row.owner_workspace
+            request.scope["mount_holder_id"] = mount_id
+            if row.terminated:
+                if request.method != "GET":
+                    return JSONResponse({"error": "HOLDER_CREDENTIAL_REVOKED"}, status_code=401)
+                request.scope["mount_holder_state"] = "terminated"
+                return await call_next(request)
+            expires_at = row.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at <= datetime.now(timezone.utc):
+                if request.method != "GET":
+                    return JSONResponse({"error": "HOLDER_CREDENTIAL_EXPIRED"}, status_code=401)
+                request.scope["mount_holder_state"] = "expired"
+                return await call_next(request)
+        elif token.startswith("eyJ"):
             if not self._jwt_key:
                 return JSONResponse({"error": "JWT_MISCONFIGURED"}, status_code=500)
             try:
@@ -94,12 +179,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "tenant_id"
                 )
                 if workspace and str(workspace).strip():
+                    # A header that contradicts the token's workspace is refused, not ignored.
+                    header_workspace = request.headers.get("X-Workspace-ID", "").strip()
+                    if header_workspace and header_workspace != str(workspace).strip():
+                        return JSONResponse({"error": "WORKSPACE_SCOPE_MISMATCH"}, status_code=403)
                     request.scope["auth_workspace"] = str(workspace).strip()
                 # If JWT carries no workspace claim, auth_workspace is absent.
                 # Tenant-sensitive routes will fail with WORKSPACE_CONTEXT_MISSING.
             except jwt.ExpiredSignatureError:
                 return JSONResponse({"error": "TOKEN_EXPIRED"}, status_code=401)
             except jwt.InvalidTokenError:
+                return JSONResponse({"error": "INVALID_TOKEN"}, status_code=401)
+            except Exception:
+                # A key/algorithm mismatch fails closed as 401; it must never surface as a 500.
                 return JSONResponse({"error": "INVALID_TOKEN"}, status_code=401)
         else:
             if token not in self._settings.api_key_set:

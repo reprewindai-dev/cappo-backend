@@ -1,8 +1,12 @@
-import json
 import enum
+import json
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Text, Enum as SQLEnum
+
+from sqlalchemy import Boolean, Column, DateTime, String, Text
+from sqlalchemy import Enum as SQLEnum
+
 from cappo_backend.db.base import Base
+
 
 class ExecutionState(str, enum.Enum):
     PENDING = "PENDING"

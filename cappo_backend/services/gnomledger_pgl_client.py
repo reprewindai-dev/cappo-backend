@@ -8,6 +8,10 @@ from cappo_backend.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+# gnomledger creates agents as "registered" and retires them as "decommissioned"; its own
+# routes treat these three as live. Anything else (decommissioned, unknown) is not executable.
+GNOMLEDGER_LIVE_STATUSES = frozenset({"active", "registered", "standard"})
+
 
 @dataclass
 class GnomledgerAgentCertificate:
@@ -79,7 +83,7 @@ class GnomledgerPGLClient:
                     safety_rules=genome.get("safety_rules", []),
                     permissions=genome.get("permissions", []),
                     risk_category=genome.get("risk_category", "medium"),
-                    is_active=data.get("status", "").lower() == "active",
+                    is_active=str(data.get("status", "")).lower() in GNOMLEDGER_LIVE_STATUSES,
                     parent_agent_ids=data.get("parent_agent_ids", []),
                 )
         except httpx.HTTPError as e:

@@ -1,0 +1,11 @@
+{
+  "action": "record.create",
+  "arguments": {
+    "content": "must-not-write"
+  },
+  "nonce": "<REDACTED>",
+  "operation_id": "op-authority-denial",
+  "resource": "authority-denied-record",
+  "target_ref": "activation.local-record",
+  "token_id": "<REDACTED>"
+}

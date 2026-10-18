@@ -1,15 +1,15 @@
-import pytest
-from unittest.mock import Mock
-from datetime import datetime, timezone
-
-from sqlalchemy import select
-from cappo_backend.p5.engine import P5Engine
-from cappo_backend.p5.states import SinkClass, TruthState, P5EventType
-from cappo_backend.p5.models import P5Operation, P5Event, P5Outbox
-from cappo_backend.p5.dispatcher import P5OutboxDispatcher, OutboxTransportError
-
-
 import uuid
+from datetime import datetime, timezone
+from unittest.mock import Mock
+
+import pytest
+from sqlalchemy import select
+
+from cappo_backend.p5.dispatcher import OutboxTransportError, P5OutboxDispatcher
+from cappo_backend.p5.engine import P5Engine
+from cappo_backend.p5.models import P5Event, P5Operation, P5Outbox
+from cappo_backend.p5.states import P5EventType, SinkClass, TruthState
+
 
 def _op_id() -> str:
     return f"op-{uuid.uuid4().hex}"

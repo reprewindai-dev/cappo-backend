@@ -1,0 +1,46 @@
+{
+  "proof": "LINUX-CONSEQUENCE-1",
+  "verdict": "VALID",
+  "receipt": {
+    "version": "1.0",
+    "execution_id": "exec-linux-73a8f9fddf5145e3b06a0a1ea9104f7c",
+    "timestamp": "2026-09-10T09:11:32.351010+00:00",
+    "substrate": "linux-cgroup-v2-ebpf",
+    "identity": {
+      "cgroup_id": 3737,
+      "cgroup_path": "/sys/fs/cgroup/cappo_exec-linux-73a8f9fddf5145e3b06a0a1ea9104f7c"
+    },
+    "enforcement": {
+      "memory_limit_bytes": 16777216,
+      "native_oom_kill_count": 1
+    },
+    "outcome": "RESOURCE_EXHAUSTED",
+    "evidence": {
+      "independent_events": [
+        {
+          "type": "EXEC",
+          "pid": 1756,
+          "cgroup_id": 3737,
+          "comm": "python3",
+          "timestamp_ns": 3292145648501
+        },
+        {
+          "type": "OOM_VICTIM",
+          "pid": 1756,
+          "cgroup_id": 3737,
+          "comm": "",
+          "timestamp_ns": 3292210538144
+        },
+        {
+          "type": "TEARDOWN",
+          "pid": 1739,
+          "cgroup_id": 3737,
+          "comm": "python3",
+          "timestamp_ns": 3292243528146
+        }
+      ],
+      "event_loss_count": 0
+    },
+    "seal": "sha256:185ff4e9b63f9dbd85b6ae2bd440ab42c322869c352076c1cda117a3b455a783"
+  }
+}

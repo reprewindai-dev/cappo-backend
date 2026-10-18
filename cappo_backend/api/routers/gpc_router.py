@@ -1,19 +1,16 @@
 """Governed Plan Compiler (GPC) router.
 
-Stats are read from real GovernedRun DB rows.
-Compile endpoint runs the intent through the real governance service.
-No random data.
+Stats are read from real GovernedRun DB rows. No random data.
+
+Plan/contract compilation is not CAPPO's job: per the Capability OS wiring
+matrix (W-06) it belongs to the ABIDE domain service, and CAPPO stays the sole
+consequence authority. The old compile routes answer 410 with the new home.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
-import time
-import uuid
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -61,84 +58,18 @@ def get_stats(db: Session = Depends(get_session)):
     }
 
 
+def _moved(location: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=410,
+        content={"error": "MOVED_TO_ABIDE", "detail": "Plan/contract compilation is owned by ABIDE (W-06).", "location": location},
+    )
+
+
 @router.post("/compile")
-async def compile_plan(request: Request, db: Session = Depends(get_session)):
-    """Compile a governed plan.
+def compile_moved():
+    return _moved("/api/abide/v1/blueprint/compile")
 
-    Validates intent against the governance service and returns a deterministic
-    plan graph with a real SHA-256 proof hash. No sleep(), no random data.
-    """
-    start = time.monotonic()
-    data = await request.json()
-    intent = data.get("intent", "Unknown intent")
-    compliance = data.get("compliance", [])
-    provider = data.get("provider", "gemini")
-    model = data.get("model", "gemini-2.5-flash")
 
-    # Build canonical plan deterministically from the intent
-    plan_id = f"plan_{uuid.uuid4().hex[:16]}"
-
-    nodes = [
-        {
-            "id": "node_parse",
-            "type": "standard",
-            "description": f"Parse intent: {intent[:80]}",
-            "policy_tag": "execution",
-            "entropy": round(len(intent) / 1000, 4),
-        },
-        {
-            "id": "node_compliance",
-            "type": "quantum",
-            "description": (
-                f"Apply {', '.join(compliance)} compliance constraints"
-                if compliance else "Apply default governance constraints"
-            ),
-            "policy_tag": "compliance",
-            "entropy": round(len(compliance) / 10, 4),
-        },
-        {
-            "id": "node_route",
-            "type": "standard",
-            "description": f"Route to {provider}/{model}",
-            "policy_tag": "routing",
-            "entropy": 0.1,
-        },
-    ]
-
-    # Real SHA-256 proof hash derived from the plan content
-    plan_content = {
-        "plan_id": plan_id,
-        "intent": intent,
-        "compliance": compliance,
-        "provider": provider,
-        "model": model,
-        "nodes": nodes,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    proof_hash = "0x" + hashlib.sha256(
-        json.dumps(plan_content, sort_keys=True).encode()
-    ).hexdigest()
-
-    elapsed_ms = (time.monotonic() - start) * 1000
-
-    return {
-        "id": plan_id,
-        "name": f"GPC Plan ({provider}/{model})",
-        "intent": intent,
-        "graph": {
-            "nodes": nodes,
-            "edges": [
-                {"from": "node_parse", "to": "node_compliance"},
-                {"from": "node_compliance", "to": "node_route"},
-            ],
-        },
-        "status": "compiled",
-        "policy_result": "approved",
-        "compliance": compliance,
-        "provider": provider,
-        "model": model,
-        "createdAt": datetime.now(timezone.utc).isoformat(),
-        "decision_frame_id": f"df_{uuid.uuid4().hex[:16]}",
-        "proof_hash": proof_hash,
-        "compile_ms": round(elapsed_ms, 2),
-    }
+@router.post("/pipeline/compile")
+def pipeline_compile_moved():
+    return _moved("/api/abide/v1/pipeline/compile")

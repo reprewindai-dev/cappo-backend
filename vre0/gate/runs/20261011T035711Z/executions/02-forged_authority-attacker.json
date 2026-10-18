@@ -1,0 +1,73 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "7eeeda5f46c90d0b",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "0c8461bb-d02a-4f79-9a9c-5d8d0c63bffe",
+   "execution_id": "0e94e35b-801c-42d1-a488-6ff4698c654b",
+   "scenario": "forged_authority",
+   "role": "attacker",
+   "issued_at": 1791691060,
+   "expires_at": 1791691360,
+   "workload": {
+    "module": "normal_ok",
+    "module_sha256": "1668aba740f5041447b86aceb3bc1825e5fdc6e1369d433d8267f3611e1f809c",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 67108864,
+    "compute_fuel": 50000000,
+    "wall_deadline_ms": 100,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "IAKZTg9/wDnZeNn+xMnAfvO5AkN3ejih4ejwN/jRqo4wPmv4H6+azpxvRHUtbnEE8mnM3JGUkg0vP4VzKmhiAw=="
+ },
+ "boundary": null,
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "0e94e35b-801c-42d1-a488-6ff4698c654b",
+  "boundary_digest": null,
+  "refusal": {
+   "stage": "authority",
+   "reasons": [
+    "signature_not_trusted"
+   ],
+   "at_unix_s": 1791691060
+  },
+  "released": false,
+  "released_wall_s": null,
+  "released_at_ns": null,
+  "deadline_at_ns": null,
+  "reaped_at_ns": null,
+  "counters_before": null,
+  "counters_after": null,
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": null,
+   "signal": null
+  },
+  "runtime_report": null,
+  "untrusted_guest_output": "",
+  "untrusted_guest_output_bytes": 0,
+  "residual_procs": [],
+  "teardown": null,
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "b7d2d0a1e520f863",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "0e94e35b-801c-42d1-a488-6ff4698c654b",
+   "envelope_digest": "4337525aade38f4088c7469b3266f653349f6cad64762de6c4035819b18e8231",
+   "boundary_digest": null,
+   "evidence_digest": "b5e3b3902ea21ee331135f5324b319d24c28e22d0eea0202269a0ce5c941bd53",
+   "outcome": "AUTHORITY_REFUSED",
+   "evidence_level": "E2"
+  },
+  "sig": "LKbUiSBT3gShv/X/O+PvVW5xlK2dVV0Tar9e+ygorudgxpPrrYtGh5r3qWkSQw9dgdfJzseOFJ+xraNgCZrmDg=="
+ }
+}

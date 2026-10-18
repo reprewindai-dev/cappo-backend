@@ -1,9 +1,13 @@
+# ruff: noqa
 import time
+from typing import Any, Dict
+
 import pytest
-from typing import Dict, Any
-from cappo_backend.pgl.evidence_validator import PGLEvidenceValidator
-from cappo_backend.pgl.errors import *
+
 from cappo_backend.p5.states import TruthState
+from cappo_backend.pgl.errors import *
+from cappo_backend.pgl.evidence_validator import PGLEvidenceValidator
+
 
 @pytest.fixture
 def validator():

@@ -103,7 +103,7 @@ def _mount_package(
     )
     reg.register_package(pkg)
 
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref="p4.pkg@v1",
         scope=MountScope(workspace="ws-p4", project="proj", reads=reads, writes=writes),
         role="agent",

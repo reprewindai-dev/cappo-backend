@@ -4,6 +4,9 @@
 
 Veklom is the **sovereign AI capability control plane / runtime authority layer**. It governs capability, not a permanent fleet of privileged agents.
 
+**LAW 0:** No machine consequence without bounded authority and evidence.
+**LAW 1:** Veklom itself may not bypass Veklom. (Veklom's own internal automations/agents must not hold ambient credentials to act directly on external systems; they must flow through the governed consequence architecture).
+
 Canonical lifecycle: `Resolve → Bind policy/authority → Issue scoped grant → Instantiate ephemeral runtime → Execute → Record evidence → Revoke → Destroy → Observe/Settle when applicable`.
 
 Truth order: **live behavior → Coolify runtime → GitHub default branch → verified PGL evidence → docs**. A merged PR, seeded fixture, screenshot, or pasted log is not automatically production proof.

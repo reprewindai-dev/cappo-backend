@@ -46,7 +46,7 @@ def test_evaluate_assigns_merkle_leaf_index(db: Session):
         ttl_seconds=300,
     )
 
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(
             workspace="ws_1",

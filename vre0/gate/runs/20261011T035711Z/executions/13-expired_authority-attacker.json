@@ -1,0 +1,73 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "ce149b8514366095",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "55c1598a-2f05-4f61-8fec-f1314932c35a",
+   "execution_id": "b3b806e5-3ccd-4751-8220-735072af10ee",
+   "scenario": "expired_authority",
+   "role": "attacker",
+   "issued_at": 1791691174,
+   "expires_at": 1791691173,
+   "workload": {
+    "module": "normal_ok",
+    "module_sha256": "1668aba740f5041447b86aceb3bc1825e5fdc6e1369d433d8267f3611e1f809c",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 67108864,
+    "compute_fuel": 50000000,
+    "wall_deadline_ms": 100,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "rAlon3bVrS3UYdooBnXXWntm2zT3H0m73pPQFkgA/zikDR63vDTT7qjjnwhunyLtzaXrxwGhbTg8Qq+LmQPnAw=="
+ },
+ "boundary": null,
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "b3b806e5-3ccd-4751-8220-735072af10ee",
+  "boundary_digest": null,
+  "refusal": {
+   "stage": "authority",
+   "reasons": [
+    "authority_expired"
+   ],
+   "at_unix_s": 1791691174
+  },
+  "released": false,
+  "released_wall_s": null,
+  "released_at_ns": null,
+  "deadline_at_ns": null,
+  "reaped_at_ns": null,
+  "counters_before": null,
+  "counters_after": null,
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": null,
+   "signal": null
+  },
+  "runtime_report": null,
+  "untrusted_guest_output": "",
+  "untrusted_guest_output_bytes": 0,
+  "residual_procs": [],
+  "teardown": null,
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "b7d2d0a1e520f863",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "b3b806e5-3ccd-4751-8220-735072af10ee",
+   "envelope_digest": "9deffd5e116875d0ffada9d95c1f0962702d0a834a47d26783b687184ca02325",
+   "boundary_digest": null,
+   "evidence_digest": "d77d812afbee2a33dac2365988cd20611d43d88366c8a373c27cf1e14a497749",
+   "outcome": "AUTHORITY_REFUSED",
+   "evidence_level": "E2"
+  },
+  "sig": "GMAqqfnEwXGZoMm6B4ZfkJ2Vk6nX4so0Ra6BNUFCrkojnWUtxJwMrche9F6SXnf47T1TRqE12FXxGLQ4tEYKDg=="
+ }
+}

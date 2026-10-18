@@ -20,9 +20,38 @@ payloads against those schemas before accepting them.
 5. **Receive decision**: an allowed action runs and appends an `allow` event.
    A denied action appends a `deny` event before returning the policy error.
 6. **Terminate**: task completion, token expiry, or explicit termination
-   unmounts the execution. Subsequent calls are denied.
+   unmounts the execution. Subsequent calls are denied. A consequence that
+   passed evaluation but had not started when the fence committed is refused
+   (`failed`, `mount_terminated`) and never dispatched. Terminate then waits up
+   to `CAPPO_TERMINATE_SETTLE_SECONDS` (default 10) for started consequences to
+   settle. `terminated` or `already_terminated` means no consequence on the
+   mount is authorized or started, so no further effect can land.
+   `terminated_in_flight` means some still are; their ids are returned in
+   `in_flight_operation_ids`, and an effect for those may still land.
 
 Tokens are short-lived and single-use by contract. Executors must not persist
 memory or authority beyond the mount lifecycle. Audit sinks are append-only and
 may be implemented by an in-memory sink for local use or an external ledger
 adapter such as PGL.
+
+## Sandbox reference capability: Governed Counter
+
+When the local capability effect root is configured, CAPPO registers the
+`veklom.governed-counter@v1` package and its server-owned
+`activation.governed-counter` target. The package exposes `counter.read` and
+`counter.increment`; `counter.reset` is explicitly blocked. The increment action
+advances a per-project counter by exactly one, regardless of caller arguments.
+
+The target resource is supplied in the execute request and must pass CAPPO's
+resource validation. State is stored in the sandbox effect root in SQLite,
+keyed by workspace, project, and resource, with `value` and `version` fields.
+A missing state row reads as zero. `POST /v1/capability/mounts/{id}/execute`
+resolves the server-owned target from `target_ref: "activation.governed-counter"`;
+callers cannot select an arbitrary
+implementation. This is the sandbox reference capability for a bounded,
+SQLite-backed governed consequence.
+
+Independent target state readback uses:
+`GET /v1/capability/targets/{target_ref}/state?resource=<r>&project=<p>`.
+The `project` query parameter is required and is part of the governed counter
+state key; workspace is derived from the authenticated caller.

@@ -1,10 +1,12 @@
 from enum import Enum
 from typing import Optional
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cappo_backend.db.session import SessionLocal
-from cappo_backend.models.n8n_governed_target_models import RevocationPolicy, LeaseStateRecord
+from cappo_backend.models.n8n_governed_target_models import LeaseStateRecord, RevocationPolicy
+
 
 class LeaseState(str, Enum):
     ACTIVE = "ACTIVE"

@@ -55,9 +55,14 @@ class SandboxFileAppendConnector:
         self.max_content_bytes = max_content_bytes
         self._lock = threading.RLock()
 
+    @staticmethod
+    def canonicalize_resource(target_path: str | Path) -> str:
+        """Shared canonical resource-normalization function."""
+        return f"sandbox-file:{Path(target_path).expanduser().resolve(strict=False).as_posix()}"
+
     @property
     def resource(self) -> str:
-        return f"sandbox-file:{self.path.as_posix()}"
+        return self.canonicalize_resource(self.path)
 
     @staticmethod
     def _canonical(value: Mapping[str, Any]) -> bytes:
@@ -86,7 +91,11 @@ class SandboxFileAppendConnector:
             raise ConnectorDenied("DENY: missing execution_id")
         if action not in self._claim_set(claims, "allowed_actions"):
             raise ConnectorDenied("DENY: action is outside lease scope")
-        if self.resource not in self._claim_set(claims, "allowed_resources"):
+        allowed_resources = self._claim_set(claims, "allowed_resources")
+        if self.resource not in allowed_resources:
+            with open("scratch/resource_mismatch.txt", "w") as f:
+                f.write(f"EXPECTED: {repr(self.resource)}\nPROVIDED: {repr(allowed_resources)}\n")
+            print("PROVIDED RESOURCES:", repr(allowed_resources))
             raise ConnectorDenied("DENY: resource is outside lease scope")
         return execution_id
 
@@ -214,3 +223,4 @@ __all__ = [
     "ConnectorDenied",
     "SandboxFileAppendConnector",
 ]
+

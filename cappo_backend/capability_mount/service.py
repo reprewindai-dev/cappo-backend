@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.engine import mark_mount_revoked
-from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+from cappo_backend.models.capability_action_receipt import (
+    RECEIPT_SCHEMA_V2,
+    CapabilityActionReceipt,
+    receipt_canonical,
+)
 from cappo_backend.models.capability_evidence_consumption import CapabilityEvidenceConsumption
 from cappo_backend.models.capability_mount import CapabilityMount
 from cappo_backend.models.consequence_execution import (
@@ -26,7 +33,9 @@ from cappo_backend.services.mount_evidence import (
     VerifiedMountEvidence,
 )
 
+from .effects import ConsequenceContext, TargetAdapterRegistry, validate_resource
 from .engine import AuditSink, ExecutionBinding, Mounter
+from .envelope import operation_envelope_digest
 from .errors import ExecutionTerminatedError, MountError, PolicyError, TokenExpiredError
 from .models import (
     CapabilityPackage,
@@ -36,8 +45,41 @@ from .models import (
     Mount,
     MountPolicy,
     MountScope,
+    PersistentServiceToken,
     UnmountReason,
 )
+
+# The project scope the Capability OS sandbox mounts under (veklom-FRONTEND lib/cos/sandbox.tsx).
+# Only targets that keep state per project (``project_isolated = True``) may act for it.
+SANDBOX_PROJECT = "sandbox"
+
+GOVERNED_COUNTER_PACKAGE = CapabilityPackage(
+    id="veklom.governed-counter@v1",
+    family="sandbox",
+    title="Governed Counter",
+    purpose=(
+        "Increment a per-workspace counter by exactly one under bounded CAPPO "
+        "authority; reset is blocked."
+    ),
+    reads=["counter.read"],
+    writes=["counter.increment"],
+    blocked=["counter.reset"],
+    outputs=["counter.state"],
+    target_ref="activation.governed-counter",
+)
+
+
+def _resource_in(resource: str | None, allowed: set[str]) -> bool:
+    """Effective-authority resource check: "*" is unbounded, "dir/*" an explicit
+    prefix grant, anything else an exact name ("42" never covers "420")."""
+    if "*" in allowed:
+        return True
+    if resource is None:
+        return False
+    return any(
+        resource == bound or (bound.endswith("/*") and resource.startswith(bound[:-1]))
+        for bound in allowed
+    )
 
 
 class DatabaseAuditSink(AuditSink):
@@ -62,6 +104,7 @@ class AnchorResult:
     status: str
     anchor_id: str | None = None
     detail: str | None = None
+    external_ref: str | None = None
 
 
 class EventAnchor(Protocol):
@@ -85,6 +128,28 @@ class UnconfirmedAnchor:
         return AnchorResult("unconfirmed", detail="PGL anchor is not configured")
 
 
+class LocalConfirmedAnchor:
+    """Local-only anchor that returns confirmed without an external PGL call.
+
+    Used when ``CAPPO_REQUIRE_PERSISTENT_PGL=false`` to allow local
+    development and end-to-end integration testing without a live PGL
+    endpoint.  The anchor_id is a deterministic SHA-256 hash of the event
+    payload so that the audit trail remains locally tamper-evident even
+    though there is no external ledger confirmation.
+    """
+
+    def anchor(self, event_type: str, **kwargs: Any) -> AnchorResult:
+        import hashlib
+        import json
+
+        payload_bytes = json.dumps(
+            {"event_type": event_type, **{k: str(v) for k, v in kwargs.items()}},
+            sort_keys=True,
+        ).encode("utf-8")
+        anchor_id = hashlib.sha256(payload_bytes).hexdigest()
+        return AnchorResult("confirmed", anchor_id=anchor_id, detail="local-confirmed")
+
+
 @dataclass
 class MountRecord:
     mount: Mount
@@ -94,25 +159,86 @@ class MountRecord:
 
 
 class MountRegistry:
-    """Own package discovery and DB-backed ephemeral mount records."""
+    """Own CAPPO-side package registration and durable ephemeral mount state. External capability discovery/resolution belongs to cAPI."""
 
     def __init__(
         self,
         db: Session | None = None,
         anchor: EventAnchor | None = None,
         evidence_verifier: BoundMountEvidenceVerifier | None = None,
+        target_adapters: TargetAdapterRegistry | None = None,
+        settings: Any | None = None,
     ) -> None:
         self.db = db
         self.packages: dict[str, CapabilityPackage] = {}
         self.anchor = anchor or UnconfirmedAnchor()
         self.evidence_verifier = evidence_verifier or BoundMountEvidenceVerifier()
+        self.target_adapters = target_adapters or TargetAdapterRegistry()
+        self.settings = settings
         self.mounter = Mounter()
+
+    def _pgl_agent_id(self, status: str) -> str | None:
+        if status != "confirmed":
+            return None
+        settings = self.settings or getattr(self.anchor, "settings", None)
+        return getattr(settings, "pgl_ledger_agent_id", None)
 
     def register_package(self, package: CapabilityPackage) -> None:
         self.packages[package.id] = package
 
     def list_packages(self) -> list[CapabilityPackage]:
         return sorted(self.packages.values(), key=lambda package: package.id)
+
+    def evaluate_candidates(
+        self,
+        candidates: list[str],
+        context: dict[str, Any]
+    ) -> "CandidateEvaluationResult":
+        import hashlib
+
+        from .models import CandidateEvaluationResult, Decision
+        
+        permitted = []
+        rejected = {}
+        
+        budget = context.get("budget", 999999)
+        forbidden_providers = set(context.get("forbidden_providers", []))
+        
+        for candidate in candidates:
+            if candidate not in self.packages:
+                rejected[candidate] = "unknown_package"
+                continue
+            
+            pkg = self.packages[candidate]
+            pkg_cost = pkg.policy_defaults.get("cost", 0)
+            
+            if candidate in forbidden_providers:
+                rejected[candidate] = "policy_forbidden"
+            elif pkg_cost > budget:
+                rejected[candidate] = "budget_ceiling"
+            else:
+                permitted.append(candidate)
+                
+        if not permitted:
+            return CandidateEvaluationResult(
+                decision=Decision.DENY,
+                permitted_candidates=[],
+                rejected_candidates=rejected,
+                authority_reference=None,
+                binding_constraints_digest=None
+            )
+            
+        permitted.sort()
+        auth_ref = f"auth-{id(self)}"
+        digest = hashlib.sha256(f"{auth_ref}:{','.join(permitted)}".encode()).hexdigest()
+        
+        return CandidateEvaluationResult(
+            decision=Decision.ALLOW,
+            permitted_candidates=permitted,
+            rejected_candidates=rejected,
+            authority_reference=auth_ref,
+            binding_constraints_digest=digest
+        )
 
     def _db(self) -> Session:
         if self.db is None:
@@ -121,7 +247,14 @@ class MountRegistry:
 
     def _record(self, row: CapabilityMount) -> MountRecord:
         mount = Mount.model_validate(row.mount_json)
-        token = EphemeralScopedToken.model_validate(row.token_json).model_copy(
+        raw_token_json = row.token_json
+        token_type = raw_token_json.get("type", "ephemeral_scoped") if isinstance(raw_token_json, dict) else "ephemeral_scoped"
+        if token_type == "persistent_service":
+            token_cls = PersistentServiceToken
+        else:
+            token_cls = EphemeralScopedToken
+            
+        token = token_cls.model_validate(row.token_json).model_copy(
             update={"nonce_consumed": row.nonce_consumed}
         )
 
@@ -166,6 +299,8 @@ class MountRegistry:
                 approval_token=str(kwargs.get("approval_token")) if "approval_token" in kwargs else None,
                 suppression_evidence=str(kwargs.get("suppression_evidence")) if "suppression_evidence" in kwargs else None,
                 suppression_confirmed=bool(kwargs.get("suppression_confirmed")),
+                spiffe_fields=kwargs.get("spiffe_fields"),
+                target_ref=str(kwargs.get("target_ref")) if kwargs.get("target_ref") is not None else None,
             )
             receipt_id = (detail or {}).get("receipt_id")
 
@@ -204,10 +339,21 @@ class MountRegistry:
             
             Uses database locking to prevent concurrent workers from both moving
             AUTHORIZED -> STARTED. Returns True if claimed, False if another worker won.
+
+            Fence: evaluate() has already committed and released the mount row,
+            so terminate() may have landed since. The mount row is locked again
+            here, before the event row, and a terminated mount is refused: the
+            operation is recorded FAILED (mount_terminated) and nothing is
+            dispatched. terminate() takes the same lock, so every operation is
+            either STARTED before the fence commits (and terminate() sees it as
+            in flight) or refused after it.
             """
             import uuid
             db = self._db()
-            
+
+            # Lock order: mount row, then the operation's latest event.
+            fence_row = self._row(mount.id, lock=True)
+
             # Use FOR UPDATE to serialize access to the latest event for this operation.
             # (In PostgreSQL this blocks concurrent claims; sqlite will lock the DB)
             latest = db.execute(
@@ -225,6 +371,55 @@ class MountRegistry:
             if latest.state != ConsequenceState.AUTHORIZED.value:
                 db.commit()
                 return False  # Already advanced past AUTHORIZED
+
+            if fence_row is None or fence_row.terminated:
+                try:
+                    proof_hash = build_proof_subject_hash(
+                        operation_id=operation_id,
+                        intent_hash=latest.intent_hash,
+                        previous_truth_state=latest.state,
+                        asserted_truth_state=ConsequenceState.FAILED.value,
+                        consequence_identity=latest.receipt_id or "unknown",
+                        canonical_asserted_proposition=(
+                            f"failed {latest.action} on {latest.resource or '*'} "
+                            "with_proof fence_refusal"
+                        ),
+                    )
+                    # _SITE: begin_consequence_fence
+                    db.add(
+                        ConsequenceExecutionEvent(
+                            event_id=f"evt_{uuid.uuid4().hex}",
+                            operation_id=operation_id,
+                            intent_hash=latest.intent_hash,
+                            state=ConsequenceState.FAILED.value,
+                            version=latest.version + 1,
+                            receipt_id=latest.receipt_id,
+                            mount_id=latest.mount_id,
+                            execution_id=latest.execution_id,
+                            principal=latest.principal,
+                            action=latest.action,
+                            resource=latest.resource,
+                            # Certain: the refusal is decided here, before dispatch.
+                            completion_proof_type="fence_refusal",
+                            error_summary="mount_terminated",
+                            proof_subject_hash=proof_hash,
+                        )
+                    )
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                self._anchor_consequence_outcome(
+                    "refused",
+                    mount=mount,
+                    token=token,
+                    operation_id=operation_id,
+                    receipt_id=latest.receipt_id,
+                    action=latest.action,
+                    decision=Decision.DENY.value,
+                    reason="mount_terminated",
+                    proof_type="fence_refusal",
+                )
+                raise ExecutionTerminatedError("mount_terminated")
 
             try:
                 proof_hash = build_proof_subject_hash(
@@ -373,6 +568,17 @@ class MountRegistry:
                 )
                 db.add(ce)
                 db.commit()
+                self._anchor_consequence_outcome(
+                    target.value,
+                    mount=mount,
+                    token=token,
+                    operation_id=operation_id,
+                    receipt_id=latest.receipt_id,
+                    action=latest.action,
+                    decision=Decision.ALLOW.value,
+                    reason=error_summary or target.value,
+                    proof_type=pt,
+                )
             except Exception as exc:
                 db.rollback()
                 print(f"completion_reporter: append failed: {exc}")
@@ -400,6 +606,8 @@ class MountRegistry:
         owner_principal: str,
         owner_workspace: str | None,
     ) -> bool:
+        if owner_principal == f"mount-holder:{row.mount_id}":
+            return bool(owner_workspace) and row.owner_workspace == owner_workspace
         if row.owner_principal != owner_principal:
             return False
         if owner_principal == "auth-disabled":
@@ -409,7 +617,10 @@ class MountRegistry:
     def _row(self, mount_id: str, *, lock: bool = False) -> CapabilityMount | None:
         statement = select(CapabilityMount).where(CapabilityMount.mount_id == mount_id)
         if lock:
-            statement = statement.with_for_update()
+            # A locking read must see the committed row, not this session's cached
+            # copy (sessions run with expire_on_commit=False), or a concurrent
+            # terminate would go unseen.
+            statement = statement.with_for_update().execution_options(populate_existing=True)
         return self._db().execute(statement).scalar_one_or_none()
 
     def _evidence_consumed(self, jti: str) -> bool:
@@ -431,20 +642,58 @@ class MountRegistry:
         execution_id: str | None = None,
         caller_spiffe_id: str | None = None,
         executor_spiffe_id: str | None = None,
-    ) -> tuple[MountRecord | None, AnchorResult, str]:
+        authority_evaluation: "CandidateEvaluationResult" | None = None,
+        substrate_id: str | None = None,
+        boot_instance_id: str | None = None,
+        runtime_key_thumbprint: str | None = None,
+        state_root: str | None = None,
+    ) -> tuple[MountRecord | None, AnchorResult, str, str | None]:
+        from .models import Decision
         db = self._db()
+        
+        # Enforce authority constraints if an evaluation result is provided
+        if authority_evaluation is not None:
+            if authority_evaluation.decision == Decision.DENY:
+                anchor = self.anchor.anchor(
+                    "mount",
+                    action="mount",
+                    decision=Decision.DENY.value,
+                    reason="authority_denied",
+                    mount=None,
+                    token=None,
+                )
+                db.commit()
+                return None, anchor, "authority_denied", None
+                
+            if package_ref not in authority_evaluation.permitted_candidates:
+                anchor = self.anchor.anchor(
+                    "mount",
+                    action="mount",
+                    decision=Decision.DENY.value,
+                    reason="binding_mismatch",
+                    mount=None,
+                    token=None,
+                )
+                db.commit()
+                return None, anchor, "binding_mismatch", None
+                
         package = self.packages.get(package_ref)
         if package is None:
             anchor = self.anchor.anchor(
                 "mount",
                 action="mount",
                 decision=Decision.DENY.value,
-                reason="unknown_package",
+                reason="unknown_package" if authority_evaluation is None else "provider_disappeared",
                 mount=None,
                 token=None,
             )
             db.commit()
-            return None, anchor, "unknown_package"
+            return (
+                None,
+                anchor,
+                "unknown_package" if authority_evaluation is None else "provider_disappeared",
+                None,
+            )
         try:
             mount, token = self.mounter.mount(
                 package,
@@ -453,29 +702,55 @@ class MountRegistry:
                 ttl=ttl_seconds,
                 role=role,
                 execution_id=execution_id,
+                substrate_id=substrate_id,
+                boot_instance_id=boot_instance_id,
+                runtime_key_thumbprint=runtime_key_thumbprint,
+                state_root=state_root,
             )
             
-            if caller_spiffe_id:
-                from cappo_backend.security.biscuit import mint_biscuit_capability
-                
-                revocation_scope = f"execution:{token.execution_id}"
-                revocation_epoch = 0
+            from cappo_backend.security.biscuit import mint_biscuit_capability
+            
+            revocation_scope = f"execution:{token.execution_id}"
+            revocation_epoch = 0
 
-                biscuit_token = mint_biscuit_capability(
-                    caller_spiffe_id=caller_spiffe_id,
-                    executor_spiffe_id=executor_spiffe_id,
-                    capability_id=package.id,
-                    reads=token.grants.reads,
-                    writes=token.grants.writes,
-                    execution_id=token.execution_id,
-                    ttl_seconds=token.ttl_seconds,
-                    revocation_scope=revocation_scope,
-                    revocation_epoch=revocation_epoch,
+            verified_caller = caller_spiffe_id or owner_principal
+            verified_executor = executor_spiffe_id or owner_principal
+            
+            if not verified_caller or verified_caller in ("auth-disabled", "legacy-unbound", ""):
+                db.rollback()
+                return (
+                    None,
+                    AnchorResult("not_applicable", detail="missing_verified_principal"),
+                    "missing_verified_principal",
+                    None,
                 )
-                token = token.model_copy(update={"biscuit_token": biscuit_token})
+            if not verified_executor or verified_executor in ("auth-disabled", "legacy-unbound", ""):
+                db.rollback()
+                return (
+                    None,
+                    AnchorResult("not_applicable", detail="missing_verified_principal"),
+                    "missing_verified_principal",
+                    None,
+                )
+
+            biscuit_token = mint_biscuit_capability(
+                caller_spiffe_id=verified_caller,
+                executor_spiffe_id=verified_executor,
+                capability_id=package.id,
+                reads=token.grants.reads,
+                writes=token.grants.writes,
+                execution_id=token.execution_id,
+                ttl_seconds=token.ttl_seconds,
+                # The bounds go into the signed token itself, not only into metadata.
+                resources=token.grants.resources or None,
+                revocation_scope=revocation_scope,
+                revocation_epoch=revocation_epoch,
+                envelope_digest=token.grants.envelope_digest,
+            )
+            token = token.model_copy(update={"biscuit_token": biscuit_token})
                 
         except MountError as exc:
-            return None, AnchorResult("not_applicable"), str(exc)
+            return None, AnchorResult("not_applicable"), str(exc), None
 
         anchor = self.anchor.anchor(
             "mount",
@@ -487,8 +762,14 @@ class MountRegistry:
         )
         if anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
-            return None, anchor, "pgl_anchor_unconfirmed"
+            return None, anchor, "pgl_anchor_unconfirmed", None
 
+        token_dict = token.model_dump(mode="json")
+        if getattr(token, "biscuit_token", None):
+            token_dict["biscuit_token"] = token.biscuit_token
+
+        secret = secrets.token_urlsafe(32)
+        holder_credential = f"vlm_{mount.id}.{secret}"
         db.add(
             CapabilityMount(
                 mount_id=mount.id,
@@ -496,8 +777,9 @@ class MountRegistry:
                 token_nonce=token.nonce,
                 owner_principal=owner_principal,
                 owner_workspace=owner_workspace or scope.workspace,
+                holder_secret_hash=hashlib.sha256(secret.encode()).hexdigest(),
                 mount_json=mount.model_dump(mode="json"),
-                token_json=token.model_dump(mode="json"),
+                token_json=token_dict,
                 issued_at=token.issued_at,
                 expires_at=token.expires_at,
                 anchor_status=anchor.status,
@@ -510,7 +792,6 @@ class MountRegistry:
         
         _biscuit_sha256 = "none"
         if token.biscuit_token:
-            import hashlib
             _biscuit_sha256 = hashlib.sha256(token.biscuit_token.encode()).hexdigest()
             
         lease = CapabilityLease(
@@ -519,15 +800,15 @@ class MountRegistry:
             capability_id=package.id,
             policy_version="1.0",
             execution_identity=token.execution_id or "unknown",
-            subject_spiffe_id=caller_spiffe_id or "legacy-unbound",
-            executor_spiffe_id=executor_spiffe_id or "legacy-unbound",
+            subject_spiffe_id=verified_caller,
+            executor_spiffe_id=verified_executor,
             biscuit_hash=_biscuit_sha256,
             issued_at=token.issued_at,
             not_before=token.issued_at,
             expires_at=token.expires_at,
             lease_state=LeaseState.ACTIVE.value,
             allowed_actions=set(token.grants.reads + token.grants.writes + token.grants.external_send),
-            allowed_resources=set(["*"]),
+            allowed_resources=set(token.grants.resources) or {"*"},
             offline_enabled=False,
             revocation_scope=f"execution:{token.execution_id}" if token.execution_id else "workspace"
         )
@@ -538,6 +819,7 @@ class MountRegistry:
             MountRecord(mount, token, ExecutionBinding(token, DatabaseAuditSink(db, scope.workspace, None))),
             anchor,
             "mounted",
+            holder_credential,
         )
 
     def get(self, mount_id: str) -> MountRecord | None:
@@ -581,6 +863,7 @@ class MountRegistry:
         suppression_evidence: str | None = None,
         suppression_confirmed: bool = False,
         spiffe_fields: dict[str, str | None] | None = None,
+        target_ref: str | None = None,
     ) -> tuple[Decision, str, AnchorResult, ExecutionBinding | None]:
         # ``suppression_confirmed`` remains a compatibility input only. A caller
         # boolean is never evidence and cannot satisfy the suppression gate.
@@ -628,12 +911,26 @@ class MountRegistry:
                 else "token_mismatch"
             )
         else:
-            reason = ""
+            # ROLLBACK-RESISTANCE: Check CapabilityActionReceipt for a prior ALLOW
+            # independently of the nonce_consumed flag.  A partial DB rollback that
+            # resets nonce_consumed=False cannot erase the receipt row that was written
+            # during the original ALLOW decision, so this guard remains effective even
+            # when nonce_consumed has been tampered with.
+            prior_receipt = db.execute(
+                select(CapabilityActionReceipt).where(
+                    CapabilityActionReceipt.token_id == token_id,
+                    CapabilityActionReceipt.decision == "allow",
+                ).limit(1)
+            ).scalar_one_or_none()
+            if prior_receipt is not None:
+                reason = "token_replay_receipt"
+            else:
+                reason = ""
 
         # Check budget before continuing
         if not reason:
             from cappo_backend.models.capability_lease import CapabilityLease
-            lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
+            lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc())).scalars().first()
             if lease and lease.offline_enabled and lease.offline_budget is not None and lease.offline_budget <= 0:
                 reason = "offline_budget_exhausted"
 
@@ -660,7 +957,7 @@ class MountRegistry:
             ConnectivityState,
             InvariantViolationError,
         )
-        lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id)).scalar_one_or_none()
+        lease = db.execute(select(CapabilityLease).where(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc())).scalars().first()
         if lease:
             try:
                 # --- Real Biscuit authority extraction ---
@@ -668,7 +965,8 @@ class MountRegistry:
                 if record.token.biscuit_token:
                     from cappo_backend.security.biscuit import extract_authority_context
                     b_auth = extract_authority_context(record.token.biscuit_token)
-                else:
+                
+                if b_auth is None:
                     # P3 GOVERNED BOUNDARY ENFORCEMENT
                     # Metadata alone cannot authorize without Biscuit. 
                     # We fail closed if there is no cryptographic authority.
@@ -692,8 +990,12 @@ class MountRegistry:
                     package_actions = set(package.reads + package.writes + package.external_send_actions)
                     p_auth = AuthorityContext(
                         allowed_actions=package_actions,
+                        # A package defines actions, not resources: it is no resource
+                        # ceiling. The bound comes from the lease and the Biscuit, and
+                        # the effective set is their intersection (checked below).
                         allowed_resources={"*"},
                         executor_spiffe_id=b_auth.executor_spiffe_id,
+                        subject_spiffe_id=b_auth.subject_spiffe_id,
                         expires_at=b_auth.expires_at,
                         delegation_depth=b_auth.delegation_depth,
                         max_delegation_depth=b_auth.max_delegation_depth,
@@ -707,10 +1009,20 @@ class MountRegistry:
                 effective_auth = lease.evaluate_authority(b_auth, p_auth, ConnectivityState.ONLINE)
                 if action not in effective_auth.allowed_actions:
                     raise InvariantViolationError(f"Action '{action}' is not in effective authority subset: {effective_auth.allowed_actions}")
+                # extract_authority_context() reads "no allowed_resource facts" as "*".
+                # For a resource-bounded mount that would turn a missing signed bound into
+                # unlimited authority, so the signed token must carry the bound itself.
+                if record.token.grants.resources and "*" in b_auth.allowed_resources:
+                    raise InvariantViolationError("resource_bound_not_signed")
+                if not _resource_in(resource, effective_auth.allowed_resources):
+                    raise InvariantViolationError("resource_not_granted")
 
             except InvariantViolationError as e:
                 print(f"DEBUG INVARIANT: {e}")
-                reason = "lease_invariant_violation"
+                reason = (
+                    str(e) if str(e) in ("resource_not_granted", "resource_bound_not_signed")
+                    else "lease_invariant_violation"
+                )
                 anchor = self.anchor.anchor(
                     "action_decision",
                     principal=owner_principal,
@@ -734,6 +1046,10 @@ class MountRegistry:
                     if record.binding._profile.is_blocked(action)  # noqa: SLF001
                     else "not_in_capability_profile"
                 )
+                record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
+                decision = Decision.DENY
+            elif not record.binding._profile.covers_resource(resource):  # noqa: SLF001
+                reason = "resource_not_granted"
                 record.binding._append(action, Decision.DENY, reason)  # noqa: SLF001
                 decision = Decision.DENY
             else:
@@ -792,7 +1108,7 @@ class MountRegistry:
 
         # Find the active lease, if any
         from cappo_backend.models.capability_lease import CapabilityLease
-        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).first()
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
         if lease:
             # Check expiry
             if lease.expires_at and _utc(lease.expires_at) < utc_now():
@@ -853,51 +1169,28 @@ class MountRegistry:
                 _biscuit_sha256 = hashlib.sha256(record.token.biscuit_token.encode()).hexdigest()
 
             sp = spiffe_fields or {}
-            
-            _receipt_canonical = {
-                "execution_id": record.token.execution_id,
-                "mount_id": mount_id,
-                "token_id": record.token.token_id,
-                "principal": owner_principal,
-                "caller_spiffe_id": sp.get("caller_spiffe_id"),
-                "executor_spiffe_id": sp.get("executor_spiffe_id"),
-                "eei_id": sp.get("eei_id"),
-                "profile_id": sp.get("profile_id"),
-                "lease_id": sp.get("lease_id"),
-                "operator_id": sp.get("operator_id"),
-                "caller_cert_sha256": sp.get("caller_cert_sha256"),
-                "capability_id": record.mount.package_ref,
-                "biscuit_token_sha256": _biscuit_sha256,
-                "action": action,
-                "resource": "*",
-                "policy_version": "1.0",
-                "decision": decision.value,
-                "reason": reason,
-                "timestamp": _actioned_at.isoformat(),
-                "actioned_at": _actioned_at.isoformat(),
-                "result_hash": None,
-                "pgl_anchor_id": anchor.anchor_id,
-            }
-            
-            from cappo_backend.security.evidence import (
-                get_evidence_key_pair,
-                mint_signed_execution_evidence,
-            )
-            _evidence_pk = get_evidence_key_pair()
-            _cose_bytes = mint_signed_execution_evidence(_receipt_canonical, _evidence_pk)
-            
+
+            # v2 receipt: names the resource, target and bound-operation envelope actually
+            # exercised. The canonical form is derived from the stored row itself
+            # (receipt_canonical), so content_hash and the COSE signature describe the same
+            # fact and a verifier can recompute both from durable state.
             receipt = CapabilityActionReceipt(
+                receipt_schema_version=RECEIPT_SCHEMA_V2,
                 receipt_id=f"rcpt_{anchor.anchor_id or utc_now().strftime('%Y%m%d%H%M%S%f')}",
                 execution_id=record.token.execution_id,
                 mount_id=mount_id,
                 token_id=record.token.token_id,
                 principal=owner_principal,
                 action=action,
+                resource=resource,
+                target_ref=target_ref,
+                envelope_digest=record.token.grants.envelope_digest,
                 decision=decision.value,
                 reason=reason,
                 actioned_at=_actioned_at,
-                content_hash=sha256_json(_receipt_canonical),
                 pgl_anchor_id=anchor.anchor_id,
+                pgl_anchor_status=anchor.status,
+                pgl_event_hash=anchor.external_ref,
                 caller_spiffe_id=sp.get("caller_spiffe_id"),
                 executor_spiffe_id=sp.get("executor_spiffe_id"),
                 eei_id=sp.get("eei_id"),
@@ -911,8 +1204,14 @@ class MountRegistry:
                 svid_not_after=sp.get("svid_not_after"),
                 policy_version="1.0",
                 biscuit_token_sha256=_biscuit_sha256,
-                signed_receipt_cose=_cose_bytes,
             )
+            from cappo_backend.security.evidence import (
+                get_evidence_key_pair,
+                mint_signed_execution_evidence,
+            )
+            _receipt_canonical = receipt_canonical(receipt)
+            receipt.content_hash = sha256_json(_receipt_canonical)
+            receipt.signed_receipt_cose = mint_signed_execution_evidence(_receipt_canonical, get_evidence_key_pair())
             # NOTE: Consequence lifecycle (AUTHORIZED→STARTED→SUCCEEDED|FAILED|OUTCOME_UNKNOWN)
             # is tracked via ConsequenceExecutionEvent append-only events, NOT on this receipt.
             # This receipt is immutable authorization evidence only.
@@ -935,6 +1234,669 @@ class MountRegistry:
             },
         )
 
+    def execute_consequence(
+        self,
+        mount_id: str,
+        action: str,
+        *,
+        token_id: str,
+        nonce: str,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+        approval_token: str | None = None,
+        suppression_evidence: str | None = None,
+        suppression_confirmed: bool = False,
+        target_ref: str,
+        resource: str,
+        arguments: dict[str, Any],
+        operation_id: str | None = None,
+        spiffe_fields: dict[str, Any] | None = None,
+        substrate_id: str | None = None,
+        boot_instance_id: str | None = None,
+        runtime_key_thumbprint: str | None = None,
+        state_root: str | None = None,
+        authority_epoch: int | None = None,
+    ) -> tuple[Decision, str, str | None, dict[str, Any]]:
+        """Authorize and execute one registered capability consequence."""
+        db = self._db()
+        op_id = operation_id or str(uuid4())
+
+        def payload(
+            *,
+            record: MountRecord | None,
+            decision: Decision,
+            reason: str,
+            consequence_state: str | None = None,
+            target_invoked: bool = False,
+            resulting_state: object | None = None,
+            receipt_id: str | None = None,
+            terminated: bool = False,
+            anchoring: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return {
+                "mount_id": mount_id,
+                "execution_id": record.token.execution_id if record else None,
+                "operation_id": op_id,
+                "action": action,
+                "target_ref": target_ref,
+                "resource": resource,
+                "decision": decision.value,
+                "reason": reason,
+                "consequence_state": consequence_state,
+                "target_invoked": target_invoked,
+                "resulting_state": resulting_state,
+                "receipt_id": receipt_id,
+                "nonce_consumed": bool(row.nonce_consumed) if record else None,
+                "terminated": terminated,
+                "anchoring": anchoring
+                or {
+                    "status": "not_applicable",
+                    "anchor_id": None,
+                    "content_hash": None,
+                    "pgl_agent_id": None,
+                },
+            }
+
+        def terminal_deny(
+            reason: str,
+            record: MountRecord,
+        ) -> tuple[Decision, str, str | None, dict[str, Any]]:
+            termination, _termination_reason, _termination_anchor = self.terminate(
+                mount_id,
+                UnmountReason.TASK_COMPLETE,
+                owner_principal=owner_principal,
+                owner_workspace=owner_workspace,
+                settle_seconds=0,
+            )
+            terminated = termination is Decision.ALLOW
+            return (
+                Decision.DENY,
+                reason,
+                None,
+                payload(
+                    record=record,
+                    decision=Decision.DENY,
+                    reason=reason,
+                    terminated=terminated,
+                ),
+            )
+
+        def preflight_deny(
+            reason: str,
+            record: MountRecord | None,
+        ) -> tuple[Decision, str, str | None, dict[str, Any]]:
+            # Preflight failures must NOT consume the nonce or terminate the mount.
+            return (
+                Decision.DENY,
+                reason,
+                None,
+                payload(
+                    record=record,
+                    decision=Decision.DENY,
+                    reason=reason,
+                    terminated=False,
+                ),
+            )
+
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            return preflight_deny("unknown_mount", None)
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            return preflight_deny("owner_mismatch", None)
+
+        record = self._record(row)
+        
+        if record.mount.substrate_id is not None:
+            if substrate_id != record.mount.substrate_id:
+                return preflight_deny("substrate_id_mismatch", record)
+            if boot_instance_id != record.mount.boot_instance_id:
+                return preflight_deny("boot_instance_id_mismatch", record)
+            if runtime_key_thumbprint != record.mount.runtime_key_thumbprint:
+                return preflight_deny("runtime_key_thumbprint_mismatch", record)
+        
+        if record.mount.state_root is not None and state_root != record.mount.state_root:
+            return preflight_deny("state_root_mismatch", record)
+            
+        if authority_epoch is not None:
+            from cappo_backend.models.capability_lease import CapabilityLease
+            lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
+            if lease and authority_epoch < lease.authority_epoch:
+                return preflight_deny("stale_authority_epoch", record)
+
+        if (
+            not row.terminated
+            and _utc(row.expires_at) > utc_now()
+            and (token_id != row.token_id or nonce != row.token_nonce)
+        ):
+            return preflight_deny("token_mismatch", record)
+        bound_package = self.packages.get(record.token.package_ref)
+        if (
+            bound_package is not None
+            and bound_package.requires_start_claim
+            and (operation_id is None or row.start_claim_operation_id != operation_id)
+        ):
+            # The work behind this consequence had no CAPPO-recorded right to start.
+            return preflight_deny("start_not_claimed", record)
+        if bound_package is not None and bound_package.target_ref and target_ref != bound_package.target_ref:
+            # The package names the one target its writes act on; authority for it
+            # is not authority over any other registered target.
+            return preflight_deny("target_not_bound_to_package", record)
+        envelope_reason = self._envelope_refusal(record, target_ref, action, resource, arguments)
+        if envelope_reason is not None:
+            return preflight_deny(envelope_reason, record)
+        adapter = self.target_adapters.resolve(target_ref)
+        if adapter is None:
+            return preflight_deny("unknown_effect_target", record)
+        if action not in adapter.actions:
+            return preflight_deny("effect_not_mapped", record)
+        if record.mount.scope.project == SANDBOX_PROJECT and not getattr(adapter, "project_isolated", False):
+            # Sandbox and live are one product with the same rules, but sandbox must never
+            # reach live state. A target that keeps no separate sandbox copy (for example an
+            # HTTP record store with one dataset) is refused rather than changed (fail closed).
+            return preflight_deny("target_has_no_sandbox", record)
+        try:
+            validate_resource(resource)
+        except ValueError:
+            return preflight_deny("invalid_effect_resource", record)
+
+        if operation_id is not None:
+            from cappo_backend.models.consequence_execution import build_intent_hash
+
+            normalized_args = {
+                key: str(value)
+                for key, value in {
+                    "resource": resource,
+                    "arguments": arguments,
+                    "target_ref": target_ref,
+                    "approval_token": approval_token,
+                    "suppression_evidence": suppression_evidence,
+                    "suppression_confirmed": suppression_confirmed, "spiffe_fields": spiffe_fields,
+                }.items()
+                if key not in ("approval_token", "suppression_evidence", "suppression_confirmed")
+            }
+            expected_intent = build_intent_hash(
+                mount_id=record.mount.id,
+                execution_id=record.token.execution_id,
+                action=action,
+                resource=resource,
+                normalized_args=normalized_args,
+            )
+            latest = db.execute(
+                select(ConsequenceExecutionEvent)
+                .where(ConsequenceExecutionEvent.operation_id == operation_id)
+                .order_by(ConsequenceExecutionEvent.version.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if latest is not None:
+                replay_reason = (
+                    "idempotency_intent_mismatch"
+                    if latest.intent_hash != expected_intent
+                    else f"idempotency_replay:{latest.state}"
+                )
+                return (
+                    Decision.DENY,
+                    replay_reason,
+                    latest.state,
+                    payload(
+                        record=record,
+                        decision=Decision.DENY,
+                        reason=replay_reason,
+                        consequence_state=latest.state,
+                        receipt_id=latest.receipt_id,
+                    ),
+                )
+
+        invoked_here = False
+        result: object | None = None
+        decision = Decision.ALLOW
+        reason = "allowed"
+        passthrough = {
+            "resource": resource,
+            "arguments": arguments,
+            "target_ref": target_ref,
+            "approval_token": approval_token,
+            "suppression_evidence": suppression_evidence,
+            "suppression_confirmed": suppression_confirmed, "spiffe_fields": spiffe_fields,
+        }
+
+        context = ConsequenceContext(
+            action=action,
+            resource=resource,
+            arguments=arguments,
+            operation_id=op_id,
+            workspace=row.owner_workspace,
+            project=record.mount.scope.project,
+        )
+
+        def invoke_effect(**_: object) -> object:
+            nonlocal invoked_here
+            invoked_here = True
+            # target_ref here is the key the adapter is registered under in CAPPO's own
+            # configuration (resolve() above refuses anything unregistered), so the
+            # permit is bound to the target CAPPO is actually dispatching to.
+            return adapter.dispatch(self._with_permit(context, record.mount.id, target_ref))
+
+        try:
+            # CAPPO's binding is the sole owner of authorization and execution.
+            result = record.binding.consequence(
+                action,
+                invoke_effect,
+                operation_id=op_id,
+                **passthrough,
+            )
+        except PolicyError as exc:
+            decision = Decision.DENY
+            reason = str(exc)
+        except Exception:
+            raise
+
+        latest = db.execute(
+            select(ConsequenceExecutionEvent)
+            .where(ConsequenceExecutionEvent.operation_id == op_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        consequence_state = latest.state if latest is not None else None
+        receipt_id = latest.receipt_id if latest is not None else None
+        anchoring = {
+            "status": "not_applicable",
+            "anchor_id": None,
+            "content_hash": None,
+            "pgl_event_hash": None,
+            "pgl_agent_id": None,
+        }
+        if receipt_id is not None:
+            receipt = db.get(CapabilityActionReceipt, receipt_id)
+            if receipt is not None:
+                anchoring = {
+                    "status": receipt.pgl_anchor_status or "unconfirmed",
+                    "anchor_id": receipt.pgl_anchor_id,
+                    "content_hash": receipt.content_hash,
+                    "pgl_event_hash": receipt.pgl_event_hash,
+                    "pgl_agent_id": self._pgl_agent_id(receipt.pgl_anchor_status or "unconfirmed"),
+                }
+        # Report this request's own dispatch, not the process-wide counter, so a
+        # concurrent loser never claims the winner's invocation.
+        target_invoked = invoked_here
+
+        should_terminate = not (
+            reason.startswith("idempotency_replay:")
+            or reason == "consequence_already_started"
+        )
+        terminated = False
+        if should_terminate:
+            termination, _termination_reason, _termination_anchor = self.terminate(
+                mount_id,
+                UnmountReason.TASK_COMPLETE,
+                owner_principal=owner_principal,
+                owner_workspace=owner_workspace,
+                settle_seconds=0,
+            )
+            terminated = termination is Decision.ALLOW
+
+        return (
+            decision,
+            reason,
+            consequence_state,
+            payload(
+                record=record,
+                decision=decision,
+                reason=reason,
+                consequence_state=consequence_state,
+                target_invoked=target_invoked,
+                resulting_state=result,
+                receipt_id=receipt_id,
+                terminated=terminated,
+                anchoring=anchoring,
+            ),
+        )
+
+
+    def _stored_termination_anchor(self, db: Session, mount_id: str) -> AnchorResult:
+        """Return the local evidence of this mount's earlier termination.
+
+        When the external PGL append was confirmed, its reference was recorded
+        locally as a ``capability_mount_terminate_anchor`` audit event, and the
+        same confirmed anchor is returned. Otherwise the local termination event
+        alone is returned as ``confirmed_prior`` without an external reference.
+        """
+        from cappo_backend.models.audit_event import AuditEvent
+
+        events = (
+            db.execute(
+                select(AuditEvent)
+                .where(AuditEvent.operation_type.in_(["capability_mount_terminate_anchor", "capability_mount_terminate"]))
+                .order_by(AuditEvent.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        for event in events:
+            payload = event.payload or {}
+            if payload.get("mount_id") != mount_id:
+                continue
+            if event.operation_type == "capability_mount_terminate_anchor" and payload.get("pgl_event_hash"):
+                return AnchorResult(
+                    "confirmed",
+                    anchor_id=payload.get("log_hash"),
+                    external_ref=payload["pgl_event_hash"],
+                    detail="terminated earlier; anchor issued at that time",
+                )
+            if event.operation_type == "capability_mount_terminate" and payload.get("decision") == Decision.ALLOW.value:
+                return AnchorResult(
+                    "confirmed_prior",
+                    anchor_id=event.log_hash,
+                    detail=f"terminated earlier ({payload.get('reason')}); anchored at that time",
+                )
+        return AnchorResult("not_applicable", detail="already terminated; no local termination event found")
+
+    @staticmethod
+    def _envelope_refusal(
+        record: MountRecord,
+        target_ref: str,
+        action: str,
+        resource: str,
+        arguments: dict[str, Any],
+    ) -> str | None:
+        """For an envelope-bound mount, the request must hash to the bound operation.
+
+        Checked against the grants and, when the mount carries one, against the
+        signed Biscuit's ``allowed_envelope``: metadata alone is not trusted.
+        """
+        bound = record.token.grants.envelope_digest
+        if bound is not None and not record.token.biscuit_token:
+            # An envelope that exists only in stored metadata is not a signed bound.
+            return "operation_envelope_unverifiable"
+        signed: set[str] | None = set()
+        if record.token.biscuit_token:
+            from cappo_backend.security.biscuit import extract_allowed_envelopes
+
+            signed = extract_allowed_envelopes(record.token.biscuit_token)
+            if signed is None:
+                return "operation_envelope_unverifiable"
+        if bound is None and not signed:
+            return None
+        if bound is None or (record.token.biscuit_token and bound not in signed):
+            return "operation_envelope_unverifiable"
+        requested = operation_envelope_digest(
+            package_ref=record.token.package_ref, target_ref=target_ref, action=action, resource=resource,
+            arguments=dict(arguments or {}),
+        )
+        return None if requested == bound else "operation_envelope_mismatch"
+
+    def _with_permit(self, context: ConsequenceContext, mount_id: str, target_ref: str) -> ConsequenceContext:
+        """Attach a permit factory to a dispatch context (no-op when permits are unconfigured).
+
+        The permit is bound to ``target_ref``, the registered target being dispatched to.
+        """
+        from dataclasses import replace
+
+        from .permits import mint_permit, payload_digest, permit_key
+
+        key = permit_key(self.settings)
+        if key is None or not context.operation_id:
+            return context
+        latest = self._db().execute(
+            select(ConsequenceExecutionEvent.receipt_id)
+            .where(ConsequenceExecutionEvent.operation_id == context.operation_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        self._db().commit()
+        operation_id = context.operation_id
+
+        def permit_for(payload: bytes) -> str:
+            return mint_permit(
+                key,
+                operation_id=operation_id,
+                mount_id=mount_id,
+                receipt_id=latest,
+                payload_sha256=payload_digest(payload),
+                target_ref=target_ref,
+            )
+
+        return replace(context, permit_for=permit_for)
+
+    def redeem_consequence(
+        self,
+        operation_id: str,
+        permit: str,
+        payload_sha256: str,
+        *,
+        sink_ref: str | None = None,
+        target_signature: str | None = None,
+    ) -> tuple[Decision, str]:
+        """A target asks, immediately before committing: is this consequence still authorized?
+
+        Decided under the mount row lock that terminate() takes, so a redemption either
+        commits before the fence (terminate then waits for the started consequence to
+        settle) or is refused after it. ALLOW requires: an authenticated target (its
+        Ed25519 signature over this redemption verifies against the key pinned for it in
+        CAPPO's target configuration); a live, unexpired mount; the operation in STARTED
+        (CAPPO itself dispatched it); a permit matching this exact payload AND this
+        authenticated target; and no earlier redemption. Possession of a permit, of the
+        target's own credentials, or of state copied before revocation is not enough.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        from cappo_backend.models.consequence_redemption import ConsequenceRedemption
+
+        from .permits import permit_key, permit_matches, redeem_message, target_signature_valid
+
+        db = self._db()
+
+        def refuse(reason: str, record: MountRecord | None = None) -> tuple[Decision, str]:
+            db.rollback()
+            if record is not None:
+                self._anchor_consequence_outcome(
+                    "redeem_refused",
+                    mount=record.mount,
+                    token=record.token,
+                    operation_id=operation_id,
+                    receipt_id=None,
+                    action="redeem",
+                    decision=Decision.DENY.value,
+                    reason=reason,
+                    proof_type="target_redemption",
+                )
+            return Decision.DENY, reason
+
+        key = permit_key(self.settings)
+        if key is None:
+            return refuse("permits_not_configured")
+
+        # Who is redeeming? Only a target registered in CAPPO's own configuration, with a
+        # pinned key, proving possession of that key for this exact redemption.
+        if not sink_ref:
+            return refuse("target_identity_required")
+        target = self.target_adapters.resolve(sink_ref)
+        pinned_key = getattr(target, "redeem_public_key_hex", None) if target is not None else None
+        if not pinned_key:
+            return refuse("target_not_registered_for_redemption")
+        signed = redeem_message(
+            operation_id=operation_id, payload_sha256=payload_sha256, permit=permit, target_ref=sink_ref
+        )
+        if not target_signature_valid(pinned_key, target_signature or "", signed):
+            return refuse("target_signature_invalid")
+
+        first = db.execute(
+            select(ConsequenceExecutionEvent)
+            .where(ConsequenceExecutionEvent.operation_id == operation_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if first is None or not first.mount_id:
+            return refuse("unknown_operation")
+        mount_id = first.mount_id
+        db.commit()  # release the read before taking the mount lock (lock order: mount first)
+
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            return refuse("unknown_mount")
+        record = self._record(row)
+        if row.terminated:
+            return refuse("mount_terminated", record)
+        if _utc(row.expires_at) <= utc_now():
+            return refuse("mount_expired", record)
+
+        latest = db.execute(
+            select(ConsequenceExecutionEvent)
+            .where(ConsequenceExecutionEvent.operation_id == operation_id)
+            .order_by(ConsequenceExecutionEvent.version.desc())
+            .limit(1)
+            .execution_options(populate_existing=True)
+        ).scalar_one()
+        if latest.state != ConsequenceState.STARTED.value:
+            return refuse(f"operation_not_dispatched:{latest.state}", record)
+        if not permit_matches(
+            key,
+            permit,
+            operation_id=operation_id,
+            mount_id=mount_id,
+            receipt_id=latest.receipt_id,
+            payload_sha256=payload_sha256,
+            # The authenticated target: a permit minted for any other target fails here.
+            target_ref=sink_ref,
+        ):
+            return refuse("permit_mismatch", record)
+
+        db.add(
+            ConsequenceRedemption(
+                operation_id=operation_id,
+                mount_id=mount_id,
+                receipt_id=latest.receipt_id,
+                payload_sha256=payload_sha256,
+                sink_ref=sink_ref,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            return refuse("already_redeemed", record)
+        return Decision.ALLOW, "redeemed"
+
+    def _anchor_consequence_outcome(
+        self,
+        outcome: str,
+        *,
+        mount: Mount,
+        token: EphemeralScopedToken | PersistentServiceToken,
+        operation_id: str,
+        receipt_id: str | None,
+        action: str,
+        decision: str,
+        reason: str,
+        proof_type: str,
+    ) -> None:
+        """Append one consequence outcome (refused/succeeded/failed/...) to PGL.
+
+        Evidence only: called after the outcome is committed and outside the mount
+        row lock, never raises, and never gates the consequence. Safety comes from
+        the fence in begin_consequence, not from ledger timing.
+        """
+        db = self._db()
+        try:
+            self.anchor.anchor(
+                f"consequence_{outcome}",
+                action=action,
+                decision=decision,
+                reason=reason,
+                mount=mount,
+                token=token,
+                operation_id=operation_id,
+                receipt_id=receipt_id,
+                consequence_state=outcome,
+                proof_type=proof_type,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    _IN_FLIGHT_STATES = frozenset({ConsequenceState.AUTHORIZED.value, ConsequenceState.STARTED.value})
+
+    def _in_flight_operations(self, mount_id: str) -> list[str]:
+        """Operation ids on this mount whose latest state is authorized or started."""
+        db = self._db()
+        rows = db.execute(
+            select(
+                ConsequenceExecutionEvent.operation_id,
+                ConsequenceExecutionEvent.version,
+                ConsequenceExecutionEvent.state,
+            ).where(ConsequenceExecutionEvent.mount_id == mount_id)
+        ).all()
+        db.commit()  # end the read so the next poll sees newly committed events
+        latest: dict[str, tuple[int, str]] = {}
+        for operation_id, version, state in rows:
+            if operation_id not in latest or version > latest[operation_id][0]:
+                latest[operation_id] = (version, state)
+        return sorted(op for op, (_, state) in latest.items() if state in self._IN_FLIGHT_STATES)
+
+    def _settle_in_flight(self, mount_id: str, settle_seconds: float | None) -> list[str]:
+        """Wait up to settle_seconds for in-flight operations to reach a later state.
+
+        Called after the fence has committed: begin_consequence refuses every
+        operation that had not reached STARTED, so this set can only shrink.
+        """
+        import time
+
+        if settle_seconds is None:
+            settle_seconds = float(getattr(self.settings, "cappo_terminate_settle_seconds", 10.0))
+        deadline = time.monotonic() + max(settle_seconds, 0.0)
+        while True:
+            in_flight = self._in_flight_operations(mount_id)
+            if not in_flight or time.monotonic() >= deadline:
+                return in_flight
+            time.sleep(0.02)
+
+    def claim_start(
+        self,
+        mount_id: str,
+        *,
+        token_id: str,
+        nonce: str,
+        operation_id: str,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+    ) -> tuple[Decision, str]:
+        """Atomically grant one operation the right to start work under this mount.
+
+        For packages whose work runs before its consequence (``requires_start_claim``), the
+        worker must hold this claim before it starts: no claim, no compute. The mount row is
+        locked exactly as terminate() locks it, so a revocation either commits first (the claim
+        is refused and the work never starts) or after (the claim stands; the work may finish,
+        but its commit is still refused because the mount is terminated). One claim per mount:
+        a claim for any other operation is refused. A repeated claim for the same operation is
+        answered idempotently (start_claim_replayed), so a worker whose response was lost can
+        learn its claim stands; it must keep its own durable record of whether the work started.
+        The claim consumes nothing: the single-use commit stays with execute.
+        """
+        db = self._db()
+        row = self._row(mount_id, lock=True)
+        try:
+            if row is None:
+                return Decision.DENY, "unknown_mount"
+            if not self._owned_by(row, owner_principal, owner_workspace):
+                return Decision.DENY, "owner_mismatch"
+            if row.terminated:
+                return Decision.DENY, "terminated"
+            if _utc(row.expires_at) <= utc_now():
+                return Decision.DENY, "expired"
+            if row.nonce_consumed:
+                return Decision.DENY, "token_replay"
+            if token_id != row.token_id or nonce != row.token_nonce:
+                return Decision.DENY, "token_mismatch"
+            if row.start_claim_operation_id == operation_id:
+                # Idempotent: a retry after a lost response learns its claim stands. Whether the
+                # work already started is the claimant's durable record to keep (the worker's
+                # journal); revocation is checked above, so a revoked mount never replays.
+                return Decision.ALLOW, "start_claim_replayed"
+            if row.start_claim_operation_id is not None:
+                return Decision.DENY, "start_already_claimed"
+            row.start_claim_operation_id = operation_id
+            row.start_claimed_at = utc_now()
+            return Decision.ALLOW, "start_claimed"
+        finally:
+            db.commit()
 
     def terminate(
         self,
@@ -943,7 +1905,33 @@ class MountRegistry:
         *,
         owner_principal: str = "auth-disabled",
         owner_workspace: str | None = None,
+        settle_seconds: float | None = None,
     ) -> tuple[Decision, str, AnchorResult]:
+        decision, outcome, anchor, _in_flight = self.terminate_with_in_flight(
+            mount_id,
+            reason,
+            owner_principal=owner_principal,
+            owner_workspace=owner_workspace,
+            settle_seconds=settle_seconds,
+        )
+        return decision, outcome, anchor
+
+    def terminate_with_in_flight(
+        self,
+        mount_id: str,
+        reason: UnmountReason,
+        *,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+        settle_seconds: float | None = None,
+    ) -> tuple[Decision, str, AnchorResult, list[str]]:
+        """Fence the mount, then account for consequences already past evaluate().
+
+        "terminated" / "already_terminated" mean no operation on this mount is
+        authorized or started, so no further effect can land. If some still are
+        when settle_seconds runs out, the reason is "terminated_in_flight" and
+        their operation ids are returned: an effect for those may still land.
+        """
         db = self._db()
         row = self._row(mount_id, lock=True)
         if row is None:
@@ -956,7 +1944,7 @@ class MountRegistry:
                 token=None,
             )
             db.commit()
-            return Decision.DENY, "unknown_mount", anchor
+            return Decision.DENY, "unknown_mount", anchor, []
         if not self._owned_by(row, owner_principal, owner_workspace):
             anchor = self.anchor.anchor(
                 "terminate",
@@ -967,16 +1955,18 @@ class MountRegistry:
                 token=None,
             )
             db.commit()
-            return Decision.DENY, "owner_mismatch", anchor
+            return Decision.DENY, "owner_mismatch", anchor, []
 
         record = self._record(row)
         if row.terminated:
             db.commit()
-            return (
-                Decision.ALLOW,
-                "already_terminated",
-                AnchorResult("not_applicable", detail="already terminated"),
-            )
+            # Idempotent: hand back the anchor issued when the mount was terminated
+            # (execute terminates automatically on TASK_COMPLETE) instead of "not_applicable".
+            prior_anchor = self._stored_termination_anchor(db, mount_id)
+            in_flight = self._settle_in_flight(mount_id, settle_seconds)
+            if in_flight:
+                return Decision.ALLOW, "terminated_in_flight", prior_anchor, in_flight
+            return Decision.ALLOW, "already_terminated", prior_anchor, []
         anchor = self.anchor.anchor(
             "terminate",
             action="execution",
@@ -987,13 +1977,13 @@ class MountRegistry:
         )
         if anchor.status not in ("confirmed", "pending_reconciliation"):
             db.rollback()
-            return Decision.DENY, "pgl_anchor_unconfirmed", anchor
-            
+            return Decision.DENY, "pgl_anchor_unconfirmed", anchor, []
+
         row.terminated = True
         mark_mount_revoked(mount_id)
         
         from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
-        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).first()
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
         if lease and lease.lease_state in (LeaseState.ISSUED.value, LeaseState.ACTIVE.value):
             current_epoch = lease.revocation_epoch + 1
             # "terminate" explicitly means stopping it before natural expiration, 
@@ -1001,7 +1991,10 @@ class MountRegistry:
             lease.transition_state(LeaseState.REVOKED, current_epoch)
 
         db.commit()
-        return Decision.ALLOW, "terminated", anchor
+        in_flight = self._settle_in_flight(mount_id, settle_seconds)
+        if in_flight:
+            return Decision.ALLOW, "terminated_in_flight", anchor, in_flight
+        return Decision.ALLOW, "terminated", anchor, []
 
 
 def load_packages_from_json(raw: str | None) -> list[CapabilityPackage]:
@@ -1022,3 +2015,5 @@ def utc_now() -> datetime:
 
 def _utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
