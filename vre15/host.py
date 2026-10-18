@@ -311,6 +311,7 @@ class Host:
         mem = x["memory"]
         mem.grow(store, header["pages"] - mem.size(store))
         base, length = ctypes.addressof(mem.data_ptr(store).contents), mem.data_len(store)
+        revoke.recover(self.spec["images"][t])         # finish a checkpoint a crash interrupted
         fd = os.open(self.spec["images"][t], os.O_RDONLY)
         try:
             if os.fstat(fd).st_size != length:

@@ -1417,6 +1417,19 @@ The workflow:
 
 It is never run on the self-hosted runner. The rules above are unchanged.
 
+### Amendment 2 (2026-10-18, before any run with seeds 801–815)
+
+Due diligence found that a checkpoint was not crash-atomic. At the owner's
+decision, it was fixed before the transfer test: `revoke.revoke` now writes
+through a redo log (see "Due diligence" below). The transfer test therefore
+measures the fixed mechanism. Each revocation now does one more write of
+every modified page and three more syncs.
+
+Nothing else changes: the arms, settings, seeds 801–815, the T1 and T2
+rules of Amendment 1, the self-test and the reporting rule. The manifest
+records the commit, as before. No run with these seeds has happened yet,
+because the runner is blocked by Actions billing.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
@@ -1646,7 +1659,7 @@ not on a working copy.
   It says it uses a demo supervisor and key, not CAPPO, which is accurate.
   It should not run on a public address as it is.
 
-### Found: a checkpoint is not crash-atomic (new, not previously documented)
+### Found: a checkpoint was not crash-atomic (new; fixed the same day, see below)
 
 `revoke.revoke` writes modified pages into the image one run at a time,
 then syncs. A process killed between those writes leaves the image torn:
@@ -1655,8 +1668,8 @@ nothing records that the image is torn.
 
 In a real process killed at its 3rd and at its 6th page write (of 8), the
 image held 2 and 5 of the 8 new pages. Without the kill, it held 8 of 8.
-`tests/test_vre15_crash.py` records this as `xfail(strict=True)`: it fails
-today, and the marker must come off when the defect is fixed.
+`tests/test_vre15_crash.py` recorded this at the time as
+`xfail(strict=True)`.
 
 **What it affects:**
 - The claim "state preserved exactly" holds for every completed run. It
@@ -1664,11 +1677,43 @@ today, and the marker must come off when the defect is fixed.
 - None of the measured results change. No run crashed, and every run
   checked integrity against a reference replay.
 
-**Fix, not yet made:** write the modified pages to a sidecar redo log,
-fsync, apply them to the image, fsync, then drop the log. Mapping an image
-replays a complete log first. This changes `revoke.py`, which the
-pre-registered transfer test measures, so it needs either an amendment
-there or its own pre-registered step.
+**Fix (2026-10-18), at the owner's decision to fix before the transfer
+test.** `revoke.revoke` now writes the modified pages through a redo log:
+1. it writes `<image>.redo.tmp`, fsyncs it, renames it to `<image>.redo`
+   and fsyncs the directory. The log therefore exists complete or not at
+   all, and is checked by its own SHA-256;
+2. it writes the pages into the image and runs `fdatasync`;
+3. it removes the log and fsyncs the directory;
+4. it remaps and pages out, as before.
+
+`revoke.recover(image)` replays a complete log and discards a partial one.
+It runs in `map_image`, and in `host.py` before every image is mapped.
+When it replays a log, it returns that log's receipt, so a supervisor can
+record the reconciliation instead of losing it. The receipt digest is
+computed exactly as before, so all committed evidence stays comparable.
+
+`tests/test_vre15_crash.py` now kills a real process at each step and
+checks the image after recovery:
+
+| Killed | Image after recovery |
+|---|---|
+| while writing the log | old state (8 of 8 old pages) |
+| before the log is renamed into place | old |
+| after 2, and after 5, of 8 image writes (torn on disk until recovered) | new (8 of 8) |
+| after the image sync, before the log is removed | new |
+| no crash | new, and no log is left |
+
+`map_image` recovers before mapping, and a damaged log is refused with the
+image left untouched.
+
+**Limits of the fix:**
+- A crash after recovery replays a log but before a journal record exists
+  leaves no record in that run's journal. `recover` returns the receipt,
+  but nothing in this repository writes it to a journal yet.
+- Power loss is not simulated. The design relies on fsync and rename
+  ordering, which is standard, but only process kills were tested.
+- **Cost:** one more write of every modified page, plus three more syncs,
+  per revocation. It is measured below.
 
 ### Where VRE-1.5 stands
 
@@ -1676,7 +1721,7 @@ there or its own pre-registered step.
 |---|---|---|
 | Fewer missed deadlines than native kernel paging (the performance thesis) | **Disconfirmed** in every pre-registered test | — |
 | Authority enforced: 0 requests served outside authority | Observed in every run | E2, VERIFIED_REPO |
-| State preserved exactly | Observed in every completed run. Not across a crash mid-revocation (above). | E2, VERIFIED_REPO; crash: disconfirmed |
+| State preserved exactly | Observed in every completed run. Across a crash mid-revocation: torn before the fix, whole old or new after it, under process kills in tests. | E2, VERIFIED_REPO; crash: tested in unit tests only |
 | Revoked state leaves memory (H15), and an outside observer agrees (A1, A2) | Confirmed by pre-registered tests | E3, VERIFIED_REPO, on this cloud host (cgroup v1) |
 | Private state before a tenant's first authority | A real gap, confirmed (A3). The fix is not yet made. | E3 |
 | Each revocation is signed, witnessed and verifies offline | Observed. Tamper and liar cases rejected in tests. | Artifact integrity, not behaviour |
@@ -1690,6 +1735,6 @@ there or its own pre-registered step.
   and root with the runtime;
 - state outside the image mappings;
 - long endurance runs (runs here last 90 s);
-- behaviour under crash, beyond the defect above.
+- crash safety under power loss: only process kills were tested.
 
 Per `00_VEKLOM_BIBLE.md`, none of this supports "100% production ready".
