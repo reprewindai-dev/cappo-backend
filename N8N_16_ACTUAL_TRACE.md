@@ -1,8 +1,32 @@
-# N8N-16 Actual Correlated Execution Trace
+# N8N-16 Correlated Execution Trace — QUARANTINED
 
-Evidence state: **VERIFIED_LOCAL**. Generated from a live local run, PostgreSQL rows, and the reconciled physical sandbox record.
+**Status:** `UNVERIFIED_CLAIM_SET`
 
-| Timestamp | Component | Event | Correlation | Observed detail |
+This document presents a timestamped correlated trace together with concrete execution, lease, ledger, audit, receipt, and evidence-hash identifiers and authorized, signed, reconciled, settled, PGL-anchored, and verified claims.
+
+Those values are not accepted as canonical evidence unless they are independently reproducible from the authoritative runtime and durably correlated to source-controlled code plus Gnomledger/PGL evidence. A manually transcribed table is not sufficient proof of execution, payment, cryptographic verification, persistence, or convergence.
+
+## Verification boundary
+
+`observed_current_responsibilities = CAPPO authority/governance and execution-dispatch code present in source`
+
+`target_responsibilities = governed consequence execution with durable evidence and independently verifiable correlation`
+
+`reported_runtime_state = CAPPO:8002`
+
+`verified_runtime_state = NOT_VERIFIED`
+
+`unverified_claims = [correlated N8N-16 execution, KMS lease signing, local budget hold/settlement, n8n webhook dispatch, physical consequence reconciliation, CAPPO append-only events and hash-chained audit, PGL/Gnomledger receipt anchoring]`
+
+## Required replacement evidence
+
+A replacement trace must be machine-produced from the tested runtime, bind each event to the deployed source/image identity, prove the canonical listener and protocol identity, preserve replay-safe authority correlation, and reference durable Gnomledger/PGL records that can be checked independently. Simulated or mock components must be labeled as such and may not be promoted to VERIFIED/ACTIVE production state.
+
+## Quarantined claim set (as reported, unverified)
+
+Reported (self-attested) evidence state: `VERIFIED_LOCAL`. The author reported this as generated from a live local run, PostgreSQL rows, and the reconciled physical sandbox record. It is retained below as an unverified claim set, not as canonical evidence.
+
+| Timestamp | Component | Event | Correlation | Reported detail (unverified) |
 |---|---|---|---|---|
 | `2026-08-29T01:34:17.103152Z` | UI / certification client | Intent created | `exec-live-34909298f11c` | Real local certification intent |
 | `2026-08-29T01:34:17.199072Z` | CAPPO / PostgreSQL | Budget hold + authority event committed | `exec-live-34909298f11c` | 1 cent ACTIVE hold; AUTHORIZED event v0 |
@@ -14,7 +38,7 @@ Evidence state: **VERIFIED_LOCAL**. Generated from a live local run, PostgreSQL 
 
 | `2026-08-29T05:07:33.600326Z` | Gnomledger/PGL | Consequence Receipt Anchored | `exec-live-34909298f11c` | `event_hash=51cc546fc2fefec569f268e12d8523b19f238cd1677b44eb25514591dcefaa01` |
 
-## Release-gate result
+## Reported release-gate result (unverified)
 
 ```json
 {
@@ -37,15 +61,13 @@ Evidence state: **VERIFIED_LOCAL**. Generated from a live local run, PostgreSQL 
 }
 ```
 
-## Claim boundary
+## Reported claim boundary (unverified)
 
-- Exactly-once **local** budget settlement: verified.
-- CAPPO append-only consequence events: verified.
-- CAPPO hash-chained audit receipt: verified.
-- PGL receipt verified: **true**
+- Exactly-once **local** budget settlement: reported, not independently verified.
+- CAPPO append-only consequence events: reported, not independently verified.
+- CAPPO hash-chained audit receipt: reported, not independently verified.
+- PGL receipt verified: reported **true**, not independently verified
 - PGL verification substrate: local Gnomledger
 - PGL persistence: durable local database
 - External/remote PGL verified: **false**
 - On-chain x402/USDC transaction: **UNVERIFIED** (no chain transaction submitted).
-
-

@@ -1,31 +1,32 @@
 # Veklom N8N Strategy
 
 **Date:** 2026-08-28
-**Status:** ACTIVE
-**Pivot Context:** We took everything off Hetzner. The strategy is moving to local, BYOS, sovereign node execution.
+**Status:** `TARGET_ARCHITECTURE / NOT_RUNTIME_VERIFIED`
 
-## The Architectural Boundary
-We are adopting n8n as the **execution ecosystem** and preserving Veklom (CAPPO/PGL) as the **authority layer**.
+This document describes a target integration boundary. It does **not** assert that n8n is currently deployed, healthy, authoritative, or fully governed in production.
 
-We are NOT:
-- Competing with n8n by building a workflow editor, scheduler, or basic integration nodes.
-- Attempting to be a basic automation company.
+## Architectural Boundary
 
-We ARE:
-- Placing n8n behind the CAPPO boundary.
-- Governing all of n8n's consequences.
-- Proving that even if n8n bypasses the authorized envelope, Veklom intercepts and denies the action.
+The intended model is to use n8n as an execution ecosystem while preserving Veklom—identity, policy, CAPPO authority, and durable evidence—as the authority layer.
 
-## 3-Layer Architecture
-1. **Experience Layer**: Veklom UI, API, Human Intent.
-2. **Authority Layer**: VEKLOM (Identity, Policy, CAPPO, Leases, Evidence, Offline Authority).
-3. **Execution Ecosystem**: n8n, MCP, BYOS, Ollama, APIs, SaaS.
+### Target responsibilities
 
-## Implementation: `VeklomN8nExecutionProvider`
-A clean adapter translates Veklom's `ExecutionEnvelope` into n8n payloads, ensuring n8n executes under an attenuated, short-lived authority.
-If n8n attempts to make an unauthorized HTTP call or access restricted MCP resources, the target resource will be bound by Veklom validation and reject the action.
+- Experience layer: Veklom UI/API and human or machine intent.
+- Authority layer: Veklom identity, policy, CAPPO, leases/attenuation, evidence, and offline authority.
+- Execution ecosystem: n8n, MCP, BYOS, Ollama, external APIs, SaaS, and other replaceable executors.
 
-## Licensing Boundary (Important)
-- We use self-hosted Community Edition initially.
-- Veklom state (Identity, Policy, Evidence) MUST remain external to n8n so we can swap out n8n for Temporal or native runners if licensing issues arise.
-- We do not silently embed n8n as a commercial white-label SaaS offering without a commercial agreement.
+### Observed current responsibilities
+
+Source code contains CAPPO governance and execution-provider work plus n8n-related integration artifacts. That observation is not equivalent to proving that every n8n consequence is currently dominated by CAPPO at runtime.
+
+`verified_runtime_state = NOT_VERIFIED`
+
+## Target integration
+
+A `VeklomN8nExecutionProvider`-style adapter may translate a governed execution envelope into n8n requests under attenuated, short-lived authority. The security invariant is that n8n itself must not be able to mint or widen authority, and any consequential target must independently enforce the Veklom authorization boundary.
+
+That invariant remains a target until negative bypass tests, replay/expiry tests, deployed-source identity, canonical listener/routing checks, and durable Gnomledger/PGL evidence have all been independently demonstrated.
+
+## Licensing boundary
+
+The intended deployment model is self-hosted n8n Community Edition where appropriate, with Veklom identity/policy/evidence state remaining external so that n8n can be replaced by another executor if required. This is architectural intent, not a statement about current commercial rights, production deployment status, or an executed licensing agreement.
