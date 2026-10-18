@@ -44,8 +44,11 @@ def test_vnp_signed_telemetry(client: TestClient, db: Session, monkeypatch):
     )
     api = db.query(APIState).first()
 
+    import hashlib
+    import hmac
+    import json as _json
+
     from cappo_backend.services.vnp_telemetry_service import VNPTelemetryService
-    import hashlib, hmac, json as _json
 
     service = VNPTelemetryService(db)
 

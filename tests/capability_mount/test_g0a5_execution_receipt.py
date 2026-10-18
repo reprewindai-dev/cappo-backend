@@ -11,8 +11,8 @@ The DB session fixture comes from conftest.py (shared across the capability_moun
 suite). The spy is identical to the one used in G0A.4.
 """
 
-from sqlalchemy import select
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.models import CapabilityPackage
@@ -158,8 +158,8 @@ def test_g0a_5_durable_execution_receipt(client: TestClient, db: Session) -> Non
 
     print()
     print("G0A.5 = VERIFIED")
-    print(f"RECEIPT_TYPE              = CapabilityActionReceipt (capability_action_receipts)")
-    print(f"PERSISTENCE_BACKEND       = SQLite (in-test) / PostgreSQL (production)")
+    print("RECEIPT_TYPE              = CapabilityActionReceipt (capability_action_receipts)")
+    print("PERSISTENCE_BACKEND       = SQLite (in-test) / PostgreSQL (production)")
     print(f"EXECUTION_ID_BOUND        = {rcpt.execution_id!r}")
     print(f"PRINCIPAL_BOUND           = {rcpt.principal!r}")
     print(f"ACTION_BOUND              = {rcpt.action!r}")
@@ -167,6 +167,6 @@ def test_g0a_5_durable_execution_receipt(client: TestClient, db: Session) -> Non
     print(f"TIMESTAMP_BOUND           = {rcpt.actioned_at!r}")
     print(f"TOKEN_ID_BOUND            = {rcpt.token_id!r}")
     print(f"MOUNT_ID_BOUND            = {rcpt.mount_id!r}")
-    print(f"RECEIPT_COUNT             = 1 (exactly)")
-    print(f"REPLAY_CREATES_SECOND_RECEIPT = False (still 1 after replay)")
-    print(f"RETRIEVABLE_AFTER_WRITE   = True (spy cleared, DB row persists)")
+    print("RECEIPT_COUNT             = 1 (exactly)")
+    print("REPLAY_CREATES_SECOND_RECEIPT = False (still 1 after replay)")
+    print("RETRIEVABLE_AFTER_WRITE   = True (spy cleared, DB row persists)")

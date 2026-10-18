@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # certificate may be accepted. Production must set this to true.
     cappo_require_persistent_pgl: bool = False
 
+    # How long terminate waits for consequences that were already authorized or
+    # started on the mount to settle before answering. A plain "terminated"
+    # means none remain; otherwise terminate answers "terminated_in_flight" and
+    # names them.
+    cappo_terminate_settle_seconds: float = 10.0
+
     # Signing key for ExecutionIdentityV1. Must be overridden in production.
     ei_signing_key: str = INSECURE_EI_SIGNING_KEY
     ei_signing_provider: str = "ed25519"
@@ -51,11 +57,38 @@ class Settings(BaseSettings):
     # When PGL_LEDGER_URL is set, every governance event is mirrored into
     # gnomledger's append-only, hash-chained ledger.
     pgl_ledger_url: str | None = None
+    pgl_ledger_agent_id: str | None = None
     pgl_ledger_api_key: str | None = None
     pgl_ledger_timeout_ms: int = 8000
 
+    # --- Reconciliation ---
+    # Base URL of the target connector that holds execution evidence
+    # (``{base}/connectors/sandbox-file-append/status/{execution_id}``). Unset
+    # means ``POST /api/v1/reconcile/{execution_id}`` answers 503; there is no
+    # built-in loopback default.
+    reconcile_connector_base_url: str = ""
+
     # Capability discovery and signed beacon publication.
     capability_packages_json: str | None = None
+    capability_effect_record_root: str | None = None
+    # JSON list of {"ref", "apply_url", "actions"?}: external targets that redeem
+    # CAPPO permits before committing (capability_mount/http_target.py).
+    cappo_http_targets: str | None = None
+    # Private Cloud results sink (capability_mount/fabric_compute.py). Both set -> the
+    # compute.job@v1 package is offered and its commits go to this sink.
+    fabric_result_sink_url: str | None = None
+    fabric_result_sink_token: str | None = None
+    # Comma-separated provider names (e.g. "ollama") the veklom.inference@v1 package may
+    # dispatch to (capability_mount/inference.py). Empty -> the package is not offered.
+    inference_allowed_providers: str = ""
+    biscuit_root_private_key_hex: str | None = None
+    # Default to a home-anchored absolute path so the file location is
+    # deterministic regardless of the process working directory.  A relative
+    # path here is the root cause of cross-restart verification failures: two
+    # invocations with different CWDs resolve to different files and therefore
+    # operate with different key material.  The ~ prefix is expanded at read
+    # time in get_root_key_pair(); it is NOT resolved relative to CWD.
+    biscuit_root_key_path: str = "~/.cappo/biscuit_root_key"
     capability_beacon_issuer: str = "https://cappo.veklom.com"
     capability_beacon_ttl_seconds: int = 300
     capability_beacon_kid: str = "default"
@@ -91,7 +124,66 @@ class Settings(BaseSettings):
     # repository defaults intentionally contain no credential material.
     api_keys: str = ""
 
-    # --- JWT Authentication ---
+    @field_validator("biscuit_root_private_key_hex")
+    @classmethod
+    def validate_biscuit_root_private_key_hex(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if len(value) != 64:
+            raise ValueError(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must contain exactly 64 hex characters."
+            )
+        try:
+            bytes.fromhex(value)
+        except ValueError as exc:
+            raise ValueError(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must be valid hexadecimal."
+            ) from exc
+        return value
+
+    @field_validator("biscuit_root_key_path")
+    @classmethod
+    def validate_biscuit_root_key_path(cls, value: str) -> str:
+        """Validate and normalise the biscuit root key file path.
+
+        The critical invariant: the resolved key path must be the same regardless
+        of the process working directory.  A plain relative path (starting with
+        ``./`` or an unanchored filename) fails this invariant because
+        ``Path.resolve()`` is CWD-dependent.
+
+        Accepted forms:
+        - Unix absolute:    ``/var/secrets/biscuit_root_key``   (container paths)
+        - Windows absolute: ``C:/Users/antho/.cappo/key``
+        - Home-relative:    ``~/.cappo/biscuit_root_key``       (expanded at load time)
+
+        Rejected:
+        - CWD-relative: ``./biscuit_root_key``, ``biscuit_root_key``
+        - Empty string
+
+        Note: We use explicit string prefix checks rather than Path.is_absolute()
+        because this validator runs on the host OS (Windows) but the configured
+        path may be a Linux container path (/var/lib/...) which Path.is_absolute()
+        incorrectly classifies as relative on Windows.
+        """
+        import re
+        if not value or not value.strip():
+            raise ValueError("BISCUIT_ROOT_KEY_PATH must not be empty.")
+        stripped = value.strip()
+        is_home_relative = stripped.startswith("~")
+        # Unix absolute: starts with /
+        is_unix_absolute = stripped.startswith("/")
+        # Windows absolute: starts with drive letter + colon (e.g. C:, D:)
+        is_windows_absolute = bool(re.match(r"^[A-Za-z]:[/\\]", stripped))
+        if not (is_home_relative or is_unix_absolute or is_windows_absolute):
+            raise ValueError(
+                f"BISCUIT_ROOT_KEY_PATH must be an absolute path or start with '~' "
+                f"(home-relative). Received: {stripped!r}.  "
+                f"A CWD-relative path (e.g. './key', 'key') causes the key file location "
+                f"to change when the process working directory changes, leading to "
+                f"cross-restart Biscuit verification failures."
+            )
+        return stripped
+
     jwt_auth_enabled: bool = False
     jwt_public_verification_key: str = ""
     jwt_algorithm: str = "EdDSA"
@@ -117,6 +209,9 @@ class Settings(BaseSettings):
     # HMAC verification key for bound human-approval resume tokens. Production
     # approval-gated execution must never accept placeholder signatures.
     approval_token_signing_key: str = ""
+    # Key for consequence permits (target-side redemption). When empty it is derived from
+    # approval_token_signing_key; with neither set, permits are disabled.
+    consequence_permit_key: str = ""
 
     # --- Execution layer (real provider + circuit breaker) ---
     # "echo" uses the deterministic stub (default; tests/local dev). "openai"
@@ -132,7 +227,7 @@ class Settings(BaseSettings):
     # P0-6 Local Ollama topology settings
     local_ollama_enabled: bool = False
     ollama_upstream_url: str = ""
-    ollama_keep_alive: int = 300
+    ollama_keep_alive: str | int = 300
 
     # Master key for encrypting/decrypting BYOK tenant credentials.
     # Must be set in production to a strong, unique value.
@@ -190,6 +285,16 @@ class Settings(BaseSettings):
     # Comma-separated list of enabled EVM networks.
     x402_networks: str = "base,base-sepolia"
 
+    # --- Commercial entitlements (credit metering via LockerPhycer) ---
+    # "off" keeps today's behaviour (no metering). "enforce" meters governed
+    # capability-mount calls: paid actions fail closed, reads fail safe.
+    entitlements_metering: str = "off"
+    # LockerPhycer base URL, e.g. http://lockerphycer-api:8092
+    entitlements_url: str = ""
+    # Shared secret matching LockerPhycer ENTITLEMENTS_INTERNAL_TOKEN.
+    entitlements_service_token: str = ""
+    entitlements_timeout_ms: int = 3000
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
@@ -207,8 +312,8 @@ class Settings(BaseSettings):
     def reject_known_insecure_keys(cls, v: Any) -> Any:
         if isinstance(v, str):
             import hashlib
-            import secrets
             import os
+            import secrets
             
             _KNOWN_COMPROMISED_KEY_FINGERPRINT = "d2623fa3f2c01611397de54f7724fbe483a53fbec78d46b76aa283dbe02600d8"
             keys = [k.strip() for k in v.split(",")]
@@ -247,12 +352,18 @@ class Settings(BaseSettings):
         Called at application startup. In non-production environments this is a
         no-op so local development stays frictionless. In production it raises
         :class:`InsecureProductionConfigError` if any governance-critical setting
-        is still at an insecure default — there is no silent degradation.
         """
         if not self.is_production:
             return
 
         problems: list[str] = []
+        if not self.biscuit_root_private_key_hex:
+            problems.append(
+                "BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production; "
+                "ephemeral or file-based Biscuit root keys are not permitted. "
+                "Set BISCUIT_ROOT_PRIVATE_KEY_HEX as a 64-character hex string "
+                "in the Coolify environment panel."
+            )
         if self.ei_signing_key == INSECURE_EI_SIGNING_KEY:
             problems.append(
                 "EI_SIGNING_KEY is still the insecure development default; "
@@ -342,6 +453,13 @@ class Settings(BaseSettings):
         elif len(self.vault_master_key.strip()) < 32:
             problems.append(
                 "VAULT_MASTER_KEY must be at least 32 characters long in production."
+            )
+
+        if not self.redis_url.strip():
+            problems.append(
+                "REDIS_URL must be set in production: without Redis the /v1/exec "
+                "replay cache (Workload-Identity jti) degrades to allow-all and "
+                "replayed identities are accepted."
             )
 
         if problems:

@@ -1,0 +1,7 @@
+{
+  "profile_id": "profile_123",
+  "workload_identifier": "wimse://veklom.local/prod/payment/worker_WITH_API_KEY_xyz123",
+  "default_rights": [
+    "truth.transition"
+  ]
+}

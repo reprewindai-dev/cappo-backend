@@ -1,0 +1,7 @@
+{
+  "probe": "valid_identity_chain",
+  "status": "ACCEPTED",
+  "response": {
+    "status": "accepted"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Execution Context Token (Payload)",
+  "type": "object",
+  "properties": {
+    "iss": { "type": "string" },
+    "sub": { "type": "string" },
+    "aud": { "type": "string" },
+    "exp": { "type": "integer" },
+    "iat": { "type": "integer" },
+    "jti": { "type": "string" },
+    "ephemeral_execution_id": { "type": "string" }
+  },
+  "required": ["iss", "sub", "exp", "iat", "jti", "ephemeral_execution_id"],
+  "additionalProperties": false
+}

@@ -3,16 +3,16 @@ import tempfile
 from collections.abc import Iterator
 
 import pytest
-from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
+from alembic import command
 from cappo_backend.config import Settings
-from cappo_backend.main import create_app
-from fastapi.testclient import TestClient
-from cappo_backend.db.session import get_session
 from cappo_backend.config import get_settings as _gs
+from cappo_backend.db.session import get_session
+from cappo_backend.main import create_app
 
 
 @pytest.fixture(scope="module")
@@ -99,6 +99,7 @@ def clean_node_client(clean_node_env: dict) -> Iterator[TestClient]:
         async def dispatch(self, request, call_next):
             request.scope["auth_workspace"] = "clean-workspace"
             request.scope["auth_principal"] = "clean-principal"
+            request.scope["caller_spiffe_id"] = "spiffe://example.org/workload/cappo-backend"
             return await call_next(request)
             
     test_app.add_middleware(InjectWorkspaceMiddleware)
@@ -185,8 +186,9 @@ def test_g0a7_clean_node_reproducibility(clean_node_env: dict, clean_node_client
     # We open a fresh session purely to read what the client wrote.
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=migrated_engine)
     with SessionLocal() as db:
-        from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
         from sqlalchemy import select
+
+        from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
         rcpts = db.execute(
             select(CapabilityActionReceipt).where(CapabilityActionReceipt.execution_id == execution_id)
         ).scalars().all()

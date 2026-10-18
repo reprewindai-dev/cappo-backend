@@ -1,0 +1,73 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "7eeeda5f46c90d0b",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "f5659686-8e77-435f-942a-ae3a3c3829d6",
+   "execution_id": "bbf92667-3dd1-4ee0-965f-e205eaea1b74",
+   "scenario": "forged_authority",
+   "role": "attacker",
+   "issued_at": 1791691112,
+   "expires_at": 1791691412,
+   "workload": {
+    "module": "normal_ok",
+    "module_sha256": "1668aba740f5041447b86aceb3bc1825e5fdc6e1369d433d8267f3611e1f809c",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 67108864,
+    "compute_fuel": 50000000,
+    "wall_deadline_ms": 100,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "+WsoorrRj5GxwbDl+TlzZNh83hnfweNw7WSxayGi+fQw1XL4Z8h32cCo4QJQ/GyoAin1mALcDKdNoAjCFa7zAg=="
+ },
+ "boundary": null,
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "bbf92667-3dd1-4ee0-965f-e205eaea1b74",
+  "boundary_digest": null,
+  "refusal": {
+   "stage": "authority",
+   "reasons": [
+    "signature_not_trusted"
+   ],
+   "at_unix_s": 1791691112
+  },
+  "released": false,
+  "released_wall_s": null,
+  "released_at_ns": null,
+  "deadline_at_ns": null,
+  "reaped_at_ns": null,
+  "counters_before": null,
+  "counters_after": null,
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": null,
+   "signal": null
+  },
+  "runtime_report": null,
+  "untrusted_guest_output": "",
+  "untrusted_guest_output_bytes": 0,
+  "residual_procs": [],
+  "teardown": null,
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "b7d2d0a1e520f863",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "bbf92667-3dd1-4ee0-965f-e205eaea1b74",
+   "envelope_digest": "d94471332e4b99ddfce1c1829405d0c46b8aed56c0436af0638c6c845f118fd6",
+   "boundary_digest": null,
+   "evidence_digest": "83c8cd2fc7999986eabf9545f82c8206e53bcd00a82b297c834dfaf4b0a472fc",
+   "outcome": "AUTHORITY_REFUSED",
+   "evidence_level": "E2"
+  },
+  "sig": "xLVo4i3u/9QYVdJ2EqCsUY43WBVC+tAX3pQ51f6I7QJQIALVKJ0vwIpw87ylYwa/eY5gEh0zLLIMIqqu4paDBw=="
+ }
+}

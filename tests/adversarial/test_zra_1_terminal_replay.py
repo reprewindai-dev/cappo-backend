@@ -9,10 +9,10 @@ demonstrate that post-terminal credentials, sockets, mounts, secrets, processes,
 memory residues cannot be recovered or reused.
 """
 
-import pytest
 from sqlalchemy.orm import Session
+
+from cappo_backend.capability_mount.models import Decision, MountPolicy, MountScope
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import MountScope, MountPolicy, Decision
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
 CALLER_SPIFFE  = "spiffe://example.org/workload/cappo-backend"
@@ -45,7 +45,7 @@ def test_zra_1_terminal_credential_replay(db: Session):
     )
 
     # 1. Setup a valid mount (as if the task is running)
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent",

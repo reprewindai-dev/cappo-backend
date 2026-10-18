@@ -14,11 +14,9 @@ This test does NOT use the in-memory anchor spy for any integrity assertion.
 All evidence is pulled from the SQLite DB directly.
 """
 
-import json
-import hashlib
 
-from sqlalchemy import select
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.models import CapabilityPackage
@@ -112,6 +110,17 @@ def _recompute_hash(rcpt: CapabilityActionReceipt) -> str:
         "result_hash": None,
         "pgl_anchor_id": rcpt.pgl_anchor_id,
     }
+    # v2 receipts (2026-10-07) name the authority actually exercised; v1 (NULL) rows
+    # keep the historical form above, "*" placeholder included, and still verify.
+    if rcpt.receipt_schema_version == 2:
+        canonical.update({
+            "receipt_schema_version": 2,
+            "resource": rcpt.resource,
+            "target_ref": rcpt.target_ref,
+            "envelope_digest": rcpt.envelope_digest,
+        })
+    else:
+        assert rcpt.receipt_schema_version is None, f"unknown receipt schema {rcpt.receipt_schema_version!r}"
     return sha256_json(canonical)
 
 
@@ -175,7 +184,6 @@ def test_g0a_6b_receipt_retrieval_and_integrity(
         print(f"STORED HASH: {rcpt.content_hash}")
         print(f"RECOMP HASH: {expected_hash}")
         # To debug the exact string diff:
-        import json
         from cappo_backend.services.canonical import canonical_json
         canonical_recomp = {
             "execution_id": rcpt.execution_id,
@@ -245,14 +253,14 @@ def test_g0a_6b_receipt_retrieval_and_integrity(
     print()
     print("G0A.6b = VERIFIED")
     print(f"RETRIEVED_BY_EXECUTION_ID = {execution_id!r}")
-    print(f"RECEIPT_FOUND             = True")
+    print("RECEIPT_FOUND             = True")
     print(f"EXECUTION_ID_MATCH        = {rcpt.execution_id == execution_id}")
     print(f"PRINCIPAL_MATCH           = {rcpt.principal!r}")
     print(f"ACTION_MATCH              = {rcpt.action!r}")
     print(f"RESULT_MATCH              = decision={rcpt.decision!r} reason={rcpt.reason!r}")
     print(f"TOKEN_ID_MATCH            = {rcpt.token_id == token_id}")
     print(f"MOUNT_ID_MATCH            = {rcpt.mount_id == mount_id}")
-    print(f"INTEGRITY_MECHANISM       = sha256_json over canonical receipt fields")
+    print("INTEGRITY_MECHANISM       = sha256_json over canonical receipt fields")
     print(f"INTEGRITY_VERIFICATION    = stored_hash == recomputed_hash ({rcpt.content_hash[:16]}...)")
     print(f"TAMPER_TEST               = mutated_action hash != original ({tampered_hash[:16]}... != {rcpt.content_hash[:16]}...)")
     print(f"PGL_GNOMLEDGER_BOUND      = {pgl_bound}")

@@ -14,7 +14,6 @@ import sys
 
 import pytest
 
-
 SUBSTRATE_PYTHON_EXEC = sys.executable
 HOSTILE_PAYLOAD = os.path.join(os.path.dirname(__file__), "ai1_hostile_workload.py")
 SAFE_ENV_KEYS = ("PATH", "SYSTEMROOT", "WINDIR", "HOME", "TMP", "TEMP")

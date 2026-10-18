@@ -2,13 +2,14 @@
 
 These are operational governance controls (migration note §7 kill-switch/budget;
 EI Plan §Rollout Phase 4 revocation). They are intentionally separate from the
-governed ``/v1/exec`` path. Authn/authz for these admin routes is out of scope
-for this phase and would be layered ahead of them (see main.py middleware notes).
+governed ``/v1/exec`` path. Authentication is applied ahead of them by
+``AuthMiddleware``; the workspace-keyed controls additionally require that the
+``workspace_id`` in the path is the caller's own authenticated workspace.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -24,6 +25,33 @@ from cappo_backend.services.revocation_service import (
 )
 
 router = APIRouter(prefix="/v1")
+
+
+def _require_caller_workspace(request: Request, workspace_id: str) -> None:
+    """Bind a workspace-keyed control to the caller's authenticated workspace.
+
+    ``auth_workspace`` is placed in the ASGI scope by ``AuthMiddleware`` from the
+    credential (never from the body or path). A caller with no workspace
+    binding cannot operate any workspace's controls; a caller bound to one
+    workspace cannot operate another's. Mirrors the ``/v1/exec`` checks.
+    """
+    caller_workspace = request.scope.get("auth_workspace")
+    if not isinstance(caller_workspace, str) or not caller_workspace.strip():
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "WORKSPACE_CONTEXT_MISSING",
+                "detail": "The credential must resolve to a workspace before operating workspace controls.",
+            },
+        )
+    if caller_workspace.strip() != workspace_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "WORKSPACE_SCOPE_MISMATCH",
+                "detail": "The workspace in the path is not the caller's authenticated workspace.",
+            },
+        )
 
 
 # ---------- request shapes ----------
@@ -47,8 +75,10 @@ class RevokeRequest(BaseModel):
 def set_kill_switch(
     workspace_id: str,
     body: KillSwitchRequest,
+    request: Request,
     db: Session = Depends(get_session),
 ) -> dict[str, object]:
+    _require_caller_workspace(request, workspace_id)
     gate = PaymentGate(db)
     switch = gate.set_kill_switch(workspace_id, active=body.active, reason=body.reason)
     db.commit()
@@ -61,8 +91,10 @@ def set_kill_switch(
 def set_budget(
     workspace_id: str,
     body: BudgetRequest,
+    request: Request,
     db: Session = Depends(get_session),
 ) -> dict[str, object]:
+    _require_caller_workspace(request, workspace_id)
     gate = PaymentGate(db)
     budget = gate.set_budget(workspace_id, body.balance_cents)
     db.commit()

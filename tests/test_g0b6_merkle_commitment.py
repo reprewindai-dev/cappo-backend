@@ -45,25 +45,25 @@ Proof Matrix:
 """
 import threading
 import uuid
-import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.pool import StaticPool
 from datetime import datetime, timezone
 
-from cappo_backend.models import CapabilityActionReceipt, MerkleLeafSequence
+import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
+
 from cappo_backend.db.base import Base
+from cappo_backend.models import CapabilityActionReceipt, MerkleLeafSequence
 from cappo_backend.security.evidence import (
+    get_evidence_key_pair,
     mint_signed_execution_evidence,
     verify_signed_execution_evidence,
-    get_evidence_key_pair,
 )
 from cappo_backend.security.merkle import (
     AppendOnlyMerkleTree,
-    verify_inclusion_proof,
-    verify_consistency_proof,
     hash_leaf,
+    verify_consistency_proof,
+    verify_inclusion_proof,
 )
 from cappo_backend.security.merkle_ops import (
     assign_merkle_leaf_index,
@@ -287,7 +287,8 @@ def test_g0b6_concurrent_allocations_unique():
     SQLite serializes writes, so the UPDATE in assign_merkle_leaf_index
     correctly queues concurrent writers.
     """
-    import tempfile, os
+    import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name

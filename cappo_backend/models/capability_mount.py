@@ -22,6 +22,7 @@ class CapabilityMount(Base):
     token_nonce: Mapped[str] = mapped_column(String, unique=True, index=True)
     owner_principal: Mapped[str] = mapped_column(String, default="legacy-unbound", index=True)
     owner_workspace: Mapped[str] = mapped_column(String, default="legacy-unbound", index=True)
+    holder_secret_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     mount_json: Mapped[dict] = mapped_column(JSON)
     token_json: Mapped[dict] = mapped_column(JSON)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -35,3 +36,7 @@ class CapabilityMount(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )
+    # The single operation granted the right to start under this mount (see
+    # CapabilityPackage.requires_start_claim). Set once, under the mount-row lock.
+    start_claim_operation_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    start_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1,0 +1,34 @@
+{
+  "after": {
+    "adapter": {
+      "invocation_count": 2,
+      "invocations_by_action": {
+        "record.create": 1,
+        "record.read": 1
+      }
+    },
+    "content": "{\"content\":\"must-survive-denial\"}\n",
+    "db_mount": {
+      "biscuit_length": 1344,
+      "biscuit_present": true,
+      "biscuit_sha256": "f2c868ba8b16253dbc18584428a9134935d635d8d0102dae6909ccb030adabfa",
+      "nonce_consumed": false,
+      "owner_workspace": "workspace-activation-v1",
+      "row_present": true,
+      "terminated": true
+    },
+    "events": [],
+    "exists": true
+  },
+  "before": {
+    "adapter": {
+      "invocation_count": 2,
+      "invocations_by_action": {
+        "record.create": 1,
+        "record.read": 1
+      }
+    },
+    "content": "{\"content\":\"must-survive-denial\"}\n",
+    "exists": true
+  }
+}

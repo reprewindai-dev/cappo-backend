@@ -1,15 +1,15 @@
 
-import pytest
+import biscuit_auth
+from biscuit_auth import Biscuit, KeyPair
 from fastapi.testclient import TestClient
+
 from cappo_backend.main import app
 from cappo_backend.security.biscuit import (
-    mint_biscuit_capability,
     attenuate_biscuit_capability,
+    get_root_key_pair,
+    mint_biscuit_capability,
     verify_biscuit_capability,
-    get_root_key_pair
 )
-import biscuit_auth
-from biscuit_auth import Biscuit, AuthorizerBuilder, KeyPair
 
 client = TestClient(app)
 
@@ -67,7 +67,7 @@ def test_hostile_workload_scope_widening():
         action="contact.write",
         resource="/contact/456"
     )
-    assert result == False
+    assert not result
 
 def test_hostile_workload_delegation_depth():
     valid_token = mint_biscuit_capability(
@@ -81,10 +81,10 @@ def test_hostile_workload_delegation_depth():
     )
 
     child_token = attenuate_biscuit_capability(valid_token, reads=["contact.read"])
-    assert verify_biscuit_capability(child_token, "spiffe://acme/agent", "contact.read") == True
+    assert verify_biscuit_capability(child_token, "spiffe://acme/agent", "contact.read")
 
     grandchild_token = attenuate_biscuit_capability(child_token, reads=["contact.read"])
-    assert verify_biscuit_capability(grandchild_token, "spiffe://acme/agent", "contact.read") == False
+    assert not verify_biscuit_capability(grandchild_token, "spiffe://acme/agent", "contact.read")
 
 def test_hostile_workload_verification_key_substitution():
     rogue_kp = KeyPair()
@@ -108,5 +108,5 @@ def test_hostile_workload_verification_key_substitution():
         executor_spiffe_id="spiffe://acme/agent",
         action="contact.read"
     )
-    assert result == False
+    assert not result
 

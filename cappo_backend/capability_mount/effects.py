@@ -1,0 +1,254 @@
+"""Server-side adapters for capability-owned consequences."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Mapping, Protocol
+from uuid import uuid4
+
+_RESOURCE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+class CappoUncertainError(Exception):
+    """Raised when an effect may have landed but its outcome cannot be determined."""
+
+
+@dataclass(frozen=True)
+class ConsequenceContext:
+    action: str
+    resource: str
+    arguments: Mapping[str, object]
+    operation_id: str | None
+    workspace: str | None = None
+    project: str | None = None
+    # Set at dispatch when permits are configured: returns the permit for the exact payload
+    # bytes the adapter is about to send. An external target redeems it with CAPPO
+    # (POST /v1/capability/redeem) before committing, so authority is checked at the target.
+    permit_for: Callable[[bytes], str] | None = None
+
+
+class TargetAdapter(Protocol):
+    actions: frozenset[str]
+    invocation_count: int
+
+    def dispatch(self, context: ConsequenceContext) -> object:
+        """Invoke one registered, capability-owned effect."""
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        """Read target state without recording a consequence invocation."""
+
+
+def validate_resource(resource: str) -> None:
+    if not _RESOURCE_PATTERN.fullmatch(resource):
+        raise ValueError("invalid_target_resource")
+
+
+class LocalRecordAdapter(TargetAdapter):
+    """Activation v1 file-backed record adapter."""
+
+    ref = "activation.local-record"
+    actions = frozenset({"record.create", "record.read", "record.delete"})
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).expanduser().resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.invocation_count = 0
+        self.invocations_by_action: dict[str, int] = {}
+
+    def _record_path(self, resource: str) -> Path:
+        validate_resource(resource)
+        path = (self.root / f"{resource}.json").resolve()
+        if path.parent != self.root:
+            raise ValueError("invalid_target_resource")
+        return path
+
+    def dispatch(self, context: ConsequenceContext) -> object:
+        self.invocation_count += 1
+        self.invocations_by_action[context.action] = (
+            self.invocations_by_action.get(context.action, 0) + 1
+        )
+        path = self._record_path(context.resource)
+        if context.action == "record.create":
+            document = dict(context.arguments)
+            path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+            return document
+        if context.action == "record.read":
+            return self.read_state(context)
+        if context.action == "record.delete":
+            try:
+                path.unlink()
+            except FileNotFoundError as exc:
+                raise KeyError(context.resource) from exc
+            return {"deleted": context.resource}
+        raise ValueError("target_not_mapped")
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        path = self._record_path(context.resource)
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise KeyError(context.resource) from exc
+
+
+class GovernedCounterAdapter(TargetAdapter):
+    """Sandbox reference capability for one-step governed counter mutations."""
+
+    ref = "activation.governed-counter"
+    # State is keyed by (workspace, project, resource): sandbox never touches live counters.
+    project_isolated = True
+    actions = frozenset({"counter.read", "counter.increment", "counter.reset"})
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).expanduser().resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.invocation_count = 0
+        self.invocations_by_action: dict[str, int] = {}
+        self.db_path = self.root / "governed_counters.db"
+        self._init_db()
+
+    def _init_db(self) -> None:
+        with sqlite3.connect(self.db_path, timeout=15.0, isolation_level=None) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS counters (
+                    workspace TEXT NOT NULL,
+                    project TEXT NOT NULL,
+                    resource TEXT NOT NULL,
+                    value INTEGER NOT NULL DEFAULT 0,
+                    version INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (workspace, project, resource)
+                )
+            """)
+            columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(counters)").fetchall()
+            }
+            if "project" not in columns:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    conn.execute("DROP TABLE IF EXISTS counters_v2")
+                    conn.execute("""
+                        CREATE TABLE counters_v2 (
+                            workspace TEXT NOT NULL,
+                            project TEXT NOT NULL,
+                            resource TEXT NOT NULL,
+                            value INTEGER NOT NULL DEFAULT 0,
+                            version INTEGER NOT NULL DEFAULT 0,
+                            PRIMARY KEY (workspace, project, resource)
+                        )
+                    """)
+                    conn.execute("""
+                        INSERT INTO counters_v2 (workspace, project, resource, value, version)
+                        SELECT workspace, 'legacy-unbound', resource, value, version
+                        FROM counters
+                    """)
+                    conn.execute("DROP TABLE counters")
+                    conn.execute("ALTER TABLE counters_v2 RENAME TO counters")
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
+
+    def dispatch(self, context: ConsequenceContext) -> object:
+        self.invocation_count += 1
+        self.invocations_by_action[context.action] = (
+            self.invocations_by_action.get(context.action, 0) + 1
+        )
+        
+        validate_resource(context.resource)
+        
+        if not context.workspace:
+            raise ValueError("missing_workspace_identity")
+        if not context.project:
+            raise ValueError("missing_project_scope")
+
+        if context.action == "counter.read":
+            return self.read_state(context)
+
+        with sqlite3.connect(self.db_path, timeout=15.0, isolation_level="IMMEDIATE") as conn:
+            cursor = conn.cursor()
+            
+            # Ensure row exists
+            cursor.execute("""
+                INSERT OR IGNORE INTO counters (workspace, project, resource, value, version)
+                VALUES (?, ?, ?, 0, 0)
+            """, (context.workspace, context.project, context.resource))
+            
+            if context.action == "counter.increment":
+                cursor.execute(
+                    "SELECT value, version FROM counters "
+                    "WHERE workspace = ? AND project = ? AND resource = ?",
+                    (context.workspace, context.project, context.resource),
+                )
+                row = cursor.fetchone()
+                previous_value = row[0]
+                
+                cursor.execute("""
+                    UPDATE counters 
+                    SET value = value + 1, version = version + 1 
+                    WHERE workspace = ? AND project = ? AND resource = ?
+                    RETURNING value, version
+                """, (context.workspace, context.project, context.resource))
+                row = cursor.fetchone()
+                value = row[0]
+                version = row[1]
+                return {
+                    "resource": context.resource,
+                    "previous_value": previous_value,
+                    "value": value,
+                    "version": version,
+                }
+
+            if context.action == "counter.reset":
+                cursor.execute("""
+                    UPDATE counters 
+                    SET value = 0, version = version + 1 
+                    WHERE workspace = ? AND project = ? AND resource = ?
+                    RETURNING value, version
+                """, (context.workspace, context.project, context.resource))
+                row = cursor.fetchone()
+                return {
+                    "resource": context.resource,
+                    "value": 0,
+                    "version": row[1],
+                }
+
+        raise ValueError("target_not_mapped")
+
+    def read_state(self, context: ConsequenceContext) -> object:
+        validate_resource(context.resource)
+        if not context.workspace:
+            raise ValueError("missing_workspace_identity")
+        if not context.project:
+            raise ValueError("missing_project_scope")
+        with sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT value, version FROM counters "
+                "WHERE workspace = ? AND project = ? AND resource = ?",
+                (context.workspace, context.project, context.resource),
+            )
+            row = cursor.fetchone()
+        return {
+            "resource": context.resource,
+            "value": row[0] if row is not None else 0,
+            "version": row[1] if row is not None else 0,
+        }
+
+
+class TargetAdapterRegistry:
+    """Registry of server-owned effect adapters."""
+
+    def __init__(self) -> None:
+        self._targets: dict[str, TargetAdapter] = {}
+
+    def register(self, ref: str, adapter: TargetAdapter) -> None:
+        self._targets[ref] = adapter
+
+    def resolve(self, ref: str) -> TargetAdapter | None:
+        return self._targets.get(ref)

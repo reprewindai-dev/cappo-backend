@@ -1,0 +1,3 @@
+
+# Shared contract vector: exact bytes are hash-locked in tests; never convert line endings.
+tests/fixtures/redeem_contract_vector_v1_TEST_ONLY_KEYS.json -text

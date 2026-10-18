@@ -1,0 +1,73 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "ce149b8514366095",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "9514ce3d-71e3-4ea3-b0f8-13c82041d3f4",
+   "execution_id": "0b01130c-c6fe-45de-9ab3-2fbdd69916fa",
+   "scenario": "expired_authority",
+   "role": "attacker",
+   "issued_at": 1791691038,
+   "expires_at": 1791691037,
+   "workload": {
+    "module": "normal_ok",
+    "module_sha256": "1668aba740f5041447b86aceb3bc1825e5fdc6e1369d433d8267f3611e1f809c",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 67108864,
+    "compute_fuel": 50000000,
+    "wall_deadline_ms": 100,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "dhTyzBbb8iBsoz+3QieUjcEMVeNcDjUacMAgPB5uL71EB+Th1FJKZbSEG4IS7NWn/HGIvs5n7yiWmLPuJnbaBQ=="
+ },
+ "boundary": null,
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "0b01130c-c6fe-45de-9ab3-2fbdd69916fa",
+  "boundary_digest": null,
+  "refusal": {
+   "stage": "authority",
+   "reasons": [
+    "authority_expired"
+   ],
+   "at_unix_s": 1791691038
+  },
+  "released": false,
+  "released_wall_s": null,
+  "released_at_ns": null,
+  "deadline_at_ns": null,
+  "reaped_at_ns": null,
+  "counters_before": null,
+  "counters_after": null,
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": null,
+   "signal": null
+  },
+  "runtime_report": null,
+  "untrusted_guest_output": "",
+  "untrusted_guest_output_bytes": 0,
+  "residual_procs": [],
+  "teardown": null,
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "b7d2d0a1e520f863",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "0b01130c-c6fe-45de-9ab3-2fbdd69916fa",
+   "envelope_digest": "61dec50975c2e9b23bc57afd68856e13d0a47ae347af99158c12e326dcd1926f",
+   "boundary_digest": null,
+   "evidence_digest": "cf55ffa48975090ebc1fb9f91c3bfb8241f1d5e389d5d007f58eff97d1400beb",
+   "outcome": "AUTHORITY_REFUSED",
+   "evidence_level": "E2"
+  },
+  "sig": "NalytK6Zbs/QqP29qKZHZlbvkPry2ITKbT1Eef33voo/RPs5sDnHlf43BnA/jrTUj7cCQn2u2nYV6uCeZq2LCw=="
+ }
+}

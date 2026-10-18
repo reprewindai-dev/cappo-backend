@@ -1,0 +1,24 @@
+  16MiB s402 informative   mapped-ckpt    exit=0 oom=0 served=22597 interactive<=100ms=99.96% p99=6.216 mean_res=20.1MiB memcg=15.9MiB work/GiB=1151487.7 swapin=11174 integrity_fail=0
+  16MiB s402 informative   mapped         exit=0 oom=0 served=22597 interactive<=100ms=99.58% p99=22.314 mean_res=21.2MiB memcg=15.9MiB work/GiB=1090800.9 swapin=8207 integrity_fail=300
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/user/cappo-backend/vre15/runner.py", line 269, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/user/cappo-backend/vre15/runner.py", line 224, in main
+    proc = subprocess.run(
+        [sys.executable, "-I", str(HERE / "host.py"), json.dumps(spec)],
+        preexec_fn=lambda cg=cg: (cg / "cgroup.procs").write_text(str(os.getpid())),
+        capture_output=True, text=True, timeout=args.duration * 6 + 600)
+  File "/usr/lib/python3.13/subprocess.py", line 557, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/subprocess.py", line 1223, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/subprocess.py", line 2155, in _communicate
+    ready = selector.select(timeout)
+  File "/usr/lib/python3.13/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt

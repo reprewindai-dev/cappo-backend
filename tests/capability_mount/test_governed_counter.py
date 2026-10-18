@@ -1,0 +1,527 @@
+from __future__ import annotations
+
+import concurrent.futures
+import json
+import sqlite3
+import threading
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from cappo_backend.capability_mount.effects import (
+    ConsequenceContext,
+    GovernedCounterAdapter,
+    TargetAdapterRegistry,
+)
+from cappo_backend.capability_mount.service import (
+    GOVERNED_COUNTER_PACKAGE,
+    AnchorResult,
+)
+from cappo_backend.config import Settings
+from cappo_backend.main import create_app
+from cappo_backend.models.capability_action_receipt import CapabilityActionReceipt
+
+
+class ConfirmedAnchor:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def anchor(self, event_type: str, **payload: object) -> AnchorResult:
+        self.events.append({"event_type": event_type, **payload})
+        return AnchorResult("confirmed", anchor_id=f"anchor-{len(self.events)}")
+
+
+def counter_context(
+    action: str,
+    *,
+    resource: str = "demo-1",
+    arguments: dict[str, object] | None = None,
+    workspace: str | None = "w1",
+    project: str | None = "p1",
+) -> ConsequenceContext:
+    return ConsequenceContext(
+        action=action,
+        resource=resource,
+        arguments=arguments or {},
+        operation_id=None,
+        workspace=workspace,
+        project=project,
+    )
+
+
+def configure_counter(client: TestClient, root: Path) -> GovernedCounterAdapter:
+    registry = client.app.state.mount_registry
+    registry.register_package(GOVERNED_COUNTER_PACKAGE)
+    registry.anchor = ConfirmedAnchor()
+    adapter = GovernedCounterAdapter(root)
+    registry.target_adapters = TargetAdapterRegistry()
+    registry.target_adapters.register(GovernedCounterAdapter.ref, adapter)
+    client.headers["X-Workspace-ID"] = "w1"
+    client.headers["X-Workspace-ID"] = "w1"
+    return adapter
+
+
+def mount_counter(client: TestClient, *, project: str = "p1") -> dict[str, object]:
+    response = client.post(
+        "/v1/capability/mounts",
+        json={
+            "package_ref": GOVERNED_COUNTER_PACKAGE.id,
+            "execution_scope": {"workspace": "w1", "project": project},
+            "requested_action_scope": {
+                "reads": ["counter.read"],
+                "writes": ["counter.increment"],
+                "blocked": ["counter.reset"],
+            },
+            "ttl_seconds": 300,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"] == "allow"
+    return body
+
+
+def execute_payload(
+    mount: dict[str, object],
+    *,
+    action: str = "counter.increment",
+    resource: str = "demo-1",
+    operation_id: str | None = None,
+    arguments: dict[str, object] | None = None,
+) -> dict[str, object]:
+    token = mount["token"]
+    return {
+        "token_id": token["token_id"],
+        "nonce": token["nonce"],
+        "action": action,
+        "target_ref": GovernedCounterAdapter.ref,
+        "resource": resource,
+        "arguments": arguments or {},
+        "operation_id": operation_id,
+    }
+
+
+def test_fresh_read_and_exactly_one_increment_per_invocation(tmp_path: Path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+
+    assert adapter.dispatch(counter_context("counter.read")) == {
+        "resource": "demo-1",
+        "value": 0,
+        "version": 0,
+    }
+    first = adapter.dispatch(counter_context("counter.increment"))
+    second = adapter.dispatch(
+        counter_context("counter.increment", arguments={"by": 5})
+    )
+
+    assert first == {
+        "resource": "demo-1",
+        "previous_value": 0,
+        "value": 1,
+        "version": 1,
+    }
+    assert second == {
+        "resource": "demo-1",
+        "previous_value": 1,
+        "value": 2,
+        "version": 2,
+    }
+    assert _get_db_state(adapter.db_path, "w1", "demo-1") == {
+        "value": 2,
+        "version": 2,
+    }
+    assert adapter.invocation_count == 3
+    assert adapter.invocations_by_action == {
+        "counter.read": 1,
+        "counter.increment": 2,
+    }
+
+
+def test_invalid_counter_resource_is_rejected(tmp_path: Path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+
+    with pytest.raises(ValueError, match="invalid_target_resource"):
+        adapter.dispatch(counter_context("counter.read", resource="../escape"))
+
+
+def test_effect_root_enables_builtin_counter_registration(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(
+            capability_effect_record_root=str(tmp_path),
+            auth_enabled=False,
+        )
+    )
+
+    assert app.state.mount_registry.packages[GOVERNED_COUNTER_PACKAGE.id] == (
+        GOVERNED_COUNTER_PACKAGE
+    )
+    assert isinstance(
+        app.state.mount_registry.target_adapters.resolve(GovernedCounterAdapter.ref),
+        GovernedCounterAdapter,
+    )
+
+
+def test_governed_counter_route_flow(
+    client: TestClient,
+    db: Session,
+    tmp_path: Path,
+) -> None:
+    adapter = configure_counter(client, tmp_path)
+
+    package_ids = {package["id"] for package in client.get("/v1/capability/packages").json()}
+    assert GOVERNED_COUNTER_PACKAGE.id in package_ids
+
+    mount = mount_counter(client)
+    mount_id = mount["mount"]["id"]
+    token = mount["token"]
+
+    blocked = client.post(
+        f"/v1/capability/mounts/{mount_id}/actions",
+        json={
+            "token_id": token["token_id"],
+            "nonce": token["nonce"],
+            "action": "counter.reset",
+            "resource": "demo-1",
+        },
+    )
+    blocked_body = blocked.json()
+    assert blocked_body["decision"] == "deny"
+    assert blocked_body["reason"] == "lease_invariant_violation"
+    status_after_block = client.get(f"/v1/capability/mounts/{mount_id}").json()
+    assert status_after_block["nonce_consumed"] is False
+
+    first = client.post(
+        f"/v1/capability/mounts/{mount_id}/execute",
+        json=execute_payload(mount, operation_id="op-1", arguments={"by": 5}),
+    )
+    first_body = first.json()
+    assert first_body["decision"] == "allow"
+    assert first_body["consequence"]["resulting_state"]["value"] == 1
+    assert first_body["consequence"]["receipt_id"]
+    assert first_body["consequence"]["terminated"] is True
+    assert first_body["anchoring"]["status"] in {"confirmed", "pending_reconciliation"}
+    assert isinstance(first_body["anchoring"]["anchor_id"], str)
+    receipt = db.get(
+        CapabilityActionReceipt,
+        first_body["consequence"]["receipt_id"],
+    )
+    assert receipt is not None
+    assert first_body["anchoring"]["anchor_id"] == receipt.pgl_anchor_id
+    assert first_body["anchoring"]["content_hash"] == receipt.content_hash
+    assert adapter.invocation_count == 1
+
+    denied = client.post(
+        f"/v1/capability/mounts/{mount_id}/execute",
+        json=execute_payload(mount, action="counter.reset", operation_id="op-reset"),
+    )
+    denied_body = denied.json()
+    assert denied_body["decision"] == "deny"
+    assert denied_body["anchoring"]["status"] == "not_applicable"
+    assert denied_body["anchoring"]["anchor_id"] is None
+
+    replay = client.post(
+        f"/v1/capability/mounts/{mount_id}/execute",
+        json=execute_payload(mount, operation_id="op-1", arguments={"by": 5}),
+    )
+    replay_body = replay.json()
+    assert replay_body["decision"] == "deny"
+    assert replay_body["reason"].startswith("idempotency_replay:")
+    assert replay_body["anchoring"]["status"] == "not_applicable"
+    assert replay_body["anchoring"]["anchor_id"] is None
+    assert adapter.invocation_count == 1
+    assert _get_db_state(adapter.db_path, "w1", "demo-1")["value"] == 1
+
+    terminated_mount = mount_counter(client)
+    terminated_id = terminated_mount["mount"]["id"]
+    terminate = client.post(
+        f"/v1/capability/mounts/{terminated_id}/terminate",
+        json={"reason": "explicit_terminate"},
+    )
+    assert terminate.json()["decision"] == "allow"
+    terminated_execute = client.post(
+        f"/v1/capability/mounts/{terminated_id}/execute",
+        json=execute_payload(terminated_mount, operation_id="op-terminated"),
+    )
+    terminated_body = terminated_execute.json()
+    assert terminated_body["decision"] == "deny"
+    assert terminated_body["reason"] == "execution is terminated"
+    assert adapter.invocation_count == 1
+
+
+def test_counter_target_state_readback_is_independent_and_workspace_scoped(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    adapter = configure_counter(client, tmp_path)
+    client.app.state.settings.auth_enabled = True
+    client.app.state.settings.api_keys = "owner-key"
+    client.headers["X-API-Key"] = "owner-key"
+    resource = "readback-1"
+
+    first_mount = mount_counter(client)
+    first = client.post(
+        f"/v1/capability/mounts/{first_mount['mount']['id']}/execute",
+        json=execute_payload(first_mount, resource=resource, operation_id="read-1"),
+    )
+    assert first.json()["consequence"]["resulting_state"]["value"] == 1
+    invocation_count = adapter.invocation_count
+    database_before_read = Path(adapter.db_path).read_bytes()
+
+    first_read = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={
+            "resource": resource,
+            "mount_id": first_mount["mount"]["id"],
+            "project": "client-selected-project",
+        },
+    )
+    assert first_read.status_code == 200
+    assert first_read.json() == {
+        "target_ref": GovernedCounterAdapter.ref,
+        "resource": resource,
+        "workspace": "w1",
+        "project": "p1",
+        "mount_id": first_mount["mount"]["id"],
+        "state": {"resource": resource, "value": 1, "version": 1},
+    }
+    assert adapter.invocation_count == invocation_count
+    assert Path(adapter.db_path).read_bytes() == database_before_read
+
+    second_mount = mount_counter(client)
+    second = client.post(
+        f"/v1/capability/mounts/{second_mount['mount']['id']}/execute",
+        json=execute_payload(second_mount, resource=resource, operation_id="read-2"),
+    )
+    assert second.json()["consequence"]["resulting_state"]["value"] == 2
+    invocation_count = adapter.invocation_count
+
+    second_read = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "mount_id": second_mount["mount"]["id"]},
+    )
+    assert second_read.json()["state"]["value"] == 2
+    assert adapter.invocation_count == invocation_count
+
+    client.headers["X-Workspace-ID"] = "w2"
+    other_workspace_read = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "mount_id": second_mount["mount"]["id"]},
+    )
+    assert other_workspace_read.status_code == 403
+    assert other_workspace_read.json()["detail"] == "owner_mismatch"
+    assert adapter.invocation_count == invocation_count
+
+
+def test_auth_disabled_readback_uses_persisted_mount_workspace(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    configure_counter(client, tmp_path)
+    client.app.state.settings.auth_enabled = False
+    resource = "auth-disabled-mounted-workspace"
+
+    mount = mount_counter(client, project="sandbox")
+    client.headers["X-Workspace-ID"] = "default-local-workspace"
+
+    executed = client.post(
+        f"/v1/capability/mounts/{mount['mount']['id']}/execute",
+        json=execute_payload(mount, resource=resource, operation_id="auth-disabled-readback"),
+    )
+    assert executed.status_code == 200
+    assert executed.json()["consequence"]["resulting_state"]["value"] == 1
+
+    readback = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "mount_id": mount["mount"]["id"]},
+    )
+    assert readback.status_code == 200
+    assert readback.json()["workspace"] == "w1"
+    assert readback.json()["project"] == "sandbox"
+    assert readback.json()["state"] == {
+        "resource": resource,
+        "value": 1,
+        "version": 1,
+    }
+
+
+def _get_db_state(db_path, workspace: str, resource: str, project: str = "p1"):
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT value, version FROM counters "
+            "WHERE workspace=? AND project=? AND resource=?",
+            (workspace, project, resource),
+        ).fetchone()
+        if not row:
+            return None
+        return {"value": row[0], "version": row[1]}
+
+def test_missing_workspace_fails(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    with pytest.raises(ValueError, match="missing_workspace_identity"):
+        adapter.dispatch(counter_context("counter.read", workspace=None))
+
+
+def test_missing_project_fails(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    with pytest.raises(ValueError, match="missing_project_scope"):
+        adapter.dispatch(counter_context("counter.read", project=None))
+
+
+def test_readback_requires_mount_id(client: TestClient, tmp_path: Path) -> None:
+    configure_counter(client, tmp_path)
+    response = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": "missing-mount", "project": "p1"},
+    )
+    assert response.status_code == 422
+
+
+def test_readback_unknown_mount_is_not_found(client: TestClient, tmp_path: Path) -> None:
+    configure_counter(client, tmp_path)
+    response = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": "unknown-mount", "mount_id": "missing-mount"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "unknown_mount"
+
+
+def test_readback_after_termination_remains_available(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    configure_counter(client, tmp_path)
+    mount = mount_counter(client, project="production")
+    mount_id = mount["mount"]["id"]
+
+    terminated = client.post(
+        f"/v1/capability/mounts/{mount_id}/terminate",
+        json={"reason": "explicit_terminate"},
+    )
+    assert terminated.status_code == 200
+    assert terminated.json()["decision"] == "allow"
+
+    response = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": "terminated-read", "mount_id": mount_id},
+    )
+    assert response.status_code == 200
+    assert response.json()["mount_id"] == mount_id
+    assert response.json()["project"] == "production"
+    assert response.json()["state"] == {
+        "resource": "terminated-read",
+        "value": 0,
+        "version": 0,
+    }
+
+
+def test_project_isolation(client: TestClient, tmp_path: Path) -> None:
+    configure_counter(client, tmp_path)
+    resource = "project-isolation"
+
+    sandbox_mount = mount_counter(client, project="sandbox")
+    sandbox_execute = client.post(
+        f"/v1/capability/mounts/{sandbox_mount['mount']['id']}/execute",
+        json=execute_payload(sandbox_mount, resource=resource, operation_id="sandbox-1"),
+    )
+    assert sandbox_execute.json()["consequence"]["resulting_state"]["value"] == 1
+
+    production_mount = mount_counter(client, project="production")
+    assert production_mount["mount"]["scope"]["project"] == "production"
+
+    production_read = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "mount_id": production_mount["mount"]["id"]},
+    )
+    assert production_read.status_code == 200
+    assert production_read.json()["project"] == "production"
+    assert production_read.json()["state"] == {
+        "resource": resource,
+        "value": 0,
+        "version": 0,
+    }
+
+    sandbox_read = client.get(
+        f"/v1/capability/targets/{GovernedCounterAdapter.ref}/state",
+        params={"resource": resource, "mount_id": sandbox_mount["mount"]["id"]},
+    )
+    assert sandbox_read.status_code == 200
+    assert sandbox_read.json()["project"] == "sandbox"
+    assert sandbox_read.json()["state"] == {
+        "resource": resource,
+        "value": 1,
+        "version": 1,
+    }
+
+
+def test_legacy_counters_table_migrates(tmp_path: Path) -> None:
+    db_path = tmp_path / "governed_counters.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE counters (
+                workspace TEXT NOT NULL,
+                resource TEXT NOT NULL,
+                value INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (workspace, resource)
+            )
+        """)
+        conn.execute(
+            "INSERT INTO counters (workspace, resource, value, version) VALUES (?, ?, ?, ?)",
+            ("w1", "legacy-resource", 4, 7),
+        )
+        conn.commit()
+
+    adapter = GovernedCounterAdapter(tmp_path)
+    assert adapter.read_state(
+        counter_context(
+            "counter.read",
+            resource="legacy-resource",
+            project="legacy-unbound",
+        )
+    ) == {
+        "resource": "legacy-resource",
+        "value": 4,
+        "version": 7,
+    }
+    with sqlite3.connect(adapter.db_path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(counters)")}
+    assert "project" in columns
+
+
+def test_workspace_isolation(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    
+    # w1 increments demo-1
+    w1_inc = adapter.dispatch(counter_context("counter.increment", workspace="w1", resource="demo-1"))
+    assert w1_inc["value"] == 1
+    
+    # w2 reads demo-1, gets 0
+    w2_read = adapter.dispatch(counter_context("counter.read", workspace="w2", resource="demo-1"))
+    assert w2_read["value"] == 0
+    
+    # w2 increments demo-1, gets 1
+    w2_inc = adapter.dispatch(counter_context("counter.increment", workspace="w2", resource="demo-1"))
+    assert w2_inc["value"] == 1
+    
+    # Ensure physical state matches
+    assert _get_db_state(adapter.db_path, "w1", "demo-1")["value"] == 1
+    assert _get_db_state(adapter.db_path, "w2", "demo-1")["value"] == 1
+
+def test_concurrent_increments_not_lost(tmp_path) -> None:
+    adapter = GovernedCounterAdapter(tmp_path)
+    adapter.dispatch(counter_context("counter.read", workspace="w1", resource="demo-1"))
+    
+    def inc():
+        return adapter.dispatch(counter_context("counter.increment", workspace="w1", resource="demo-1"))
+        
+    iterations = 100
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(inc) for _ in range(iterations)]
+        concurrent.futures.wait(futures)
+        
+    state = _get_db_state(adapter.db_path, "w1", "demo-1")
+    assert state["value"] == iterations
+    assert state["version"] == iterations

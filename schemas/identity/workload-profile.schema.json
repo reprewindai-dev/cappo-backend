@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Workload Profile",
+  "type": "object",
+  "properties": {
+    "profile_id": {
+      "type": "string"
+    },
+    "workload_identifier": {
+      "type": "string",
+      "pattern": "^wimse://[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+/[a-zA-Z0-9.-]+$"
+    },
+    "default_rights": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["profile_id", "workload_identifier", "default_rights"],
+  "additionalProperties": false
+}

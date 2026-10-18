@@ -1,11 +1,11 @@
+
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager
 
-from cappo_backend.models.tenant_provider_credential import TenantProviderCredential
-from cappo_backend.db.base import Base
 from cappo_backend.config import get_settings
+from cappo_backend.db.base import Base
+from cappo_backend.models.tenant_provider_credential import TenantProviderCredential
 
 # These tests REQUIRE a PostgreSQL database with a non-owner user role.
 # SQLite does not support RLS. They will be skipped if the dialect is not Postgres.

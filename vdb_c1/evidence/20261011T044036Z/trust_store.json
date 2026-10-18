@@ -1,0 +1,9 @@
+{
+ "protocol": "veklom.vdb.c1.trust/v1",
+ "authority_keys": {
+  "ed25519:fb5b1f7f2a5ff6ec": "tTHzdMWI0N-JCr2SJ_9ZEe0QXpiNU5ByNPYg49MCsxU"
+ },
+ "finalizer_keys": {
+  "ed25519:e6b72fdb423ace14": "WDplIMEUm8axPTfE0RrpPlZ26IRwIFZ6hAJadaKLRt4"
+ }
+}

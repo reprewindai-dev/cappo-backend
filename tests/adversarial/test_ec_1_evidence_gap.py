@@ -16,11 +16,13 @@ Falsifier: any successful consequence with no corresponding evidence trail that 
 surfaced as an unreconciled discrepancy.
 """
 
+from unittest import mock
+
 import pytest
 from sqlalchemy.orm import Session
-from unittest import mock
+
+from cappo_backend.capability_mount.models import Decision, MountPolicy, MountScope
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.capability_mount.models import MountScope, MountPolicy, Decision
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
 
 CALLER_SPIFFE  = "spiffe://example.org/workload/cappo-backend"
@@ -52,7 +54,7 @@ def test_ec_1_evidence_writer_crash(db: Session):
             writes=[ACTION],
         )
     )
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[], writes=[ACTION]),
         role="agent",

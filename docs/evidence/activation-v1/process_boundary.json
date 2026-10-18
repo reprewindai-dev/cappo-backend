@@ -1,0 +1,8 @@
+{
+  "final_pid": 16526,
+  "initial_pid": 16498,
+  "reload_evaluation": "03_pre_gate_evaluate.json",
+  "restart_pid": 16519,
+  "same_database": "/home/ubuntu/activation_v1/db/cappo.db",
+  "same_root_key_env": "BISCUIT_ROOT_PRIVATE_KEY_HEX (value not recorded)"
+}

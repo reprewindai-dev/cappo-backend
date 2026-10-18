@@ -1,0 +1,4048 @@
+{
+ "kind": "veklom.vre0.run/v1",
+ "run_id": "20261011T035711Z",
+ "started_at": "2026-10-11T03:57:11.861807+00:00",
+ "host": {
+  "kernel": "6.18.44-fc-v114",
+  "boot_id": "d5d4b582-ad72-42c6-a121-c47d4a5b7db8",
+  "mem_total_kib": 16479424,
+  "swap_total_kib": 0,
+  "nproc": 4
+ },
+ "substrate": {
+  "cgroup_version": 1,
+  "run_dirs": {
+   "memory": "/sys/fs/cgroup/memory/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z",
+   "cpuacct": "/sys/fs/cgroup/cpuacct/vre0-20261011T035711Z"
+  }
+ },
+ "python": "3.13.16",
+ "wasmtime_py": "44.0.0",
+ "cryptography": "50.0.2",
+ "code_sha256": {
+  "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "contract.py": "3cf4bc4282884ff8f5da10919edf07f5c64e1b3902a8fb7b8665dc1604d16dbb",
+  "harness.py": "f6e518f6f4121ab8ebd2050337e42a4bd2ef6a83ab1c445bc9a3bb9e656434e3",
+  "substrate.py": "a88b02baaab3128e05e5ff8503ba4f70c697b66a8d48dd3b4c8fc312304133d2",
+  "tamper.py": "5010ea0ede20ba88b619ef451f0c4330d240d3ee57f6019f1d437a777bd33a1c",
+  "verify.py": "4997e667cadf01df9a16a50b4e132815652fab15502f43482910ed4dcb6bc2d4",
+  "worker.py": "2387274c5222da816713b1995961dc4c8ebb39d377785e30f8237ef627ce92c3"
+ },
+ "workload_sha256": {
+  "deadline_stall.wat": "87d4af7524c5ce72eba011cead94c946cea7b9b7b00437c3164a7c24a44830d7",
+  "lying_bomb.wat": "e0ba8378496cd98984cc03b1197d57bd7d1a5c442ba5c500ebd02640ac72d80a",
+  "normal_ok.wat": "1668aba740f5041447b86aceb3bc1825e5fdc6e1369d433d8267f3611e1f809c",
+  "output_flood.wat": "2c7c3bdb0061907c32ee77db062ab2a1b30cf95d4a8fd93c4c5edbfea84db710",
+  "ram_bomb.wat": "c6d7264e740ef82497bbe2080c6d1f15120dfa32998a9b4eee8cab54585ef1b1",
+  "sibling.wat": "fcdff39cca8e6c69ae8bf7ca0742f15365ce7325d0232f81792554ee344e3fda",
+  "spin_fuel.wat": "de15e07a7291ec491e0ab4309c8f4186ca84abeb0d9cda92f0f840d22a958c42"
+ },
+ "limits": {
+  "attacker": {
+   "memory_max_bytes": 67108864,
+   "compute_fuel": 50000000,
+   "wall_deadline_ms": 100,
+   "output_max_bytes": 4096
+  },
+  "attacker_overrides": {
+   "ram_bomb": {
+    "wall_deadline_ms": 2000
+   },
+   "lying_bomb": {
+    "wall_deadline_ms": 2000
+   }
+  },
+  "sibling": {
+   "memory_max_bytes": 134217728,
+   "compute_fuel": 20000000000,
+   "wall_deadline_ms": 5000,
+   "output_max_bytes": 4096
+  }
+ },
+ "trusted_keys": {
+  "issuer": {
+   "ce149b8514366095": "K/KXfMqw5j4QBbcseV2mk3g1i8WE0BWPiDye1gKtRr8="
+  },
+  "executor": {
+   "b7d2d0a1e520f863": "RDvvYY5fGpirStFXvvUhdsHUEa1wTZci5siAQxir8hs="
+  }
+ },
+ "expected": {
+  "normal_ok": "COMPLETED",
+  "ram_bomb": "ENVELOPE_MEMORY_EXCEEDED",
+  "spin_fuel": "ENVELOPE_COMPUTE_EXHAUSTED",
+  "deadline_stall": "ENVELOPE_DEADLINE_EXCEEDED",
+  "output_flood": "ENVELOPE_OUTPUT_EXCEEDED",
+  "lying_bomb": "ENVELOPE_MEMORY_EXCEEDED",
+  "expired_authority": "AUTHORITY_REFUSED",
+  "forged_authority": "AUTHORITY_REFUSED",
+  "widened_boundary": "BINDING_REFUSED",
+  "substituted_module": "BINDING_REFUSED",
+  "unplaced_process": "BINDING_REFUSED"
+ },
+ "iterations": 20,
+ "pairs": [
+  {
+   "iteration": 0,
+   "scenario": "normal_ok",
+   "attacker": "executions/00-normal_ok-attacker.json",
+   "sibling": "executions/00-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15907020,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15897732,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1901
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "ram_bomb",
+   "attacker": "executions/00-ram_bomb-attacker.json",
+   "sibling": "executions/00-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15897732,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15880852,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1747
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "spin_fuel",
+   "attacker": "executions/00-spin_fuel-attacker.json",
+   "sibling": "executions/00-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15880852,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15870072,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1584
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "deadline_stall",
+   "attacker": "executions/00-deadline_stall-attacker.json",
+   "sibling": "executions/00-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15870072,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15875940,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1684
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "output_flood",
+   "attacker": "executions/00-output_flood-attacker.json",
+   "sibling": "executions/00-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15875940,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15892172,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1655
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "lying_bomb",
+   "attacker": "executions/00-lying_bomb-attacker.json",
+   "sibling": "executions/00-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15892172,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15898644,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2872
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "expired_authority",
+   "attacker": "executions/00-expired_authority-attacker.json",
+   "sibling": "executions/00-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15898644,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15896904,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2497
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "forged_authority",
+   "attacker": "executions/00-forged_authority-attacker.json",
+   "sibling": "executions/00-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15896904,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15888112,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1603
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "widened_boundary",
+   "attacker": "executions/00-widened_boundary-attacker.json",
+   "sibling": "executions/00-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15888112,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15892960,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2317
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "substituted_module",
+   "attacker": "executions/00-substituted_module-attacker.json",
+   "sibling": "executions/00-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15892960,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890672,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1828
+    }
+   }
+  },
+  {
+   "iteration": 0,
+   "scenario": "unplaced_process",
+   "attacker": "executions/00-unplaced_process-attacker.json",
+   "sibling": "executions/00-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890424,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15880920,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1655
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "normal_ok",
+   "attacker": "executions/01-normal_ok-attacker.json",
+   "sibling": "executions/01-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15880920,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15882828,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1861
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "ram_bomb",
+   "attacker": "executions/01-ram_bomb-attacker.json",
+   "sibling": "executions/01-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15882828,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15850220,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1801
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "spin_fuel",
+   "attacker": "executions/01-spin_fuel-attacker.json",
+   "sibling": "executions/01-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15850220,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15865900,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2098
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "deadline_stall",
+   "attacker": "executions/01-deadline_stall-attacker.json",
+   "sibling": "executions/01-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15865900,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15873824,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1820
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "output_flood",
+   "attacker": "executions/01-output_flood-attacker.json",
+   "sibling": "executions/01-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15873696,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15879692,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1932
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "lying_bomb",
+   "attacker": "executions/01-lying_bomb-attacker.json",
+   "sibling": "executions/01-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15879692,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890768,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2287
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "expired_authority",
+   "attacker": "executions/01-expired_authority-attacker.json",
+   "sibling": "executions/01-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890768,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15907580,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1642
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "forged_authority",
+   "attacker": "executions/01-forged_authority-attacker.json",
+   "sibling": "executions/01-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15907580,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15901644,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1810
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "widened_boundary",
+   "attacker": "executions/01-widened_boundary-attacker.json",
+   "sibling": "executions/01-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15901644,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877976,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1775
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "substituted_module",
+   "attacker": "executions/01-substituted_module-attacker.json",
+   "sibling": "executions/01-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877976,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891484,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1814
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "scenario": "unplaced_process",
+   "attacker": "executions/01-unplaced_process-attacker.json",
+   "sibling": "executions/01-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891484,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15896264,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1647
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "normal_ok",
+   "attacker": "executions/02-normal_ok-attacker.json",
+   "sibling": "executions/02-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15896264,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878900,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1586
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "ram_bomb",
+   "attacker": "executions/02-ram_bomb-attacker.json",
+   "sibling": "executions/02-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878900,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877744,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1764
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "spin_fuel",
+   "attacker": "executions/02-spin_fuel-attacker.json",
+   "sibling": "executions/02-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877744,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15854604,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1689
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "deadline_stall",
+   "attacker": "executions/02-deadline_stall-attacker.json",
+   "sibling": "executions/02-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15854604,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878808,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1570
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "output_flood",
+   "attacker": "executions/02-output_flood-attacker.json",
+   "sibling": "executions/02-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878808,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15870768,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1809
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "lying_bomb",
+   "attacker": "executions/02-lying_bomb-attacker.json",
+   "sibling": "executions/02-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15870768,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15879352,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1643
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "expired_authority",
+   "attacker": "executions/02-expired_authority-attacker.json",
+   "sibling": "executions/02-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15879352,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15886244,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1797
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "forged_authority",
+   "attacker": "executions/02-forged_authority-attacker.json",
+   "sibling": "executions/02-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15886244,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15870184,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2120
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "widened_boundary",
+   "attacker": "executions/02-widened_boundary-attacker.json",
+   "sibling": "executions/02-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15870184,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15869656,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2097
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "substituted_module",
+   "attacker": "executions/02-substituted_module-attacker.json",
+   "sibling": "executions/02-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15869656,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890512,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2138
+    }
+   }
+  },
+  {
+   "iteration": 2,
+   "scenario": "unplaced_process",
+   "attacker": "executions/02-unplaced_process-attacker.json",
+   "sibling": "executions/02-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890512,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15893140,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1597
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "normal_ok",
+   "attacker": "executions/03-normal_ok-attacker.json",
+   "sibling": "executions/03-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15893140,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15875280,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1690
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "ram_bomb",
+   "attacker": "executions/03-ram_bomb-attacker.json",
+   "sibling": "executions/03-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15875280,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15858928,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2541
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "spin_fuel",
+   "attacker": "executions/03-spin_fuel-attacker.json",
+   "sibling": "executions/03-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15858928,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15856544,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2011
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "deadline_stall",
+   "attacker": "executions/03-deadline_stall-attacker.json",
+   "sibling": "executions/03-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15856544,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15849412,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2462
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "output_flood",
+   "attacker": "executions/03-output_flood-attacker.json",
+   "sibling": "executions/03-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15849412,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15871784,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1702
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "lying_bomb",
+   "attacker": "executions/03-lying_bomb-attacker.json",
+   "sibling": "executions/03-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15871784,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15876868,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1672
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "expired_authority",
+   "attacker": "executions/03-expired_authority-attacker.json",
+   "sibling": "executions/03-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15876868,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15861580,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1892
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "forged_authority",
+   "attacker": "executions/03-forged_authority-attacker.json",
+   "sibling": "executions/03-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15861580,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15869440,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1654
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "widened_boundary",
+   "attacker": "executions/03-widened_boundary-attacker.json",
+   "sibling": "executions/03-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15869192,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15885320,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1828
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "substituted_module",
+   "attacker": "executions/03-substituted_module-attacker.json",
+   "sibling": "executions/03-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15885320,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15882456,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1800
+    }
+   }
+  },
+  {
+   "iteration": 3,
+   "scenario": "unplaced_process",
+   "attacker": "executions/03-unplaced_process-attacker.json",
+   "sibling": "executions/03-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15882456,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15874928,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1836
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "normal_ok",
+   "attacker": "executions/04-normal_ok-attacker.json",
+   "sibling": "executions/04-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15874800,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15866368,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1713
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "ram_bomb",
+   "attacker": "executions/04-ram_bomb-attacker.json",
+   "sibling": "executions/04-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15866368,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881640,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1953
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "spin_fuel",
+   "attacker": "executions/04-spin_fuel-attacker.json",
+   "sibling": "executions/04-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881640,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881704,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1691
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "deadline_stall",
+   "attacker": "executions/04-deadline_stall-attacker.json",
+   "sibling": "executions/04-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881704,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877944,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2236
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "output_flood",
+   "attacker": "executions/04-output_flood-attacker.json",
+   "sibling": "executions/04-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877944,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877972,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1651
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "lying_bomb",
+   "attacker": "executions/04-lying_bomb-attacker.json",
+   "sibling": "executions/04-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877972,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15894248,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1784
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "expired_authority",
+   "attacker": "executions/04-expired_authority-attacker.json",
+   "sibling": "executions/04-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15894248,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878388,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1595
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "forged_authority",
+   "attacker": "executions/04-forged_authority-attacker.json",
+   "sibling": "executions/04-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878388,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15876668,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1589
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "widened_boundary",
+   "attacker": "executions/04-widened_boundary-attacker.json",
+   "sibling": "executions/04-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15876668,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15888964,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2160
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "substituted_module",
+   "attacker": "executions/04-substituted_module-attacker.json",
+   "sibling": "executions/04-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15888964,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15893840,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1884
+    }
+   }
+  },
+  {
+   "iteration": 4,
+   "scenario": "unplaced_process",
+   "attacker": "executions/04-unplaced_process-attacker.json",
+   "sibling": "executions/04-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15893840,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878060,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2078
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "normal_ok",
+   "attacker": "executions/05-normal_ok-attacker.json",
+   "sibling": "executions/05-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878060,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15853120,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1674
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "ram_bomb",
+   "attacker": "executions/05-ram_bomb-attacker.json",
+   "sibling": "executions/05-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15853120,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15863184,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1637
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "spin_fuel",
+   "attacker": "executions/05-spin_fuel-attacker.json",
+   "sibling": "executions/05-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15863184,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15872892,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1712
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "deadline_stall",
+   "attacker": "executions/05-deadline_stall-attacker.json",
+   "sibling": "executions/05-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15872892,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15875436,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1964
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "output_flood",
+   "attacker": "executions/05-output_flood-attacker.json",
+   "sibling": "executions/05-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15875436,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15894256,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1837
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "lying_bomb",
+   "attacker": "executions/05-lying_bomb-attacker.json",
+   "sibling": "executions/05-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15894256,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889180,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1678
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "expired_authority",
+   "attacker": "executions/05-expired_authority-attacker.json",
+   "sibling": "executions/05-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889180,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15876144,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1718
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "forged_authority",
+   "attacker": "executions/05-forged_authority-attacker.json",
+   "sibling": "executions/05-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15876144,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881708,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1825
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "widened_boundary",
+   "attacker": "executions/05-widened_boundary-attacker.json",
+   "sibling": "executions/05-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881708,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881476,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1759
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "substituted_module",
+   "attacker": "executions/05-substituted_module-attacker.json",
+   "sibling": "executions/05-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881476,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15867052,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2895
+    }
+   }
+  },
+  {
+   "iteration": 5,
+   "scenario": "unplaced_process",
+   "attacker": "executions/05-unplaced_process-attacker.json",
+   "sibling": "executions/05-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15867052,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15879164,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1683
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "normal_ok",
+   "attacker": "executions/06-normal_ok-attacker.json",
+   "sibling": "executions/06-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15879164,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15859776,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1807
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "ram_bomb",
+   "attacker": "executions/06-ram_bomb-attacker.json",
+   "sibling": "executions/06-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15859776,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15885832,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1733
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "spin_fuel",
+   "attacker": "executions/06-spin_fuel-attacker.json",
+   "sibling": "executions/06-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15885832,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15883848,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1765
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "deadline_stall",
+   "attacker": "executions/06-deadline_stall-attacker.json",
+   "sibling": "executions/06-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15883848,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15871792,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1723
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "output_flood",
+   "attacker": "executions/06-output_flood-attacker.json",
+   "sibling": "executions/06-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15871792,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15872308,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1615
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "lying_bomb",
+   "attacker": "executions/06-lying_bomb-attacker.json",
+   "sibling": "executions/06-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15872308,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15902240,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1765
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "expired_authority",
+   "attacker": "executions/06-expired_authority-attacker.json",
+   "sibling": "executions/06-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15902032,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15904956,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1684
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "forged_authority",
+   "attacker": "executions/06-forged_authority-attacker.json",
+   "sibling": "executions/06-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15904956,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889108,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2429
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "widened_boundary",
+   "attacker": "executions/06-widened_boundary-attacker.json",
+   "sibling": "executions/06-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889108,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890836,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1883
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "substituted_module",
+   "attacker": "executions/06-substituted_module-attacker.json",
+   "sibling": "executions/06-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890836,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15863516,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1670
+    }
+   }
+  },
+  {
+   "iteration": 6,
+   "scenario": "unplaced_process",
+   "attacker": "executions/06-unplaced_process-attacker.json",
+   "sibling": "executions/06-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15863516,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877896,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1712
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "normal_ok",
+   "attacker": "executions/07-normal_ok-attacker.json",
+   "sibling": "executions/07-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877896,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878188,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1786
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "ram_bomb",
+   "attacker": "executions/07-ram_bomb-attacker.json",
+   "sibling": "executions/07-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878188,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15869344,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2970
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "spin_fuel",
+   "attacker": "executions/07-spin_fuel-attacker.json",
+   "sibling": "executions/07-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15869344,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15864600,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1697
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "deadline_stall",
+   "attacker": "executions/07-deadline_stall-attacker.json",
+   "sibling": "executions/07-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15864600,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15867176,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1803
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "output_flood",
+   "attacker": "executions/07-output_flood-attacker.json",
+   "sibling": "executions/07-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15867176,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15888892,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1810
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "lying_bomb",
+   "attacker": "executions/07-lying_bomb-attacker.json",
+   "sibling": "executions/07-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15888892,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878856,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1772
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "expired_authority",
+   "attacker": "executions/07-expired_authority-attacker.json",
+   "sibling": "executions/07-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878856,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15870812,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1638
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "forged_authority",
+   "attacker": "executions/07-forged_authority-attacker.json",
+   "sibling": "executions/07-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15870812,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878152,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2260
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "widened_boundary",
+   "attacker": "executions/07-widened_boundary-attacker.json",
+   "sibling": "executions/07-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878772,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15871684,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2049
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "substituted_module",
+   "attacker": "executions/07-substituted_module-attacker.json",
+   "sibling": "executions/07-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15871684,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15884312,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1699
+    }
+   }
+  },
+  {
+   "iteration": 7,
+   "scenario": "unplaced_process",
+   "attacker": "executions/07-unplaced_process-attacker.json",
+   "sibling": "executions/07-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15884312,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889804,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2027
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "normal_ok",
+   "attacker": "executions/08-normal_ok-attacker.json",
+   "sibling": "executions/08-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889804,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15860708,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2021
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "ram_bomb",
+   "attacker": "executions/08-ram_bomb-attacker.json",
+   "sibling": "executions/08-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15864056,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15857288,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1851
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "spin_fuel",
+   "attacker": "executions/08-spin_fuel-attacker.json",
+   "sibling": "executions/08-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15862000,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15871528,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1714
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "deadline_stall",
+   "attacker": "executions/08-deadline_stall-attacker.json",
+   "sibling": "executions/08-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15871528,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15898532,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1620
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "output_flood",
+   "attacker": "executions/08-output_flood-attacker.json",
+   "sibling": "executions/08-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15898532,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889248,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1879
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "lying_bomb",
+   "attacker": "executions/08-lying_bomb-attacker.json",
+   "sibling": "executions/08-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889248,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15884868,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1706
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "expired_authority",
+   "attacker": "executions/08-expired_authority-attacker.json",
+   "sibling": "executions/08-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15884868,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15884968,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2034
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "forged_authority",
+   "attacker": "executions/08-forged_authority-attacker.json",
+   "sibling": "executions/08-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15884968,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15895992,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1805
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "widened_boundary",
+   "attacker": "executions/08-widened_boundary-attacker.json",
+   "sibling": "executions/08-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15895992,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878680,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1974
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "substituted_module",
+   "attacker": "executions/08-substituted_module-attacker.json",
+   "sibling": "executions/08-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878680,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15871932,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1971
+    }
+   }
+  },
+  {
+   "iteration": 8,
+   "scenario": "unplaced_process",
+   "attacker": "executions/08-unplaced_process-attacker.json",
+   "sibling": "executions/08-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15871932,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15887700,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1656
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "normal_ok",
+   "attacker": "executions/09-normal_ok-attacker.json",
+   "sibling": "executions/09-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15887700,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881296,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2136
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "ram_bomb",
+   "attacker": "executions/09-ram_bomb-attacker.json",
+   "sibling": "executions/09-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881296,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15886396,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1819
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "spin_fuel",
+   "attacker": "executions/09-spin_fuel-attacker.json",
+   "sibling": "executions/09-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15886268,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877756,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2118
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "deadline_stall",
+   "attacker": "executions/09-deadline_stall-attacker.json",
+   "sibling": "executions/09-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877756,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15892932,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2446
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "output_flood",
+   "attacker": "executions/09-output_flood-attacker.json",
+   "sibling": "executions/09-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15892932,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15897888,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1963
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "lying_bomb",
+   "attacker": "executions/09-lying_bomb-attacker.json",
+   "sibling": "executions/09-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15897888,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890116,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1875
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "expired_authority",
+   "attacker": "executions/09-expired_authority-attacker.json",
+   "sibling": "executions/09-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890116,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15901984,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1801
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "forged_authority",
+   "attacker": "executions/09-forged_authority-attacker.json",
+   "sibling": "executions/09-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15901984,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15897228,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1848
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "widened_boundary",
+   "attacker": "executions/09-widened_boundary-attacker.json",
+   "sibling": "executions/09-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15897228,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15916056,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1780
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "substituted_module",
+   "attacker": "executions/09-substituted_module-attacker.json",
+   "sibling": "executions/09-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15916056,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15920468,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2057
+    }
+   }
+  },
+  {
+   "iteration": 9,
+   "scenario": "unplaced_process",
+   "attacker": "executions/09-unplaced_process-attacker.json",
+   "sibling": "executions/09-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15920220,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15917244,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1789
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "normal_ok",
+   "attacker": "executions/10-normal_ok-attacker.json",
+   "sibling": "executions/10-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15917244,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15887020,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1727
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "ram_bomb",
+   "attacker": "executions/10-ram_bomb-attacker.json",
+   "sibling": "executions/10-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15887020,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877832,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1811
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "spin_fuel",
+   "attacker": "executions/10-spin_fuel-attacker.json",
+   "sibling": "executions/10-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877708,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15886096,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2109
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "deadline_stall",
+   "attacker": "executions/10-deadline_stall-attacker.json",
+   "sibling": "executions/10-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15886096,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15894180,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1743
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "output_flood",
+   "attacker": "executions/10-output_flood-attacker.json",
+   "sibling": "executions/10-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15894180,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15915156,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2050
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "lying_bomb",
+   "attacker": "executions/10-lying_bomb-attacker.json",
+   "sibling": "executions/10-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15915156,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15911640,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2753
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "expired_authority",
+   "attacker": "executions/10-expired_authority-attacker.json",
+   "sibling": "executions/10-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15911640,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15915928,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2449
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "forged_authority",
+   "attacker": "executions/10-forged_authority-attacker.json",
+   "sibling": "executions/10-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15915928,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15906096,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1712
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "widened_boundary",
+   "attacker": "executions/10-widened_boundary-attacker.json",
+   "sibling": "executions/10-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15906096,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15905952,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1687
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "substituted_module",
+   "attacker": "executions/10-substituted_module-attacker.json",
+   "sibling": "executions/10-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15905952,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15880248,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1799
+    }
+   }
+  },
+  {
+   "iteration": 10,
+   "scenario": "unplaced_process",
+   "attacker": "executions/10-unplaced_process-attacker.json",
+   "sibling": "executions/10-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15880248,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15893536,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1631
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "normal_ok",
+   "attacker": "executions/11-normal_ok-attacker.json",
+   "sibling": "executions/11-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15893536,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15876052,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1766
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "ram_bomb",
+   "attacker": "executions/11-ram_bomb-attacker.json",
+   "sibling": "executions/11-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15876052,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15853052,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2075
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "spin_fuel",
+   "attacker": "executions/11-spin_fuel-attacker.json",
+   "sibling": "executions/11-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15853052,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15865112,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2068
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "deadline_stall",
+   "attacker": "executions/11-deadline_stall-attacker.json",
+   "sibling": "executions/11-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15865112,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15884048,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1841
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "output_flood",
+   "attacker": "executions/11-output_flood-attacker.json",
+   "sibling": "executions/11-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15884048,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15892844,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1616
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "lying_bomb",
+   "attacker": "executions/11-lying_bomb-attacker.json",
+   "sibling": "executions/11-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15892844,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15903708,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2135
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "expired_authority",
+   "attacker": "executions/11-expired_authority-attacker.json",
+   "sibling": "executions/11-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15903708,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15887600,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1948
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "forged_authority",
+   "attacker": "executions/11-forged_authority-attacker.json",
+   "sibling": "executions/11-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15887600,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15896864,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1812
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "widened_boundary",
+   "attacker": "executions/11-widened_boundary-attacker.json",
+   "sibling": "executions/11-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15896864,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15895996,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2124
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "substituted_module",
+   "attacker": "executions/11-substituted_module-attacker.json",
+   "sibling": "executions/11-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15895996,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15880424,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1982
+    }
+   }
+  },
+  {
+   "iteration": 11,
+   "scenario": "unplaced_process",
+   "attacker": "executions/11-unplaced_process-attacker.json",
+   "sibling": "executions/11-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15884268,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15895404,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1691
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "normal_ok",
+   "attacker": "executions/12-normal_ok-attacker.json",
+   "sibling": "executions/12-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15895404,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15895772,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1634
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "ram_bomb",
+   "attacker": "executions/12-ram_bomb-attacker.json",
+   "sibling": "executions/12-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15895772,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15918104,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1607
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "spin_fuel",
+   "attacker": "executions/12-spin_fuel-attacker.json",
+   "sibling": "executions/12-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15918104,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890452,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1686
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "deadline_stall",
+   "attacker": "executions/12-deadline_stall-attacker.json",
+   "sibling": "executions/12-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890452,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15874620,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1667
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "output_flood",
+   "attacker": "executions/12-output_flood-attacker.json",
+   "sibling": "executions/12-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15874620,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15887540,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1693
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "lying_bomb",
+   "attacker": "executions/12-lying_bomb-attacker.json",
+   "sibling": "executions/12-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15887540,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15899656,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1677
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "expired_authority",
+   "attacker": "executions/12-expired_authority-attacker.json",
+   "sibling": "executions/12-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15899656,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15899672,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2288
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "forged_authority",
+   "attacker": "executions/12-forged_authority-attacker.json",
+   "sibling": "executions/12-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15899672,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15885288,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1693
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "widened_boundary",
+   "attacker": "executions/12-widened_boundary-attacker.json",
+   "sibling": "executions/12-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15885288,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15898768,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1703
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "substituted_module",
+   "attacker": "executions/12-substituted_module-attacker.json",
+   "sibling": "executions/12-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15898768,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889608,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2048
+    }
+   }
+  },
+  {
+   "iteration": 12,
+   "scenario": "unplaced_process",
+   "attacker": "executions/12-unplaced_process-attacker.json",
+   "sibling": "executions/12-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889608,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15902836,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1762
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "normal_ok",
+   "attacker": "executions/13-normal_ok-attacker.json",
+   "sibling": "executions/13-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15902708,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15899884,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1708
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "ram_bomb",
+   "attacker": "executions/13-ram_bomb-attacker.json",
+   "sibling": "executions/13-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15899884,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15914132,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1925
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "spin_fuel",
+   "attacker": "executions/13-spin_fuel-attacker.json",
+   "sibling": "executions/13-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15914132,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889508,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1939
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "deadline_stall",
+   "attacker": "executions/13-deadline_stall-attacker.json",
+   "sibling": "executions/13-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889508,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15895868,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1676
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "output_flood",
+   "attacker": "executions/13-output_flood-attacker.json",
+   "sibling": "executions/13-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15895868,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15897140,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1820
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "lying_bomb",
+   "attacker": "executions/13-lying_bomb-attacker.json",
+   "sibling": "executions/13-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15897140,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15908584,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2132
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "expired_authority",
+   "attacker": "executions/13-expired_authority-attacker.json",
+   "sibling": "executions/13-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15908584,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15904628,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1734
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "forged_authority",
+   "attacker": "executions/13-forged_authority-attacker.json",
+   "sibling": "executions/13-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15904628,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15896872,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1811
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "widened_boundary",
+   "attacker": "executions/13-widened_boundary-attacker.json",
+   "sibling": "executions/13-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15896872,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15888824,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1725
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "substituted_module",
+   "attacker": "executions/13-substituted_module-attacker.json",
+   "sibling": "executions/13-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15888824,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15885680,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1635
+    }
+   }
+  },
+  {
+   "iteration": 13,
+   "scenario": "unplaced_process",
+   "attacker": "executions/13-unplaced_process-attacker.json",
+   "sibling": "executions/13-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15885680,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15880272,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1616
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "normal_ok",
+   "attacker": "executions/14-normal_ok-attacker.json",
+   "sibling": "executions/14-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15880272,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878804,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1734
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "ram_bomb",
+   "attacker": "executions/14-ram_bomb-attacker.json",
+   "sibling": "executions/14-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878804,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15853840,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1543
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "spin_fuel",
+   "attacker": "executions/14-spin_fuel-attacker.json",
+   "sibling": "executions/14-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15853840,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15869408,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1804
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "deadline_stall",
+   "attacker": "executions/14-deadline_stall-attacker.json",
+   "sibling": "executions/14-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15869408,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881404,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1810
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "output_flood",
+   "attacker": "executions/14-output_flood-attacker.json",
+   "sibling": "executions/14-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881404,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891532,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1749
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "lying_bomb",
+   "attacker": "executions/14-lying_bomb-attacker.json",
+   "sibling": "executions/14-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891532,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15905512,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1768
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "expired_authority",
+   "attacker": "executions/14-expired_authority-attacker.json",
+   "sibling": "executions/14-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15905512,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15892988,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1654
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "forged_authority",
+   "attacker": "executions/14-forged_authority-attacker.json",
+   "sibling": "executions/14-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15892988,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891284,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1613
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "widened_boundary",
+   "attacker": "executions/14-widened_boundary-attacker.json",
+   "sibling": "executions/14-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891284,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15895932,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1658
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "substituted_module",
+   "attacker": "executions/14-substituted_module-attacker.json",
+   "sibling": "executions/14-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15895932,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877616,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2143
+    }
+   }
+  },
+  {
+   "iteration": 14,
+   "scenario": "unplaced_process",
+   "attacker": "executions/14-unplaced_process-attacker.json",
+   "sibling": "executions/14-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15877616,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15897104,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2414
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "normal_ok",
+   "attacker": "executions/15-normal_ok-attacker.json",
+   "sibling": "executions/15-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15897104,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15878704,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2697
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "ram_bomb",
+   "attacker": "executions/15-ram_bomb-attacker.json",
+   "sibling": "executions/15-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15878704,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15866984,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1756
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "spin_fuel",
+   "attacker": "executions/15-spin_fuel-attacker.json",
+   "sibling": "executions/15-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15866984,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15887848,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1744
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "deadline_stall",
+   "attacker": "executions/15-deadline_stall-attacker.json",
+   "sibling": "executions/15-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15887848,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881544,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2350
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "output_flood",
+   "attacker": "executions/15-output_flood-attacker.json",
+   "sibling": "executions/15-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881416,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890180,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1848
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "lying_bomb",
+   "attacker": "executions/15-lying_bomb-attacker.json",
+   "sibling": "executions/15-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890180,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890520,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1647
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "expired_authority",
+   "attacker": "executions/15-expired_authority-attacker.json",
+   "sibling": "executions/15-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890520,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15874412,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1829
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "forged_authority",
+   "attacker": "executions/15-forged_authority-attacker.json",
+   "sibling": "executions/15-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15874784,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15883088,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1745
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "widened_boundary",
+   "attacker": "executions/15-widened_boundary-attacker.json",
+   "sibling": "executions/15-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15883088,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15879628,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1712
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "substituted_module",
+   "attacker": "executions/15-substituted_module-attacker.json",
+   "sibling": "executions/15-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15879628,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15882116,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1597
+    }
+   }
+  },
+  {
+   "iteration": 15,
+   "scenario": "unplaced_process",
+   "attacker": "executions/15-unplaced_process-attacker.json",
+   "sibling": "executions/15-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15882116,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15886720,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1546
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "normal_ok",
+   "attacker": "executions/16-normal_ok-attacker.json",
+   "sibling": "executions/16-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15886720,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15882744,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1600
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "ram_bomb",
+   "attacker": "executions/16-ram_bomb-attacker.json",
+   "sibling": "executions/16-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15882744,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890556,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1664
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "spin_fuel",
+   "attacker": "executions/16-spin_fuel-attacker.json",
+   "sibling": "executions/16-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890556,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891340,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1829
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "deadline_stall",
+   "attacker": "executions/16-deadline_stall-attacker.json",
+   "sibling": "executions/16-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891340,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15881028,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1649
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "output_flood",
+   "attacker": "executions/16-output_flood-attacker.json",
+   "sibling": "executions/16-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15881028,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15887552,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1835
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "lying_bomb",
+   "attacker": "executions/16-lying_bomb-attacker.json",
+   "sibling": "executions/16-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15887552,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889120,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1668
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "expired_authority",
+   "attacker": "executions/16-expired_authority-attacker.json",
+   "sibling": "executions/16-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889120,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15894572,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1676
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "forged_authority",
+   "attacker": "executions/16-forged_authority-attacker.json",
+   "sibling": "executions/16-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15894572,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15894976,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1621
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "widened_boundary",
+   "attacker": "executions/16-widened_boundary-attacker.json",
+   "sibling": "executions/16-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15894976,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15877004,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2505
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "substituted_module",
+   "attacker": "executions/16-substituted_module-attacker.json",
+   "sibling": "executions/16-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15876880,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15869332,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1758
+    }
+   }
+  },
+  {
+   "iteration": 16,
+   "scenario": "unplaced_process",
+   "attacker": "executions/16-unplaced_process-attacker.json",
+   "sibling": "executions/16-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15869332,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15880020,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1678
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "normal_ok",
+   "attacker": "executions/17-normal_ok-attacker.json",
+   "sibling": "executions/17-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15880020,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891524,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1927
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "ram_bomb",
+   "attacker": "executions/17-ram_bomb-attacker.json",
+   "sibling": "executions/17-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891524,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15907636,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1645
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "spin_fuel",
+   "attacker": "executions/17-spin_fuel-attacker.json",
+   "sibling": "executions/17-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15907636,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891876,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1534
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "deadline_stall",
+   "attacker": "executions/17-deadline_stall-attacker.json",
+   "sibling": "executions/17-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891876,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15896400,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1802
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "output_flood",
+   "attacker": "executions/17-output_flood-attacker.json",
+   "sibling": "executions/17-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15896400,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15882132,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1889
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "lying_bomb",
+   "attacker": "executions/17-lying_bomb-attacker.json",
+   "sibling": "executions/17-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15882132,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15880960,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1682
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "expired_authority",
+   "attacker": "executions/17-expired_authority-attacker.json",
+   "sibling": "executions/17-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15880960,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15884800,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1767
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "forged_authority",
+   "attacker": "executions/17-forged_authority-attacker.json",
+   "sibling": "executions/17-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15884800,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15898812,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2275
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "widened_boundary",
+   "attacker": "executions/17-widened_boundary-attacker.json",
+   "sibling": "executions/17-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15898812,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15876032,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1768
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "substituted_module",
+   "attacker": "executions/17-substituted_module-attacker.json",
+   "sibling": "executions/17-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15876032,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15874896,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 2327
+    }
+   }
+  },
+  {
+   "iteration": 17,
+   "scenario": "unplaced_process",
+   "attacker": "executions/17-unplaced_process-attacker.json",
+   "sibling": "executions/17-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15874896,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15889704,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1952
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "normal_ok",
+   "attacker": "executions/18-normal_ok-attacker.json",
+   "sibling": "executions/18-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15889704,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15886224,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1631
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "ram_bomb",
+   "attacker": "executions/18-ram_bomb-attacker.json",
+   "sibling": "executions/18-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15886224,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15875712,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1647
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "spin_fuel",
+   "attacker": "executions/18-spin_fuel-attacker.json",
+   "sibling": "executions/18-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15875712,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15874248,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1838
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "deadline_stall",
+   "attacker": "executions/18-deadline_stall-attacker.json",
+   "sibling": "executions/18-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15874248,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15874784,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1682
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "output_flood",
+   "attacker": "executions/18-output_flood-attacker.json",
+   "sibling": "executions/18-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15874784,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15871192,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1791
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "lying_bomb",
+   "attacker": "executions/18-lying_bomb-attacker.json",
+   "sibling": "executions/18-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15871064,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15851380,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1759
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "expired_authority",
+   "attacker": "executions/18-expired_authority-attacker.json",
+   "sibling": "executions/18-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15851380,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15874124,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1639
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "forged_authority",
+   "attacker": "executions/18-forged_authority-attacker.json",
+   "sibling": "executions/18-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15874124,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15886528,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 3410
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "widened_boundary",
+   "attacker": "executions/18-widened_boundary-attacker.json",
+   "sibling": "executions/18-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15886528,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15884048,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1653
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "substituted_module",
+   "attacker": "executions/18-substituted_module-attacker.json",
+   "sibling": "executions/18-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15884048,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891604,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1727
+    }
+   }
+  },
+  {
+   "iteration": 18,
+   "scenario": "unplaced_process",
+   "attacker": "executions/18-unplaced_process-attacker.json",
+   "sibling": "executions/18-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891976,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15892140,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1766
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "normal_ok",
+   "attacker": "executions/19-normal_ok-attacker.json",
+   "sibling": "executions/19-normal_ok-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15892140,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15890732,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1622
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "ram_bomb",
+   "attacker": "executions/19-ram_bomb-attacker.json",
+   "sibling": "executions/19-ram_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15890732,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15921232,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1897
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "spin_fuel",
+   "attacker": "executions/19-spin_fuel-attacker.json",
+   "sibling": "executions/19-spin_fuel-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15921232,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15894892,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1645
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "deadline_stall",
+   "attacker": "executions/19-deadline_stall-attacker.json",
+   "sibling": "executions/19-deadline_stall-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15894892,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15879036,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1728
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "output_flood",
+   "attacker": "executions/19-output_flood-attacker.json",
+   "sibling": "executions/19-output_flood-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15879036,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15875312,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1586
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "lying_bomb",
+   "attacker": "executions/19-lying_bomb-attacker.json",
+   "sibling": "executions/19-lying_bomb-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15875312,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15882496,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1800
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "expired_authority",
+   "attacker": "executions/19-expired_authority-attacker.json",
+   "sibling": "executions/19-expired_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15882496,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15875200,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1607
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "forged_authority",
+   "attacker": "executions/19-forged_authority-attacker.json",
+   "sibling": "executions/19-forged_authority-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15875200,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15893808,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1811
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "widened_boundary",
+   "attacker": "executions/19-widened_boundary-attacker.json",
+   "sibling": "executions/19-widened_boundary-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15893808,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15891300,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1621
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "substituted_module",
+   "attacker": "executions/19-substituted_module-attacker.json",
+   "sibling": "executions/19-substituted_module-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15891300,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15885464,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1675
+    }
+   }
+  },
+  {
+   "iteration": 19,
+   "scenario": "unplaced_process",
+   "attacker": "executions/19-unplaced_process-attacker.json",
+   "sibling": "executions/19-unplaced_process-sibling.json",
+   "host_before": {
+    "mem_available_kib": 15885464,
+    "supervisor_oom_kill": 0
+   },
+   "host_after": {
+    "mem_available_kib": 15882120,
+    "supervisor_oom_kill": 0,
+    "canary": {
+     "exit_code": 0,
+     "latency_us": 1728
+    }
+   }
+  }
+ ],
+ "sibling_expected_return_value": "7539926256355120515",
+ "finished_at": "2026-10-11T04:00:40.663303+00:00"
+}

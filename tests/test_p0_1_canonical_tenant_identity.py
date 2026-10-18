@@ -12,7 +12,7 @@ Proves that:
 from __future__ import annotations
 
 from collections.abc import Iterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -106,10 +106,10 @@ class TestApiKeyDoesNotTrustWorkspaceHeader:
         }
         request = Request(scope)
 
-        middleware = AuthMiddleware(MagicMock(), settings=auth_settings)
+        AuthMiddleware(MagicMock(), settings=auth_settings)
         # Simulate token validation path for the API key
         # We test the scope mutation directly by inspecting what _would_ be set
-        scope["auth_principal"] = f"api-key:fingerprint"
+        scope["auth_principal"] = "api-key:fingerprint"
 
         # The hint path:
         workspace_hint = request.headers.get("X-Workspace-ID", "").strip()
@@ -137,7 +137,7 @@ class TestBodyWorkspaceMismatch:
         client = TestClient(app, raise_server_exceptions=False)
 
         # Patch scope to inject auth_workspace (simulates successful JWT auth)
-        original_dispatch = app.middleware_stack.__class__.dispatch if hasattr(
+        app.middleware_stack.__class__.dispatch if hasattr(
             app.middleware_stack.__class__, "dispatch"
         ) else None
 
@@ -232,9 +232,10 @@ class TestSessionWorkspaceRequired:
 
     def test_unscoped_session_allows_no_context(self) -> None:
         """get_unscoped_session must not fail when auth_workspace is absent."""
-        from cappo_backend.db.session import get_unscoped_session
         from starlette.requests import Request
         from starlette.types import Scope
+
+        from cappo_backend.db.session import get_unscoped_session
 
         scope: Scope = {
             "type": "http",

@@ -49,7 +49,6 @@ NETWORK_CALLS_DURING_EXECUTION   = 0
 """
 import contextlib
 import socket
-import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -74,7 +73,6 @@ from cappo_backend.security.evidence import (
 )
 from cappo_backend.security.merkle import AppendOnlyMerkleTree, hash_leaf
 from cappo_backend.security.merkle_ops import get_merkle_ordered_cose_bytes
-
 
 # ── WAN-off context manager ───────────────────────────────────────────────────
 
@@ -129,8 +127,8 @@ def _now() -> datetime:
 
 
 def _build_registry(db: Session) -> MountRegistry:
-    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     from cappo_backend.config import Settings
+    from cappo_backend.services.mount_pgl import AuditPGLAnchor
     
     # Configure production PGL anchor that points to the blocked IP
     settings = Settings(
@@ -196,7 +194,7 @@ def test_g1_1_wan_off_valid_authority_executes(db: Session):
 
     # Mount the capability in the registry pre-cut
     reg = _build_registry(db)
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(
             workspace="ws_1",

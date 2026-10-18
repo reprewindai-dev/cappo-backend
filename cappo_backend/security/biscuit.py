@@ -1,35 +1,119 @@
+# ruff: noqa
 import os
-import hashlib
-from typing import Optional, Any
-from datetime import datetime
-import time
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import biscuit_auth
-from biscuit_auth import KeyPair, Biscuit, AuthorizerBuilder, PrivateKey, PublicKey
+from biscuit_auth import AuthorizerBuilder, Biscuit, KeyPair, PrivateKey
 
-from cappo_backend.config import get_settings
+from cappo_backend.config import InsecureProductionConfigError, get_settings
 
 _ROOT_KEY_PAIR = None
+
+
+# Datalog evaluation budget shared by every authorizer built in this module.
+# biscuit-python's defaults (1 ms / 100 iterations / 1000 facts) are a
+# cumulative wall-clock budget across authorize() and every query() on the
+# same authorizer, which a scheduler stall inside a busy container can exhaust
+# on an otherwise trivial token. Exhaustion still fails closed.
+AUTHORIZER_MAX_TIME = timedelta(milliseconds=100)
+AUTHORIZER_MAX_ITERATIONS = 1000
+AUTHORIZER_MAX_FACTS = 5000
+
+
+import re as _re
+
+# Resource and envelope values are interpolated into Datalog source, so they are
+# restricted to characters that cannot close a string literal or start new code.
+_RESOURCE_TERM = _re.compile(r"^[A-Za-z0-9._:@/-]{1,256}(/\*)?$")
+_ENVELOPE_TERM = _re.compile(r"^[0-9a-f]{64}$")
+
+
+def _resource_bound_code(resources: list[str], fact: str, prefix_fact: str) -> list[str]:
+    """Facts for a resource bound: exact names, plus explicit ``dir/*`` prefixes.
+
+    A plain name matches only itself ("42" never covers "420"); a prefix is only
+    ever granted by writing it as ``something/*``.
+    """
+    code = []
+    for res in resources:
+        if not _RESOURCE_TERM.fullmatch(res):
+            raise ValueError(f"invalid resource bound: {res!r}")
+        if res.endswith("/*"):
+            code.append(f'{prefix_fact}("{res[:-1]}");')
+        else:
+            code.append(f'{fact}("{res}");')
+    return code
+
+
+def _checked_envelope(envelope_digest: str) -> str:
+    if not _ENVELOPE_TERM.fullmatch(envelope_digest):
+        raise ValueError("envelope digest must be 64 lowercase hex characters")
+    return envelope_digest
+
+
+def apply_authorizer_limits(builder: AuthorizerBuilder) -> AuthorizerBuilder:
+    """Set bounded Datalog limits on a builder before ``build()``."""
+    limits = builder.limits()
+    limits.max_time = AUTHORIZER_MAX_TIME
+    limits.max_iterations = AUTHORIZER_MAX_ITERATIONS
+    limits.max_facts = AUTHORIZER_MAX_FACTS
+    builder.set_limits(limits)
+    return builder
+
 
 def get_root_key_pair() -> KeyPair:
     global _ROOT_KEY_PAIR
     if _ROOT_KEY_PAIR is None:
         settings = get_settings()
-        biscuit_key = getattr(settings, "BISCUIT_ROOT_PRIVATE_KEY_HEX", None)
+        biscuit_key = settings.biscuit_root_private_key_hex
         if biscuit_key:
             from biscuit_auth import Algorithm
             _ROOT_KEY_PAIR = KeyPair.from_private_key(PrivateKey.from_bytes(bytes.fromhex(biscuit_key), Algorithm.Ed25519))
         else:
-            # Fallback for dev: persist to a file so it survives restart
-            key_path = ".biscuit_root_key"
-            if os.path.exists(key_path):
+            if settings.environment.lower() in {"production", "prod"}:
+                raise InsecureProductionConfigError(
+                    "BISCUIT_ROOT_PRIVATE_KEY_HEX must be set in production."
+                )
+            key_path = Path(settings.biscuit_root_key_path).expanduser()
+            # Do NOT call .resolve() here — resolve() is CWD-dependent for paths
+            # that are not yet absolute.  The field_validator on biscuit_root_key_path
+            # guarantees the configured value is either absolute or home-relative (~),
+            # so expanduser() alone produces a stable absolute path.
+            if not key_path.is_absolute():
+                # Belt-and-suspenders: should never occur given the field_validator,
+                # but make it explicit rather than silently producing a CWD-relative path.
+                raise InsecureProductionConfigError(
+                    f"BISCUIT_ROOT_KEY_PATH resolved to a non-absolute path after expanduser(): "
+                    f"{key_path!r}.  Configure an absolute path or a home-relative path (~/)."
+                )
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+
+            def load_file_key() -> KeyPair:
                 from biscuit_auth import Algorithm
-                with open(key_path, "rb") as f:
-                    _ROOT_KEY_PAIR = KeyPair.from_private_key(PrivateKey.from_bytes(f.read(), Algorithm.Ed25519))
+
+                with key_path.open("rb") as f:
+                    key_pair = KeyPair.from_private_key(
+                        PrivateKey.from_bytes(f.read(), Algorithm.Ed25519)
+                    )
+                key_path.chmod(0o600)
+                return key_pair
+
+            if os.path.exists(key_path):
+                _ROOT_KEY_PAIR = load_file_key()
             else:
                 _ROOT_KEY_PAIR = KeyPair()
-                with open(key_path, "wb") as f:
-                    f.write(_ROOT_KEY_PAIR.private_key.to_bytes())
+                try:
+                    fd = os.open(
+                        key_path,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                        0o600,
+                    )
+                except FileExistsError:
+                    _ROOT_KEY_PAIR = load_file_key()
+                else:
+                    with os.fdopen(fd, "wb") as f:
+                        f.write(_ROOT_KEY_PAIR.private_key.to_bytes())
     return _ROOT_KEY_PAIR
 
 def mint_biscuit_capability(
@@ -41,6 +125,9 @@ def mint_biscuit_capability(
     execution_id: str,
     ttl_seconds: int,
     resources: list[str] | None = None,
+    revocation_scope: str = "workspace",
+    revocation_epoch: int = 0,
+    envelope_digest: str | None = None,
 ) -> str:
     kp = get_root_key_pair()
     builder = Biscuit.builder()
@@ -52,6 +139,14 @@ def mint_biscuit_capability(
     
     builder.add_code(f'execution_id("{execution_id}");')
     builder.add_code(f'capability_id("{capability_id}");')
+    builder.add_code(f'revocation_scope("{revocation_scope}");')
+    builder.add_code(f'revocation_epoch({revocation_epoch});')
+    
+    if envelope_digest is not None:
+        builder.add_code(f'allowed_envelope("{_checked_envelope(envelope_digest)}");')
+        builder.add_code('check if current_envelope($env), allowed_envelope($env);')
+
+
     if executor_spiffe_id:
         builder.add_code(f'allowed_executor("{executor_spiffe_id}");')
     else:
@@ -63,14 +158,18 @@ def mint_biscuit_capability(
         builder.add_code(f'allowed_action("{w}");')
     
     if resources:
-        for res in resources:
-            builder.add_code(f'allowed_resource("{res}");')
-        builder.add_code('check if current_action($act, $res), allowed_action($act), allowed_resource($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+        for code in _resource_bound_code(resources, "allowed_resource", "allowed_resource_prefix"):
+            builder.add_code(code)
+        builder.add_code(
+            'check if current_action($act, $res), allowed_action($act), allowed_resource($res)'
+            ' or current_action($act, $res), allowed_action($act), allowed_resource_prefix($p), $res.starts_with($p)'
+            ' or current_action("terminate", "");'
+        )
     else:
         # If no resources bounded, only check action
         builder.add_code('check if current_action($act, $res), allowed_action($act) or current_action("terminate", "");')
 
-    from datetime import datetime, timezone, timedelta
+    from datetime import timedelta, timezone
     issued_dt = datetime.now(timezone.utc)
     expires_dt = issued_dt + timedelta(seconds=ttl_seconds)
     
@@ -90,6 +189,7 @@ def attenuate_biscuit_capability(
     writes: list[str] | None = None,
     ttl_seconds: int | None = None,
     resources: list[str] | None = None,
+    envelope_digest: str | None = None,
 ) -> str:
     """Attenuate an existing capability locally without the root key."""
     kp = get_root_key_pair()
@@ -107,25 +207,56 @@ def attenuate_biscuit_capability(
         
     if resources is not None:
         if resources:
-            for res in resources:
-                builder.add_code(f'allowed_resource_child("{res}");')
-            builder.add_code('check if current_action($act, $res), allowed_resource_child($prefix), $res.starts_with($prefix) or current_action("terminate", "");')
+            for code in _resource_bound_code(resources, "allowed_resource_child", "allowed_resource_child_prefix"):
+                builder.add_code(code)
+            builder.add_code(
+                'check if current_action($act, $res), allowed_resource_child($res)'
+                ' or current_action($act, $res), allowed_resource_child_prefix($p), $res.starts_with($p)'
+                ' or current_action("terminate", "");'
+            )
 
     if ttl_seconds is not None:
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
         expires_dt = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
         expires_str = expires_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-        builder.add_code(f'check if time($time), $time <= {expires_str};')
-        
+        builder.add_code(f'check if time($t), $t <= "{expires_str}";')
+
+    if envelope_digest is not None:
+        builder.add_code(f'allowed_envelope("{_checked_envelope(envelope_digest)}");')
+        builder.add_code('check if current_envelope($env), allowed_envelope($env);')
+
     child_token = token.append(builder)
     return child_token.to_base64()
+
+class TrustedRevocationState:
+    """
+    Trusted synchronized revocation state.
+    Provenance (e.g. signed checkpoint, authenticated sync) is NOT yet independently proven (OBA-1).
+    This storage enforces monotonic epoch progression: a stale sync cannot downgrade local authority epochs.
+    """
+    def __init__(self):
+        self.known_epochs: dict[str, int] = {}
+        self.revoked_execution_ids: set[str] = set()
+
+    def sync_epochs(self, incoming_epochs: dict[str, int]):
+        """Merge incoming epochs monotonically."""
+        for scope, ep in incoming_epochs.items():
+            current = self.known_epochs.get(scope, 0)
+            if ep > current:
+                self.known_epochs[scope] = ep
+
+    def revoke_execution(self, execution_id: str):
+        self.revoked_execution_ids.add(execution_id)
 
 def verify_biscuit_capability(
     token_b64: str,
     executor_spiffe_id: str,
     action: str,
     resource: str = "",
-    subject_spiffe_id: str | None = None
+    subject_spiffe_id: str | None = None,
+    trusted_state: TrustedRevocationState | None = None,
+    execution_id: str | None = None,
+    envelope_digest: str | None = None,
 ) -> bool:
     try:
         kp = get_root_key_pair()
@@ -136,18 +267,55 @@ def verify_biscuit_capability(
             auth_builder.add_code(f'current_subject("{subject_spiffe_id}");')
         else:
             auth_builder.add_code('current_subject("any");')
+        if resource and not _RESOURCE_TERM.fullmatch(resource):
+            return False
         auth_builder.add_code(f'current_action("{action}", "{resource}");')
+
+        if envelope_digest is not None:
+            auth_builder.add_code(f'current_envelope("{_checked_envelope(envelope_digest)}");')
+
         auth_builder.set_time()
         auth_builder.add_code('allow if true;')
 
         # Build the authorizer
-        # This will evaluate all checks in all blocks
-        # If any check fails, it raises AuthorizationError
+        apply_authorizer_limits(auth_builder)
         auth = auth_builder.build(token)
         auth.authorize()
 
-        # Enforce delegation_depth_max if present in the token facts
         import biscuit_auth
+        # Enforce explicitly revoked execution IDs
+        exec_facts = auth.query(biscuit_auth.Rule('rule($exec_id) <- execution_id($exec_id)'))
+        if exec_facts:
+            token_exec_id = str(exec_facts[0].terms[0]).strip('"')
+            
+            # Enforce exact match if execution_id is provided
+            if execution_id is not None and token_exec_id != execution_id:
+                print(f"Biscuit verification failed: execution_id mismatch ({token_exec_id} != {execution_id})")
+                return False
+
+            if not trusted_state:
+                print("Biscuit verification failed: Token contains execution_id but no trusted_state was provided.")
+                return False
+            if token_exec_id in trusted_state.revoked_execution_ids:
+                print(f"Biscuit verification failed: Execution ID {token_exec_id} is explicitly revoked.")
+                return False
+
+        # Enforce known epochs for the given scope
+        scope_facts = auth.query(biscuit_auth.Rule('rule($scope, $ep) <- revocation_scope($scope), revocation_epoch($ep)'))
+        if scope_facts:
+            if not trusted_state:
+                print("Biscuit verification failed: Token contains revocation_epoch but no trusted_state was provided.")
+                return False
+            scope = str(scope_facts[0].terms[0]).strip('"')
+            ep = int(str(scope_facts[0].terms[1]))
+            if scope not in trusted_state.known_epochs:
+                print(f"Biscuit verification failed: Token scope {scope} is not known in trusted_state.")
+                return False
+            if ep < trusted_state.known_epochs[scope]:
+                print(f"Biscuit verification failed: Token epoch {ep} is older than required epoch {trusted_state.known_epochs[scope]} for scope {scope}.")
+                return False
+
+        # Enforce delegation_depth_max if present in the token facts
         depth_facts = auth.query(biscuit_auth.Rule('rule($d) <- delegation_depth_max($d)'))
         if depth_facts:
             # depth_facts[0].terms[0] will contain the integer limit
@@ -159,7 +327,7 @@ def verify_biscuit_capability(
 
         return True
     except Exception as e:
-        print(f"Biscuit verification failed: {e}")
+        import traceback; traceback.print_exc()
         return False
 
 def extract_authority_context(token_b64: str):
@@ -170,9 +338,11 @@ def extract_authority_context(token_b64: str):
         
         auth_builder = AuthorizerBuilder()
         auth_builder.add_code('allow if true;')
+        apply_authorizer_limits(auth_builder)
         auth = auth_builder.build(token)
         
         import biscuit_auth
+
         actions = set()
         action_facts = auth.query(biscuit_auth.Rule('rule($act) <- allowed_action($act)'))
         for fact in action_facts:
@@ -182,11 +352,20 @@ def extract_authority_context(token_b64: str):
         resource_facts = auth.query(biscuit_auth.Rule('rule($res) <- allowed_resource($res)'))
         for fact in resource_facts:
             resources.add(str(fact.terms[0]).strip('"'))
+        # Explicit prefix grants come back in the lease's "dir/*" notation.
+        prefix_facts = auth.query(biscuit_auth.Rule('rule($p) <- allowed_resource_prefix($p)'))
+        for fact in prefix_facts:
+            resources.add(str(fact.terms[0]).strip('"') + "*")
             
         executor_spiffe_id = "any"
         exec_facts = auth.query(biscuit_auth.Rule('rule($exec) <- allowed_executor($exec)'))
         if exec_facts:
             executor_spiffe_id = str(exec_facts[0].terms[0]).strip('"')
+            
+        subject_spiffe_id = "any"
+        subj_facts = auth.query(biscuit_auth.Rule('rule($subj) <- subject($subj)'))
+        if subj_facts:
+            subject_spiffe_id = str(subj_facts[0].terms[0]).strip('"')
             
         expires_at = None
         exp_facts = auth.query(biscuit_auth.Rule('rule($exp) <- expires_at($exp)'))
@@ -210,11 +389,34 @@ def extract_authority_context(token_b64: str):
             allowed_actions=actions,
             allowed_resources=resources,
             executor_spiffe_id=executor_spiffe_id,
+            subject_spiffe_id=subject_spiffe_id,
             expires_at=expires_at,
             delegation_depth=token.block_count() - 1,
             max_delegation_depth=max_depth,
             authority_epoch=0
         )
     except Exception as e:
-        print(f"Failed to extract authority from biscuit: {e}")
+        import traceback; traceback.print_exc()
+        import logging
+        logging.getLogger("cappo.security").error(f"AUTHORITY_EXTRACTION_FAILED: {type(e).__name__}: {str(e)}")
         return None
+
+
+def extract_allowed_envelopes(token_b64: str) -> set[str] | None:
+    """The ``allowed_envelope`` digests a signature-verified token carries.
+
+    Returns an empty set for a token without an envelope bound, and None when the
+    token cannot be verified (callers must fail closed on None).
+    """
+    try:
+        kp = get_root_key_pair()
+        token = Biscuit.from_base64(token_b64, kp.public_key)
+        auth_builder = AuthorizerBuilder()
+        auth_builder.add_code('allow if true;')
+        apply_authorizer_limits(auth_builder)
+        auth = auth_builder.build(token)
+        facts = auth.query(biscuit_auth.Rule('rule($env) <- allowed_envelope($env)'))
+        return {str(fact.terms[0]).strip('"') for fact in facts}
+    except Exception:
+        return None
+

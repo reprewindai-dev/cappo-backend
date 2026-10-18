@@ -1,8 +1,6 @@
-import pytest
-from datetime import datetime, timedelta, timezone
-import time
 
 from cappo_backend.security.biscuit import mint_biscuit_capability, verify_biscuit_capability
+
 
 def test_g0b3_biscuit_issuance():
     # Valid SVID inputs
@@ -33,34 +31,34 @@ def test_g0b3_biscuit_issuance():
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="contact.read"
-    ) == True
+    )
 
     # 3. Wrong Action DENY
     assert verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="message.send"  # authorized for write, not read (Wait, writes are "message.send") Oh actually, the test meant to check if "message.send" fails? Wait! "message.send" is in writes, so it SHOULD succeed!
-    ) == True
+    )
 
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="delete.resource"
-    ) == False
+    )
 
     # 4. Wrong Resource DENY -> Not applicable anymore, but we can test unknown action
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="unknown.action"
-    ) == False
+    )
 
     # 5. Wrong SPIFFE identity (Audience) DENY
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id="spiffe://example.org/workload/evil-agent",
         action="contact.read"
-    ) == False
+    )
 
     # 6. Expired DENY
     # Mint an expired token
@@ -73,19 +71,19 @@ def test_g0b3_biscuit_issuance():
         execution_id=execution_id,
         ttl_seconds=-10 # expired 10 seconds ago
     )
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=expired_token,
         executor_spiffe_id=executor_spiffe_id,
         action="contact.read"
-    ) == False
+    )
 
     # 7. WRONG_SUBJECT Denied
-    assert verify_biscuit_capability(
+    assert not verify_biscuit_capability(
         token_b64=token_b64,
         executor_spiffe_id=executor_spiffe_id,
         action="contact.read",
         subject_spiffe_id="spiffe://example.org/workload/not-cappo"
-    ) == False
+    )
     print("WRONG_SUBJECT_DENIED = True")
 
     # 8. Receipt Token Binding is handled in capability_mount tests or service.py directly.

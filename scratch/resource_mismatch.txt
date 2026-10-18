@@ -1,0 +1,2 @@
+EXPECTED: 'sandbox-file:C:/Windows/Temp/pytest-of-antho/pytest-9/test_http_worker_denies_wrong_0/governed.jsonl'
+PROVIDED: {'sandbox-file:/tmp/not-authorized'}

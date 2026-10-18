@@ -1,0 +1,127 @@
+{
+ "run_id": "20261011T052157Z-pack",
+ "finished_at": "2026-10-11T05:23:46.935240+00:00",
+ "host": {
+  "kernel": "6.18.44-fc-v114",
+  "nproc": 4,
+  "python": "3.13.16",
+  "wasmtime_py": "44.0.0"
+ },
+ "tenants": 500,
+ "rounds": 3,
+ "logical_mib_each": 4.0,
+ "summary": {
+  "vre1e": [
+   {
+    "k_live": 1,
+    "restore_ms_per_tenant": {
+     "p50": 12.462,
+     "p95": 12.656,
+     "p99": 12.656,
+     "max": 12.656,
+     "n": 3
+    },
+    "request_us_live": {
+     "p50": 847.521,
+     "p95": 871.727,
+     "p99": 871.727,
+     "max": 871.727,
+     "n": 3
+    },
+    "resident_bytes_all_live_p50": 2265088,
+    "resident_bytes_per_tenant": 2265088,
+    "logical_bytes_live": 4194304,
+    "logical_over_resident_live": 1.85,
+    "integrity_failures": 0
+   },
+   {
+    "k_live": 8,
+    "restore_ms_per_tenant": {
+     "p50": 8.821,
+     "p95": 12.068,
+     "p99": 13.859,
+     "max": 13.859,
+     "n": 24
+    },
+    "request_us_live": {
+     "p50": 216.758,
+     "p95": 965.885,
+     "p99": 1148.68,
+     "max": 1148.68,
+     "n": 24
+    },
+    "resident_bytes_all_live_p50": 12775424,
+    "resident_bytes_per_tenant": 1596928,
+    "logical_bytes_live": 33554432,
+    "logical_over_resident_live": 2.63,
+    "integrity_failures": 0
+   },
+   {
+    "k_live": 32,
+    "restore_ms_per_tenant": {
+     "p50": 8.904,
+     "p95": 11.585,
+     "p99": 146.909,
+     "max": 146.909,
+     "n": 96
+    },
+    "request_us_live": {
+     "p50": 208.68,
+     "p95": 994.423,
+     "p99": 1683.627,
+     "max": 1683.627,
+     "n": 96
+    },
+    "resident_bytes_all_live_p50": 38182912,
+    "resident_bytes_per_tenant": 1193216,
+    "logical_bytes_live": 134217728,
+    "logical_over_resident_live": 3.52,
+    "integrity_failures": 0
+   },
+   {
+    "k_live": 128,
+    "restore_ms_per_tenant": {
+     "p50": 9.064,
+     "p95": 12.053,
+     "p99": 17.223,
+     "max": 19.033,
+     "n": 384
+    },
+    "request_us_live": {
+     "p50": 197.132,
+     "p95": 287.466,
+     "p99": 392.689,
+     "max": 1281.693,
+     "n": 384
+    },
+    "resident_bytes_all_live_p50": 143626240,
+    "resident_bytes_per_tenant": 1122080,
+    "logical_bytes_live": 536870912,
+    "logical_over_resident_live": 3.74,
+    "integrity_failures": 0
+   },
+   {
+    "k_live": 500,
+    "restore_ms_per_tenant": {
+     "p50": 9.89,
+     "p95": 33.83,
+     "p99": 45.343,
+     "max": 80.389,
+     "n": 1500
+    },
+    "request_us_live": {
+     "p50": 204.159,
+     "p95": 294.651,
+     "p99": 428.569,
+     "max": 1843.114,
+     "n": 1500
+    },
+    "resident_bytes_all_live_p50": 552316928,
+    "resident_bytes_per_tenant": 1104634,
+    "logical_bytes_live": 2097152000,
+    "logical_over_resident_live": 3.8,
+    "integrity_failures": 0
+   }
+  ]
+ }
+}

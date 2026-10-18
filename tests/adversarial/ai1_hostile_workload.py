@@ -14,7 +14,6 @@ import json
 import os
 import sys
 
-
 SENSITIVE_NAME_MARKERS = (
     "TOKEN",
     "SECRET",

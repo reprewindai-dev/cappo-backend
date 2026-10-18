@@ -1,26 +1,23 @@
 ﻿import contextlib
 import socket
-import uuid
-from datetime import datetime, timezone
 
-import pytest
+import httpx
 from sqlalchemy.orm import Session
 
 from cappo_backend.capability_mount.models import (
+    CapabilityPackage,
+    Decision,
     MountPolicy,
     MountScope,
-    Decision,
-    CapabilityPackage,
 )
 from cappo_backend.capability_mount.service import MountRegistry
-from cappo_backend.models import CapabilityActionReceipt, AuditEvent
+from cappo_backend.config import Settings
+from cappo_backend.models import AuditEvent, CapabilityActionReceipt
 from cappo_backend.security.biscuit import (
-    mint_biscuit_capability,
     attenuate_biscuit_capability,
+    mint_biscuit_capability,
 )
 from cappo_backend.services.mount_pgl import AuditPGLAnchor
-from cappo_backend.config import Settings
-import httpx
 
 
 @contextlib.contextmanager
@@ -79,7 +76,7 @@ def test_g1_5_wan_on_reconcile(db: Session, monkeypatch):
         execution_id=EXEC_ID,
         ttl_seconds=TTL,
     )
-    child_token_b64 = attenuate_biscuit_capability(
+    attenuate_biscuit_capability(
         token_b64=parent_token_b64,
         reads=[ACTION],
         writes=[],
@@ -87,7 +84,7 @@ def test_g1_5_wan_on_reconcile(db: Session, monkeypatch):
     )
 
     reg = _build_registry(db)
-    mount_record, anchor, reason = reg.request_mount(
+    mount_record, anchor, reason, _holder_credential = reg.request_mount(
         package_ref=CAPABILITY_ID,
         scope=MountScope(workspace="ws_1", project="prj_1", reads=[ACTION], writes=[]),
         role="agent", policy=MountPolicy(), ttl_seconds=TTL,
@@ -108,7 +105,7 @@ def test_g1_5_wan_on_reconcile(db: Session, monkeypatch):
     monkeypatch.setattr(reg, "evaluate", mock_evaluate)
 
     # Phase 2: WAN OFF execution
-    with no_wan() as blocked:
+    with no_wan():
         decision1, dec_reason1, _anchor1, binding1 = reg.evaluate(
             mount_id=mount_record.mount.id,
             action=ACTION,

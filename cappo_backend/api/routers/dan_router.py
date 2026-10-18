@@ -10,10 +10,9 @@
 # after P0-11.
 #
 # DO NOT re-import this file in main.py without completing P0-1 through P0-11 first.
-import base64
 import httpx
-from fastapi import APIRouter, Request, Header, HTTPException
-from biscuit_auth import KeyPair, Biscuit, AuthorizerBuilder, PublicKey
+from biscuit_auth import AuthorizerBuilder, Biscuit, KeyPair
+from fastapi import APIRouter, Header, HTTPException, Request
 
 router = APIRouter()
 

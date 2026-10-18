@@ -1,6 +1,5 @@
-import pytest
 import subprocess
-import json
+
 
 def run_hostile_probe(cmd):
     # Run a command inside an alpine container on the coolify network

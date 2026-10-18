@@ -31,6 +31,10 @@ from cappo_backend.api.routers.capability_beacon_router import issuer_key_router
 from cappo_backend.api.routers.capability_beacon_router import router as capability_beacon_router
 from cappo_backend.api.routers.capability_mount_router import router as capability_mount_router
 from cappo_backend.api.routers.exec_router import router as exec_router
+from cappo_backend.api.routers.execution_keys_router import router as execution_keys_router
+from cappo_backend.api.routers.execution_projection_router import (
+    router as execution_projection_router,
+)
 from cappo_backend.api.routers.governance_v2_router import router as governance_v2_router
 from cappo_backend.api.routers.gpc_router import router as gpc_router
 from cappo_backend.api.routers.health_router import router as health_router
@@ -39,10 +43,23 @@ from cappo_backend.api.routers.interlink_vnp import router as interlink_vnp_rout
 from cappo_backend.api.routers.license_router import router as license_router
 from cappo_backend.api.routers.platform_router import router as platform_router
 from cappo_backend.api.routers.protocol_router import router as protocol_router
+from cappo_backend.api.routers.status_observation_router import router as status_observation_router
 from cappo_backend.api.routers.vnp_control_plane_router import router as vnp_admin_router
 from cappo_backend.api.routers.vnp_router import router as vnp_router
 from cappo_backend.api.routers.x402_router import api_x402_router, root_discovery_router
-from cappo_backend.capability_mount.service import MountRegistry, load_packages_from_json
+from cappo_backend.capability_mount.http_target import load_http_targets
+from cappo_backend.capability_mount.fabric_compute import FABRIC_COMPUTE_JOB_PACKAGE, ResultSinkAdapter
+from cappo_backend.capability_mount.inference import inference_package_from_settings
+from cappo_backend.capability_mount.effects import (
+    GovernedCounterAdapter,
+    LocalRecordAdapter,
+    TargetAdapterRegistry,
+)
+from cappo_backend.capability_mount.service import (
+    GOVERNED_COUNTER_PACKAGE,
+    MountRegistry,
+    load_packages_from_json,
+)
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.core.security.ollama_sanitizer import OllamaBleedSanitizerMiddleware
 from cappo_backend.observability.logging import configure_logging
@@ -92,12 +109,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     else:
         app.state.redis_client = None
 
-    mount_registry = MountRegistry()
+    target_adapters = TargetAdapterRegistry()
+    if settings.capability_effect_record_root:
+        target_adapters.register(
+            LocalRecordAdapter.ref,
+            LocalRecordAdapter(settings.capability_effect_record_root),
+        )
+        target_adapters.register(
+            GovernedCounterAdapter.ref,
+            GovernedCounterAdapter(settings.capability_effect_record_root),
+        )
+
+    for http_target in load_http_targets(settings.cappo_http_targets):
+        target_adapters.register(http_target.ref, http_target)
+
+    fabric_sink = None
+    if settings.fabric_result_sink_url and settings.fabric_result_sink_token:
+        fabric_sink = ResultSinkAdapter(settings.fabric_result_sink_url, settings.fabric_result_sink_token)
+        target_adapters.register(ResultSinkAdapter.ref, fabric_sink)
+
+    mount_registry = MountRegistry(target_adapters=target_adapters)
+    if settings.capability_effect_record_root:
+        mount_registry.register_package(GOVERNED_COUNTER_PACKAGE)
+    if fabric_sink is not None:
+        # Private Cloud: governed compute on owned machines (capability_mount/fabric_compute.py).
+        mount_registry.register_package(FABRIC_COMPUTE_JOB_PACKAGE)
+    inference_package = inference_package_from_settings(settings)
+    if inference_package is not None:
+        # Governed model inference for Capability OS (capability_mount/inference.py).
+        mount_registry.register_package(inference_package)
     for package in load_packages_from_json(settings.capability_packages_json):
         mount_registry.register_package(package)
     app.state.mount_registry = mount_registry
 
-    from cappo_backend.services.x402_payment import X402FreemiumASGI, get_x402_manager
+    from x402.http.middleware.fastapi import PaymentMiddlewareASGI
+    from cappo_backend.services.x402_payment import get_x402_manager
 
     x402_manager = get_x402_manager(settings)
     if x402_manager.is_enabled:
@@ -109,10 +155,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if route != "POST /v1/exec"
             }
         app.add_middleware(
-            X402FreemiumASGI,
+            PaymentMiddlewareASGI,
             server=x402_manager.server,
             routes=x402_routes,
-            settings=settings,
         )
 
     app.add_middleware(OllamaBleedSanitizerMiddleware)
@@ -145,7 +190,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(agents_router)
     app.include_router(authorization_router)
     app.include_router(exec_router)
+    app.include_router(execution_keys_router)
+    app.include_router(execution_projection_router)
+    from cappo_backend.api.routers.reconciler_router import router as reconciler_router
+    app.include_router(reconciler_router)
     app.include_router(health_router)
+    app.include_router(status_observation_router)
+
     app.include_router(admin_router)
     app.include_router(audit_router)
     app.include_router(governance_v2_router)
@@ -172,11 +223,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
+        import logging
+        logging.error(f"Global exception on {request.url}: {exc}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
                 "error": "INTERNAL_SERVER_ERROR",
-                "detail": "An unexpected error occurred. Stack trace is hidden for security.",
+                "detail": "An unexpected error occurred.",
             },
         )
 

@@ -1,0 +1,9 @@
+{
+  "action": "record.delete",
+  "arguments": {},
+  "nonce": "<REDACTED>",
+  "operation_id": "op-mount-b-delete",
+  "resource": "protected-record",
+  "target_ref": "activation.local-record",
+  "token_id": "<REDACTED>"
+}
