@@ -170,6 +170,9 @@ class GovernedCounterAdapter(TargetAdapter):
         if context.action == "counter.read":
             return self.read_state(context)
 
+        if "delta" in context.arguments and context.arguments["delta"] != 1:
+            raise ValueError("invalid_counter_delta")
+
         with sqlite3.connect(self.db_path, timeout=15.0, isolation_level="IMMEDIATE") as conn:
             cursor = conn.cursor()
             

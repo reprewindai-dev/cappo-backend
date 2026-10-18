@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cappo_backend.db.base import Base
@@ -27,6 +27,7 @@ class CapabilityMount(Base):
     token_json: Mapped[dict] = mapped_column(JSON)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    authority_epoch: Mapped[int] = mapped_column(Integer, default=1, index=True)
     terminated: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     nonce_consumed: Mapped[bool] = mapped_column(Boolean, default=False)
     anchor_status: Mapped[str] = mapped_column(String, default="not_applicable")

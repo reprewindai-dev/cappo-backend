@@ -24,8 +24,12 @@ if _settings.database_url.startswith("sqlite"):
 else:
     # Bound both initial driver connection attempts and pool acquisition so a
     # stalled database cannot accumulate unbounded health-check workers.
-    _connect_args = {"connect_timeout": 10}  # 10s for local Docker
-    _engine_args["pool_timeout"] = 10
+    # Size pool above Starlette's 40-worker threadpool so multi-commit consequence
+    # execution never starves waiting for a connection mid-flight.
+    _connect_args = {"connect_timeout": 10}
+    _engine_args["pool_size"] = 45
+    _engine_args["max_overflow"] = 45
+    _engine_args["pool_timeout"] = 30
 
 engine = create_engine(
     _settings.database_url,

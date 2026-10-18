@@ -321,6 +321,7 @@ class MountRegistry:
                     intent_hash=intent_hash,
                     state=ConsequenceState.AUTHORIZED.value,
                     version=0,
+                    authority_epoch=row.authority_epoch if row else 1,
                     receipt_id=receipt_id,
                     mount_id=mount.id,
                     execution_id=token.execution_id,
@@ -372,7 +373,20 @@ class MountRegistry:
                 db.commit()
                 return False  # Already advanced past AUTHORIZED
 
+            is_stale_epoch = (
+                fence_row is not None
+                and latest.authority_epoch is not None
+                and fence_row.authority_epoch != latest.authority_epoch
+            )
+
             if fence_row is None or fence_row.terminated:
+                refusal_reason = "mount_terminated"
+            elif is_stale_epoch:
+                refusal_reason = "stale_authority_epoch"
+            else:
+                refusal_reason = None
+
+            if refusal_reason is not None:
                 try:
                     proof_hash = build_proof_subject_hash(
                         operation_id=operation_id,
@@ -382,7 +396,7 @@ class MountRegistry:
                         consequence_identity=latest.receipt_id or "unknown",
                         canonical_asserted_proposition=(
                             f"failed {latest.action} on {latest.resource or '*'} "
-                            "with_proof fence_refusal"
+                            f"with_proof fence_refusal ({refusal_reason})"
                         ),
                     )
                     # _SITE: begin_consequence_fence
@@ -393,6 +407,7 @@ class MountRegistry:
                             intent_hash=latest.intent_hash,
                             state=ConsequenceState.FAILED.value,
                             version=latest.version + 1,
+                            authority_epoch=fence_row.authority_epoch if fence_row else latest.authority_epoch,
                             receipt_id=latest.receipt_id,
                             mount_id=latest.mount_id,
                             execution_id=latest.execution_id,
@@ -401,7 +416,7 @@ class MountRegistry:
                             resource=latest.resource,
                             # Certain: the refusal is decided here, before dispatch.
                             completion_proof_type="fence_refusal",
-                            error_summary="mount_terminated",
+                            error_summary=refusal_reason,
                             proof_subject_hash=proof_hash,
                         )
                     )
@@ -416,10 +431,10 @@ class MountRegistry:
                     receipt_id=latest.receipt_id,
                     action=latest.action,
                     decision=Decision.DENY.value,
-                    reason="mount_terminated",
+                    reason=refusal_reason,
                     proof_type="fence_refusal",
                 )
-                raise ExecutionTerminatedError("mount_terminated")
+                raise ExecutionTerminatedError(refusal_reason)
 
             try:
                 proof_hash = build_proof_subject_hash(
@@ -437,6 +452,7 @@ class MountRegistry:
                     intent_hash=latest.intent_hash,
                     state=ConsequenceState.STARTED.value,
                     version=latest.version + 1,
+                    authority_epoch=fence_row.authority_epoch if fence_row else latest.authority_epoch,
                     receipt_id=latest.receipt_id,
                     mount_id=latest.mount_id,
                     execution_id=latest.execution_id,
@@ -556,6 +572,7 @@ class MountRegistry:
                     intent_hash=latest.intent_hash,
                     state=target.value,
                     version=latest.version + 1,
+                    authority_epoch=latest.authority_epoch,
                     receipt_id=latest.receipt_id,
                     mount_id=latest.mount_id,
                     execution_id=latest.execution_id,
@@ -706,6 +723,15 @@ class MountRegistry:
                 boot_instance_id=boot_instance_id,
                 runtime_key_thumbprint=runtime_key_thumbprint,
                 state_root=state_root,
+            )
+            genesis_history_head = hashlib.sha256(
+                f"genesis:{mount.id}:{token.token_id}:1".encode("utf-8")
+            ).hexdigest()
+            mount = mount.model_copy(
+                update={
+                    "incarnation": 1,
+                    "history_head": genesis_history_head,
+                }
             )
             
             from cappo_backend.security.biscuit import mint_biscuit_capability
@@ -1326,16 +1352,18 @@ class MountRegistry:
             record: MountRecord | None,
         ) -> tuple[Decision, str, str | None, dict[str, Any]]:
             # Preflight failures must NOT consume the nonce or terminate the mount.
+            res = payload(
+                record=record,
+                decision=Decision.DENY,
+                reason=reason,
+                terminated=False,
+            )
+            db.commit()
             return (
                 Decision.DENY,
                 reason,
                 None,
-                payload(
-                    record=record,
-                    decision=Decision.DENY,
-                    reason=reason,
-                    terminated=False,
-                ),
+                res,
             )
 
         row = self._row(mount_id, lock=True)
@@ -1357,11 +1385,27 @@ class MountRegistry:
         if record.mount.state_root is not None and state_root != record.mount.state_root:
             return preflight_deny("state_root_mismatch", record)
             
+        from cappo_backend.models.capability_lease import CapabilityLease
+        lease = (
+            db.query(CapabilityLease)
+            .filter(CapabilityLease.mount_id == mount_id)
+            .order_by(CapabilityLease.authority_epoch.desc())
+            .first()
+        )
+        # Two counters exist: the lease epoch (issued at 0) and the mount row epoch (starts at 1).
+        # A caller presenting the epoch it was issued must stay valid until authority actually
+        # advances, so the initial values do not raise the bar: only an advanced mount epoch (> 1)
+        # or the lease epoch itself does.
+        lease_epoch = (lease.authority_epoch or 0) if lease is not None else 0
+        row_epoch = (row.authority_epoch or 1) if not row.terminated else 1
+        effective_epoch = max(lease_epoch, row_epoch if row_epoch > 1 else 0)
         if authority_epoch is not None:
-            from cappo_backend.models.capability_lease import CapabilityLease
-            lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
-            if lease and authority_epoch < lease.authority_epoch:
+            if authority_epoch < effective_epoch:
                 return preflight_deny("stale_authority_epoch", record)
+        elif effective_epoch > 1:
+            # Once a mount's authority epoch has advanced past 1, callers may not
+            # bypass epoch fencing by omitting authority_epoch.
+            return preflight_deny("stale_authority_epoch", record)
 
         if (
             not row.terminated
@@ -1433,17 +1477,19 @@ class MountRegistry:
                     if latest.intent_hash != expected_intent
                     else f"idempotency_replay:{latest.state}"
                 )
+                res_payload = payload(
+                    record=record,
+                    decision=Decision.DENY,
+                    reason=replay_reason,
+                    consequence_state=latest.state,
+                    receipt_id=latest.receipt_id,
+                )
+                db.commit()
                 return (
                     Decision.DENY,
                     replay_reason,
                     latest.state,
-                    payload(
-                        record=record,
-                        decision=Decision.DENY,
-                        reason=replay_reason,
-                        consequence_state=latest.state,
-                        receipt_id=latest.receipt_id,
-                    ),
+                    res_payload,
                 )
 
         invoked_here = False
@@ -1476,6 +1522,7 @@ class MountRegistry:
             # permit is bound to the target CAPPO is actually dispatching to.
             return adapter.dispatch(self._with_permit(context, record.mount.id, target_ref))
 
+        target_rejection: ValueError | None = None
         try:
             # CAPPO's binding is the sole owner of authorization and execution.
             result = record.binding.consequence(
@@ -1487,6 +1534,11 @@ class MountRegistry:
         except PolicyError as exc:
             decision = Decision.DENY
             reason = str(exc)
+        except ValueError as exc:
+            # The target refused its own input (e.g. invalid_target_resource). Only
+            # reported as a governed deny below if the FSM recorded a definite FAILED;
+            # otherwise it propagates exactly as before.
+            target_rejection = exc
         except Exception:
             raise
 
@@ -1496,6 +1548,11 @@ class MountRegistry:
             .order_by(ConsequenceExecutionEvent.version.desc())
             .limit(1)
         ).scalar_one_or_none()
+        if target_rejection is not None:
+            if latest is None or latest.state != ConsequenceState.FAILED.value:
+                raise target_rejection
+            decision = Decision.DENY
+            reason = f"target_rejected:{target_rejection}"
         consequence_state = latest.state if latest is not None else None
         receipt_id = latest.receipt_id if latest is not None else None
         anchoring = {
@@ -1522,6 +1579,7 @@ class MountRegistry:
         should_terminate = not (
             reason.startswith("idempotency_replay:")
             or reason == "consequence_already_started"
+            or (reason == "nonce_replayed" and bool(self._in_flight_operations(mount_id)))
         )
         terminated = False
         if should_terminate:
@@ -1980,12 +2038,13 @@ class MountRegistry:
             return Decision.DENY, "pgl_anchor_unconfirmed", anchor, []
 
         row.terminated = True
+        row.authority_epoch = (row.authority_epoch or 1) + 1
         mark_mount_revoked(mount_id)
         
         from cappo_backend.models.capability_lease import CapabilityLease, LeaseState
         lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
         if lease and lease.lease_state in (LeaseState.ISSUED.value, LeaseState.ACTIVE.value):
-            current_epoch = lease.revocation_epoch + 1
+            current_epoch = max(lease.revocation_epoch + 1, lease.authority_epoch or 0)
             # "terminate" explicitly means stopping it before natural expiration, 
             # so we use REVOKED and bump the revocation epoch.
             lease.transition_state(LeaseState.REVOKED, current_epoch)
@@ -1995,6 +2054,120 @@ class MountRegistry:
         if in_flight:
             return Decision.ALLOW, "terminated_in_flight", anchor, in_flight
         return Decision.ALLOW, "terminated", anchor, []
+
+    def advance_epoch(
+        self,
+        mount_id: str,
+        *,
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+    ) -> int:
+        """Monotonically advance the authority epoch of an active mount without terminating it."""
+        db = self._db()
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            db.commit()
+            raise ValueError(f"unknown_mount: {mount_id}")
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            db.commit()
+            raise PermissionError("owner_mismatch")
+        if row.terminated:
+            db.commit()
+            raise RuntimeError("cannot advance epoch on terminated mount")
+
+        row.authority_epoch = (row.authority_epoch or 1) + 1
+        new_epoch = row.authority_epoch
+        from cappo_backend.models.capability_lease import CapabilityLease
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
+        if lease is not None and (lease.authority_epoch or 0) < new_epoch:
+            # Callers present the lease's generation; keep it aligned with the mount's.
+            lease.authority_epoch = new_epoch
+        db.commit()
+        return new_epoch
+
+    def handover_incarnation(
+        self,
+        mount_id: str,
+        *,
+        decision_hash: str,
+        reason: str = "successor_handover",
+        owner_principal: str = "auth-disabled",
+        owner_workspace: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomically advance the mount's authority epoch, chain its continuity history_head,
+        and mint a fresh single-commit token_id and nonce for the successor incarnation (K1 -> K2).
+        """
+        db = self._db()
+        row = self._row(mount_id, lock=True)
+        if row is None:
+            db.commit()
+            raise ValueError(f"unknown_mount: {mount_id}")
+        if not self._owned_by(row, owner_principal, owner_workspace):
+            db.commit()
+            raise PermissionError("owner_mismatch")
+        if row.terminated:
+            db.commit()
+            raise RuntimeError("cannot handover incarnation on terminated mount")
+
+        previous_epoch = row.authority_epoch or 1
+        new_epoch = previous_epoch + 1
+        mount_data = dict(row.mount_json or {})
+        token_data = dict(row.token_json or {})
+
+        previous_history_head = str(
+            mount_data.get("history_head")
+            or hashlib.sha256(f"genesis:{mount_id}:{row.token_id}:{previous_epoch}".encode("utf-8")).hexdigest()
+        )
+        new_token_id = f"tok_{secrets.token_hex(12)}"
+        new_nonce = secrets.token_urlsafe(18)
+        new_history_head = hashlib.sha256(
+            f"{previous_history_head}:{mount_id}:{previous_epoch}->{new_epoch}:{decision_hash}:{new_token_id}".encode("utf-8")
+        ).hexdigest()
+
+        incarnation = int(mount_data.get("incarnation") or 1) + 1
+        mount_data["incarnation"] = incarnation
+        mount_data["previous_history_head"] = previous_history_head
+        mount_data["history_head"] = new_history_head
+        mount_data["decision_hash"] = decision_hash
+        mount_data["handover_reason"] = reason
+
+        token_data["token_id"] = new_token_id
+        token_data["nonce"] = new_nonce
+
+        row.authority_epoch = new_epoch
+        row.token_id = new_token_id
+        row.token_nonce = new_nonce
+        row.nonce_consumed = False
+        row.mount_json = mount_data
+        row.token_json = token_data
+
+        from cappo_backend.models.capability_lease import CapabilityLease
+        lease = db.query(CapabilityLease).filter(CapabilityLease.mount_id == mount_id).order_by(CapabilityLease.authority_epoch.desc()).first()
+        if lease is not None and (lease.authority_epoch or 0) < new_epoch:
+            lease.authority_epoch = new_epoch
+
+        record = self._record(row)
+        anchor = self.anchor.anchor(
+            "handover_incarnation",
+            action="handover",
+            decision=Decision.ALLOW.value,
+            reason=reason,
+            mount=record.mount,
+            token=record.token,
+        )
+        db.commit()
+        return {
+            "mount_id": mount_id,
+            "incarnation": incarnation,
+            "previous_authority_epoch": previous_epoch,
+            "authority_epoch": new_epoch,
+            "token_id": new_token_id,
+            "nonce": new_nonce,
+            "previous_history_head": previous_history_head,
+            "history_head": new_history_head,
+            "decision_hash": decision_hash,
+            "anchor_status": anchor.status,
+        }
 
 
 def load_packages_from_json(raw: str | None) -> list[CapabilityPackage]:

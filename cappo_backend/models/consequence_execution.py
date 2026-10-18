@@ -121,6 +121,9 @@ class ConsequenceExecutionEvent(Base):
     # Event order (0 = AUTHORIZED, 1 = STARTED, 2 = SUCCEEDED...)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Monotonic authority epoch at event creation (commit-fencing)
+    authority_epoch: Mapped[int | None] = mapped_column(Integer, nullable=True, default=1, index=True)
+
     # Authorization receipt that permitted this attempt — only strictly required on AUTHORIZED.
     receipt_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 

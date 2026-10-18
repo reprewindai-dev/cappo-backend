@@ -9,7 +9,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -172,6 +172,35 @@ class TerminateResponse(BaseModel):
     # Operations already authorized or started on the mount that had not
     # settled when terminate answered; an effect for these may still land.
     in_flight_operation_ids: list[str] = []
+
+
+class AdvanceEpochResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mount_id: str
+    authority_epoch: int
+
+
+class HandoverIncarnationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision_hash: str = Field(min_length=8, max_length=128)
+    reason: str = Field(default="successor_handover", min_length=1, max_length=128)
+
+
+class HandoverIncarnationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mount_id: str
+    incarnation: int
+    previous_authority_epoch: int
+    authority_epoch: int
+    token_id: str
+    nonce: str
+    previous_history_head: str
+    history_head: str
+    decision_hash: str
+    anchor_status: str
 
 
 class RedeemRequest(BaseModel):
@@ -747,6 +776,58 @@ def terminate_mount(
         mount_id=mount_id,
         in_flight_operation_ids=in_flight,
     )
+
+
+@router.post("/mounts/{mount_id}/advance-epoch", response_model=AdvanceEpochResponse)
+def advance_mount_epoch(
+    mount_id: str,
+    request: Request,
+    registry: MountRegistry = Depends(get_registry),
+) -> AdvanceEpochResponse:
+    principal, workspace = _caller(request)
+    try:
+        new_epoch = registry.advance_epoch(
+            mount_id,
+            owner_principal=principal,
+            owner_workspace=workspace,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return AdvanceEpochResponse(
+        mount_id=mount_id,
+        authority_epoch=new_epoch,
+    )
+
+
+@router.post("/mounts/{mount_id}/handover", response_model=HandoverIncarnationResponse)
+def handover_mount_incarnation(
+    mount_id: str,
+    body: HandoverIncarnationRequest,
+    request: Request,
+    registry: MountRegistry = Depends(get_registry),
+) -> HandoverIncarnationResponse:
+    principal, workspace = _caller(request)
+    try:
+        result = registry.handover_incarnation(
+            mount_id,
+            decision_hash=body.decision_hash,
+            reason=body.reason,
+            owner_principal=principal,
+            owner_workspace=workspace,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return HandoverIncarnationResponse(**result)
 
 
 @router.post("/redeem", response_model=RedeemResponse)
