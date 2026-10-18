@@ -1,0 +1,2219 @@
+{
+ "run_id": "20261011T170547Z",
+ "finished_at": "2026-10-11T17:53:49.959130+00:00",
+ "host": {
+  "kernel": "6.18.44-fc-v114",
+  "nproc": 4,
+  "python": "3.13.16",
+  "wasmtime_py": "44.0.0"
+ },
+ "params": {
+  "tenants": 300,
+  "duration": 90.0,
+  "rate": 250.0,
+  "budget_mib": [
+   16
+  ],
+  "idle_s": 5.0,
+  "headroom_kib": 0,
+  "repeat": 1,
+  "sample": true,
+  "page_cluster": null,
+  "probe_revoked": false,
+  "record_ws": true,
+  "reclaim_dry_run": 0,
+  "seed": [
+   601,
+   602,
+   603,
+   604,
+   605,
+   606,
+   607,
+   608,
+   609,
+   610,
+   611,
+   612,
+   613,
+   614,
+   615
+  ],
+  "variants": [
+   "informative"
+  ],
+  "policies": [
+   "native",
+   "mapped"
+  ],
+  "rotate_order": true,
+  "out": "/home/user/cappo-backend/vre15/runs",
+  "per_tenant_bytes": 1200000,
+  "page_cluster_in_effect": 3
+ },
+ "summary": {
+  "vre15": [
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23374,
+    "served": 22640,
+    "denied": 734,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 7562,
+      "within_deadline": 7557,
+      "within_deadline_pct": 99.93,
+      "p50_ms": 0.39,
+      "p95_ms": 1.036,
+      "p99_ms": 3.59
+     },
+     "batch": {
+      "served": 15078,
+      "within_deadline": 15078,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.37,
+      "p95_ms": 1.054,
+      "p99_ms": 5.116
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 21.5,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1111285.0,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 10174,
+    "swap_pages_out": 8443,
+    "warmup_swap_pages_out": 79019,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8623,
+    "request_thread_major_faults": 8629,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.37,
+     "swap_pages_in": 2486,
+     "swap_pages_out": 4978,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791738374.9907205,
+    "stall_seconds": 2,
+    "stall_episodes": 2,
+    "stall_buckets": [
+     28,
+     41
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 601,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23374,
+    "served": 22640,
+    "denied": 734,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 7562,
+      "within_deadline": 7549,
+      "within_deadline_pct": 99.83,
+      "p50_ms": 0.426,
+      "p95_ms": 1.163,
+      "p99_ms": 3.893
+     },
+     "batch": {
+      "served": 15078,
+      "within_deadline": 15078,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.397,
+      "p95_ms": 1.2,
+      "p99_ms": 6.871
+     }
+    },
+    "mean_resident_mib": 21.2,
+    "peak_resident_mib": 22.2,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1094736.9,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9294,
+    "swap_pages_out": 8145,
+    "warmup_swap_pages_out": 2389,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8447,
+    "request_thread_major_faults": 8458,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.51,
+     "swap_pages_in": 648,
+     "swap_pages_out": 3790,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 15
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791738473.8371758,
+    "stall_seconds": 2,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     31,
+     32
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 601,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23301,
+    "served": 22569,
+    "denied": 732,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 14308,
+      "within_deadline": 14307,
+      "within_deadline_pct": 99.99,
+      "p50_ms": 0.391,
+      "p95_ms": 1.021,
+      "p99_ms": 3.739
+     },
+     "batch": {
+      "served": 8261,
+      "within_deadline": 8261,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.446,
+      "p95_ms": 1.31,
+      "p99_ms": 6.041
+     }
+    },
+    "mean_resident_mib": 20.2,
+    "peak_resident_mib": 22.1,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1141379.1,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8285,
+    "swap_pages_out": 5726,
+    "warmup_swap_pages_out": 2338,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7239,
+    "request_thread_major_faults": 7240,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.41,
+     "swap_pages_in": 902,
+     "swap_pages_out": 6185,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 14
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791738571.4286857,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     74
+    ],
+    "wall_s": 89.8,
+    "budget_mib": 16,
+    "seed": 602,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23301,
+    "served": 22569,
+    "denied": 732,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 14308,
+      "within_deadline": 14284,
+      "within_deadline_pct": 99.83,
+      "p50_ms": 0.37,
+      "p95_ms": 0.926,
+      "p99_ms": 3.977
+     },
+     "batch": {
+      "served": 8261,
+      "within_deadline": 8261,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.422,
+      "p95_ms": 1.097,
+      "p99_ms": 5.663
+     }
+    },
+    "mean_resident_mib": 21.0,
+    "peak_resident_mib": 21.5,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1099466.7,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9073,
+    "swap_pages_out": 8107,
+    "warmup_swap_pages_out": 79227,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8258,
+    "request_thread_major_faults": 8264,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.35,
+     "swap_pages_in": 2598,
+     "swap_pages_out": 4664,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791738671.276384,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     25
+    ],
+    "wall_s": 89.8,
+    "budget_mib": 16,
+    "seed": 602,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23023,
+    "served": 22328,
+    "denied": 695,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 6444,
+      "within_deadline": 6420,
+      "within_deadline_pct": 99.63,
+      "p50_ms": 0.459,
+      "p95_ms": 1.279,
+      "p99_ms": 6.553
+     },
+     "batch": {
+      "served": 15884,
+      "within_deadline": 15884,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.42,
+      "p95_ms": 1.224,
+      "p99_ms": 7.364
+     }
+    },
+    "mean_resident_mib": 20.8,
+    "peak_resident_mib": 21.5,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1100222.9,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9102,
+    "swap_pages_out": 8045,
+    "warmup_swap_pages_out": 78634,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8323,
+    "request_thread_major_faults": 8328,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.5,
+     "swap_pages_in": 2576,
+     "swap_pages_out": 5225,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791738772.6458323,
+    "stall_seconds": 2,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     35,
+     36
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 603,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23023,
+    "served": 22328,
+    "denied": 695,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 6444,
+      "within_deadline": 6435,
+      "within_deadline_pct": 99.86,
+      "p50_ms": 0.428,
+      "p95_ms": 1.143,
+      "p99_ms": 3.873
+     },
+     "batch": {
+      "served": 15884,
+      "within_deadline": 15884,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.389,
+      "p95_ms": 1.038,
+      "p99_ms": 4.369
+     }
+    },
+    "mean_resident_mib": 21.1,
+    "peak_resident_mib": 22.2,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1084330.0,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9344,
+    "swap_pages_out": 8156,
+    "warmup_swap_pages_out": 2246,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8391,
+    "request_thread_major_faults": 8390,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.42,
+     "swap_pages_in": 679,
+     "swap_pages_out": 4080,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 15
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791738871.6640868,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     39
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 603,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23405,
+    "served": 22697,
+    "denied": 708,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 6648,
+      "within_deadline": 6644,
+      "within_deadline_pct": 99.94,
+      "p50_ms": 0.386,
+      "p95_ms": 1.04,
+      "p99_ms": 4.152
+     },
+     "batch": {
+      "served": 16049,
+      "within_deadline": 16049,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.365,
+      "p95_ms": 0.987,
+      "p99_ms": 3.499
+     }
+    },
+    "mean_resident_mib": 21.2,
+    "peak_resident_mib": 22.2,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1098280.0,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8357,
+    "swap_pages_out": 7754,
+    "warmup_swap_pages_out": 2241,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7378,
+    "request_thread_major_faults": 7378,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.44,
+     "swap_pages_in": 449,
+     "swap_pages_out": 4040,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 15
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791738969.5171833,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     36
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 604,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23405,
+    "served": 22697,
+    "denied": 708,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 6648,
+      "within_deadline": 6646,
+      "within_deadline_pct": 99.97,
+      "p50_ms": 0.395,
+      "p95_ms": 1.084,
+      "p99_ms": 4.223
+     },
+     "batch": {
+      "served": 16049,
+      "within_deadline": 16049,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.371,
+      "p95_ms": 1.02,
+      "p99_ms": 6.417
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 21.4,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1111779.0,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8599,
+    "swap_pages_out": 7991,
+    "warmup_swap_pages_out": 78742,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7804,
+    "request_thread_major_faults": 7809,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.37,
+     "swap_pages_in": 2587,
+     "swap_pages_out": 4916,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739069.02756,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     34
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 604,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": -9,
+    "oom_kills": 1,
+    "requests": 23199,
+    "served": 0,
+    "denied": 0,
+    "authority_violations": null,
+    "integrity_failures": null,
+    "by_class": {},
+    "mean_resident_mib": 0.0,
+    "peak_resident_mib": 0.0,
+    "mean_memcg_mib": null,
+    "peak_memcg_mib": null,
+    "useful_work_per_gib": null,
+    "restores": null,
+    "restore_p95_ms": null,
+    "demotions": null,
+    "snapshot_bytes_written": null,
+    "swap_pages_in": null,
+    "swap_pages_out": null,
+    "warmup_swap_pages_out": null,
+    "advice": null,
+    "advice_errors": null,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": null,
+    "request_thread_major_faults": null,
+    "recording": null,
+    "revoked_residency": null,
+    "release": null,
+    "trace_start_wall": null,
+    "wall_s": 0,
+    "budget_mib": 16,
+    "seed": 605,
+    "order_in_cell": 0,
+    "stderr_tail": ""
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23199,
+    "served": 22501,
+    "denied": 698,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 6260,
+      "within_deadline": 6247,
+      "within_deadline_pct": 99.79,
+      "p50_ms": 0.397,
+      "p95_ms": 1.026,
+      "p99_ms": 3.26
+     },
+     "batch": {
+      "served": 16241,
+      "within_deadline": 16241,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.342,
+      "p95_ms": 0.967,
+      "p99_ms": 6.585
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 22.3,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1100744.9,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9498,
+    "swap_pages_out": 7828,
+    "warmup_swap_pages_out": 2334,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8342,
+    "request_thread_major_faults": 8347,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.42,
+     "swap_pages_in": 476,
+     "swap_pages_out": 4413,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 6
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739206.2999902,
+    "stall_seconds": 2,
+    "stall_episodes": 2,
+    "stall_buckets": [
+     20,
+     37
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 605,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 22993,
+    "served": 22290,
+    "denied": 703,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 11720,
+      "within_deadline": 11710,
+      "within_deadline_pct": 99.91,
+      "p50_ms": 0.328,
+      "p95_ms": 0.985,
+      "p99_ms": 6.146
+     },
+     "batch": {
+      "served": 10570,
+      "within_deadline": 10570,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.375,
+      "p95_ms": 1.046,
+      "p99_ms": 3.495
+     }
+    },
+    "mean_resident_mib": 21.0,
+    "peak_resident_mib": 22.1,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1086536.5,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 7636,
+    "swap_pages_out": 6688,
+    "warmup_swap_pages_out": 2274,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7057,
+    "request_thread_major_faults": 7062,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.34,
+     "swap_pages_in": 415,
+     "swap_pages_out": 4473,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 7
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739303.3804796,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     27
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 606,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 22993,
+    "served": 22290,
+    "denied": 703,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 11720,
+      "within_deadline": 11675,
+      "within_deadline_pct": 99.62,
+      "p50_ms": 0.332,
+      "p95_ms": 1.142,
+      "p99_ms": 8.799
+     },
+     "batch": {
+      "served": 10570,
+      "within_deadline": 10570,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.38,
+      "p95_ms": 1.125,
+      "p99_ms": 4.244
+     }
+    },
+    "mean_resident_mib": 20.8,
+    "peak_resident_mib": 21.5,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1092568.0,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9478,
+    "swap_pages_out": 8625,
+    "warmup_swap_pages_out": 79072,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8479,
+    "request_thread_major_faults": 8484,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.4,
+     "swap_pages_in": 2345,
+     "swap_pages_out": 4782,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739403.3938,
+    "stall_seconds": 2,
+    "stall_episodes": 2,
+    "stall_buckets": [
+     2,
+     25
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 606,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23201,
+    "served": 22537,
+    "denied": 664,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 10980,
+      "within_deadline": 10977,
+      "within_deadline_pct": 99.97,
+      "p50_ms": 0.304,
+      "p95_ms": 0.903,
+      "p99_ms": 2.731
+     },
+     "batch": {
+      "served": 11557,
+      "within_deadline": 11557,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.401,
+      "p95_ms": 1.111,
+      "p99_ms": 5.519
+     }
+    },
+    "mean_resident_mib": 20.8,
+    "peak_resident_mib": 21.3,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1109002.8,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9657,
+    "swap_pages_out": 8706,
+    "warmup_swap_pages_out": 79189,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8518,
+    "request_thread_major_faults": 8522,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.3,
+     "swap_pages_in": 2498,
+     "swap_pages_out": 4833,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739503.2681623,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     39
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 607,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23201,
+    "served": 22537,
+    "denied": 664,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 10980,
+      "within_deadline": 10976,
+      "within_deadline_pct": 99.96,
+      "p50_ms": 0.3,
+      "p95_ms": 0.94,
+      "p99_ms": 3.729
+     },
+     "batch": {
+      "served": 11557,
+      "within_deadline": 11557,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.393,
+      "p95_ms": 1.078,
+      "p99_ms": 4.635
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 22.0,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1102213.5,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8042,
+    "swap_pages_out": 7268,
+    "warmup_swap_pages_out": 2402,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 6903,
+    "request_thread_major_faults": 6906,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.4,
+     "swap_pages_in": 960,
+     "swap_pages_out": 4175,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 14
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739600.9409907,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     43
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 607,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23118,
+    "served": 22460,
+    "denied": 658,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 9556,
+      "within_deadline": 9490,
+      "within_deadline_pct": 99.31,
+      "p50_ms": 0.41,
+      "p95_ms": 1.278,
+      "p99_ms": 69.832
+     },
+     "batch": {
+      "served": 12904,
+      "within_deadline": 12904,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.381,
+      "p95_ms": 1.185,
+      "p99_ms": 7.422
+     }
+    },
+    "mean_resident_mib": 20.0,
+    "peak_resident_mib": 22.2,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1148439.5,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 10473,
+    "swap_pages_out": 6910,
+    "warmup_swap_pages_out": 2018,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 10353,
+    "request_thread_major_faults": 10352,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.43,
+     "swap_pages_in": 1009,
+     "swap_pages_out": 6585,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 13
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739699.7068436,
+    "stall_seconds": 2,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     39,
+     40
+    ],
+    "wall_s": 89.7,
+    "budget_mib": 16,
+    "seed": 608,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23118,
+    "served": 22460,
+    "denied": 658,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 9556,
+      "within_deadline": 9535,
+      "within_deadline_pct": 99.78,
+      "p50_ms": 0.378,
+      "p95_ms": 1.019,
+      "p99_ms": 4.306
+     },
+     "batch": {
+      "served": 12904,
+      "within_deadline": 12904,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.349,
+      "p95_ms": 0.974,
+      "p99_ms": 3.018
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 21.4,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1101024.8,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9216,
+    "swap_pages_out": 8187,
+    "warmup_swap_pages_out": 78620,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8031,
+    "request_thread_major_faults": 8031,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.34,
+     "swap_pages_in": 2703,
+     "swap_pages_out": 4754,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739798.9257555,
+    "stall_seconds": 2,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     36,
+     37
+    ],
+    "wall_s": 89.7,
+    "budget_mib": 16,
+    "seed": 608,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23121,
+    "served": 22419,
+    "denied": 702,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 4745,
+      "within_deadline": 4721,
+      "within_deadline_pct": 99.49,
+      "p50_ms": 0.42,
+      "p95_ms": 1.111,
+      "p99_ms": 11.591
+     },
+     "batch": {
+      "served": 17674,
+      "within_deadline": 17674,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.336,
+      "p95_ms": 1.061,
+      "p99_ms": 53.233
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 21.6,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1096881.1,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9340,
+    "swap_pages_out": 8496,
+    "warmup_swap_pages_out": 79171,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 10792,
+    "request_thread_major_faults": 10798,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.4,
+     "swap_pages_in": 2763,
+     "swap_pages_out": 4549,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739899.9663167,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     27
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 609,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23121,
+    "served": 22419,
+    "denied": 702,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 4745,
+      "within_deadline": 4742,
+      "within_deadline_pct": 99.94,
+      "p50_ms": 0.427,
+      "p95_ms": 1.078,
+      "p99_ms": 3.689
+     },
+     "batch": {
+      "served": 17674,
+      "within_deadline": 17674,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.332,
+      "p95_ms": 0.905,
+      "p99_ms": 3.369
+     }
+    },
+    "mean_resident_mib": 21.1,
+    "peak_resident_mib": 22.4,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1089422.9,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9428,
+    "swap_pages_out": 7857,
+    "warmup_swap_pages_out": 2287,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8397,
+    "request_thread_major_faults": 8397,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.33,
+     "swap_pages_in": 434,
+     "swap_pages_out": 4163,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 14
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791739998.0360854,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     29
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 609,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23234,
+    "served": 22524,
+    "denied": 710,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 9372,
+      "within_deadline": 9357,
+      "within_deadline_pct": 99.84,
+      "p50_ms": 0.366,
+      "p95_ms": 0.978,
+      "p99_ms": 3.43
+     },
+     "batch": {
+      "served": 13152,
+      "within_deadline": 13152,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.342,
+      "p95_ms": 0.967,
+      "p99_ms": 3.389
+     }
+    },
+    "mean_resident_mib": 19.9,
+    "peak_resident_mib": 22.1,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1158843.5,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9840,
+    "swap_pages_out": 6334,
+    "warmup_swap_pages_out": 2038,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8741,
+    "request_thread_major_faults": 8743,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.38,
+     "swap_pages_in": 1019,
+     "swap_pages_out": 6659,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740095.2385287,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     40
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 610,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23234,
+    "served": 22524,
+    "denied": 710,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 9372,
+      "within_deadline": 9365,
+      "within_deadline_pct": 99.93,
+      "p50_ms": 0.401,
+      "p95_ms": 1.021,
+      "p99_ms": 4.258
+     },
+     "batch": {
+      "served": 13152,
+      "within_deadline": 13152,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.376,
+      "p95_ms": 1.033,
+      "p99_ms": 7.838
+     }
+    },
+    "mean_resident_mib": 20.8,
+    "peak_resident_mib": 21.6,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1106619.6,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9329,
+    "swap_pages_out": 8594,
+    "warmup_swap_pages_out": 79007,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 12524,
+    "request_thread_major_faults": 12525,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.36,
+     "swap_pages_in": 2938,
+     "swap_pages_out": 4781,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740194.6151366,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     37
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 610,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23424,
+    "served": 22707,
+    "denied": 717,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 12775,
+      "within_deadline": 12747,
+      "within_deadline_pct": 99.78,
+      "p50_ms": 0.354,
+      "p95_ms": 1.161,
+      "p99_ms": 7.205
+     },
+     "batch": {
+      "served": 9932,
+      "within_deadline": 9932,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.417,
+      "p95_ms": 1.187,
+      "p99_ms": 6.326
+     }
+    },
+    "mean_resident_mib": 21.0,
+    "peak_resident_mib": 21.6,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1108056.0,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9328,
+    "swap_pages_out": 7997,
+    "warmup_swap_pages_out": 79089,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 9338,
+    "request_thread_major_faults": 9342,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.4,
+     "swap_pages_in": 2569,
+     "swap_pages_out": 4609,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740294.4149997,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     40
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 611,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23424,
+    "served": 22707,
+    "denied": 717,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 12775,
+      "within_deadline": 12768,
+      "within_deadline_pct": 99.95,
+      "p50_ms": 0.323,
+      "p95_ms": 0.899,
+      "p99_ms": 2.923
+     },
+     "batch": {
+      "served": 9932,
+      "within_deadline": 9932,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.385,
+      "p95_ms": 1.013,
+      "p99_ms": 2.816
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 21.9,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1114294.9,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8246,
+    "swap_pages_out": 7256,
+    "warmup_swap_pages_out": 2793,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 6906,
+    "request_thread_major_faults": 6909,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.47,
+     "swap_pages_in": 1136,
+     "swap_pages_out": 3942,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 15
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740391.8132899,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     43
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 611,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23024,
+    "served": 22343,
+    "denied": 681,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 12566,
+      "within_deadline": 12525,
+      "within_deadline_pct": 99.67,
+      "p50_ms": 0.369,
+      "p95_ms": 0.989,
+      "p99_ms": 4.133
+     },
+     "batch": {
+      "served": 9777,
+      "within_deadline": 9777,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.395,
+      "p95_ms": 1.096,
+      "p99_ms": 5.295
+     }
+    },
+    "mean_resident_mib": 21.0,
+    "peak_resident_mib": 22.1,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1085856.4,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9495,
+    "swap_pages_out": 8370,
+    "warmup_swap_pages_out": 2895,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8874,
+    "request_thread_major_faults": 8874,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.37,
+     "swap_pages_in": 1153,
+     "swap_pages_out": 3867,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 14
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740489.6557593,
+    "stall_seconds": 2,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     26,
+     27
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 612,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23024,
+    "served": 22343,
+    "denied": 681,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 12566,
+      "within_deadline": 12561,
+      "within_deadline_pct": 99.96,
+      "p50_ms": 0.383,
+      "p95_ms": 1.016,
+      "p99_ms": 3.173
+     },
+     "batch": {
+      "served": 9777,
+      "within_deadline": 9777,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.424,
+      "p95_ms": 1.154,
+      "p99_ms": 3.717
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 21.5,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1094749.5,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8646,
+    "swap_pages_out": 8104,
+    "warmup_swap_pages_out": 78540,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7459,
+    "request_thread_major_faults": 7464,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.37,
+     "swap_pages_in": 2834,
+     "swap_pages_out": 4994,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740589.4186306,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     23
+    ],
+    "wall_s": 90.0,
+    "budget_mib": 16,
+    "seed": 612,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": -9,
+    "oom_kills": 1,
+    "requests": 23313,
+    "served": 0,
+    "denied": 0,
+    "authority_violations": null,
+    "integrity_failures": null,
+    "by_class": {},
+    "mean_resident_mib": 0.0,
+    "peak_resident_mib": 0.0,
+    "mean_memcg_mib": null,
+    "peak_memcg_mib": null,
+    "useful_work_per_gib": null,
+    "restores": null,
+    "restore_p95_ms": null,
+    "demotions": null,
+    "snapshot_bytes_written": null,
+    "swap_pages_in": null,
+    "swap_pages_out": null,
+    "warmup_swap_pages_out": null,
+    "advice": null,
+    "advice_errors": null,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": null,
+    "request_thread_major_faults": null,
+    "recording": null,
+    "revoked_residency": null,
+    "release": null,
+    "trace_start_wall": null,
+    "wall_s": 0,
+    "budget_mib": 16,
+    "seed": 613,
+    "order_in_cell": 0,
+    "stderr_tail": ""
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23313,
+    "served": 22612,
+    "denied": 701,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 10124,
+      "within_deadline": 10116,
+      "within_deadline_pct": 99.92,
+      "p50_ms": 0.348,
+      "p95_ms": 0.934,
+      "p99_ms": 3.26
+     },
+     "batch": {
+      "served": 12488,
+      "within_deadline": 12488,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.397,
+      "p95_ms": 1.012,
+      "p99_ms": 3.183
+     }
+    },
+    "mean_resident_mib": 21.0,
+    "peak_resident_mib": 22.0,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1100744.4,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8308,
+    "swap_pages_out": 7121,
+    "warmup_swap_pages_out": 2173,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7552,
+    "request_thread_major_faults": 7556,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.43,
+     "swap_pages_in": 396,
+     "swap_pages_out": 4540,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 15
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740727.6666543,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     39
+    ],
+    "wall_s": 89.8,
+    "budget_mib": 16,
+    "seed": 613,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23596,
+    "served": 22888,
+    "denied": 708,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 11993,
+      "within_deadline": 11972,
+      "within_deadline_pct": 99.82,
+      "p50_ms": 0.313,
+      "p95_ms": 0.909,
+      "p99_ms": 3.985
+     },
+     "batch": {
+      "served": 10895,
+      "within_deadline": 10895,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.406,
+      "p95_ms": 1.054,
+      "p99_ms": 3.248
+     }
+    },
+    "mean_resident_mib": 21.0,
+    "peak_resident_mib": 22.2,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1116108.8,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 9558,
+    "swap_pages_out": 8251,
+    "warmup_swap_pages_out": 2896,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 8619,
+    "request_thread_major_faults": 8619,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.34,
+     "swap_pages_in": 1117,
+     "swap_pages_out": 3859,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 15
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740824.6942873,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     33
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 614,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23596,
+    "served": 22888,
+    "denied": 708,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 11993,
+      "within_deadline": 11958,
+      "within_deadline_pct": 99.71,
+      "p50_ms": 0.318,
+      "p95_ms": 0.909,
+      "p99_ms": 5.327
+     },
+     "batch": {
+      "served": 10895,
+      "within_deadline": 10895,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.4,
+      "p95_ms": 1.074,
+      "p99_ms": 4.37
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 21.5,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1117769.1,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8625,
+    "swap_pages_out": 7873,
+    "warmup_swap_pages_out": 78978,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7480,
+    "request_thread_major_faults": 7482,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.37,
+     "swap_pages_in": 2403,
+     "swap_pages_out": 4418,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791740924.8303196,
+    "stall_seconds": 1,
+    "stall_episodes": 1,
+    "stall_buckets": [
+     31
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 614,
+    "order_in_cell": 1
+   },
+   {
+    "policy": "native",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23287,
+    "served": 22593,
+    "denied": 694,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 5117,
+      "within_deadline": 5101,
+      "within_deadline_pct": 99.69,
+      "p50_ms": 0.425,
+      "p95_ms": 1.174,
+      "p99_ms": 7.583
+     },
+     "batch": {
+      "served": 17476,
+      "within_deadline": 17476,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.375,
+      "p95_ms": 1.012,
+      "p99_ms": 4.787
+     }
+    },
+    "mean_resident_mib": 20.8,
+    "peak_resident_mib": 21.3,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1111590.9,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8160,
+    "swap_pages_out": 7401,
+    "warmup_swap_pages_out": 79158,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 7128,
+    "request_thread_major_faults": 7133,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.33,
+     "swap_pages_in": 2500,
+     "swap_pages_out": 4848,
+     "ws_pages_p50": 14,
+     "ws_pages_max": 16,
+     "ws_pages_min": 11
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791741024.9109604,
+    "stall_seconds": 3,
+    "stall_episodes": 2,
+    "stall_buckets": [
+     24,
+     40,
+     41
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 615,
+    "order_in_cell": 0
+   },
+   {
+    "policy": "mapped",
+    "variant": "informative",
+    "exit_code": 0,
+    "oom_kills": 0,
+    "requests": 23287,
+    "served": 22593,
+    "denied": 694,
+    "authority_violations": 0,
+    "integrity_failures": 0,
+    "by_class": {
+     "interactive": {
+      "served": 5117,
+      "within_deadline": 5107,
+      "within_deadline_pct": 99.8,
+      "p50_ms": 0.44,
+      "p95_ms": 1.248,
+      "p99_ms": 8.254
+     },
+     "batch": {
+      "served": 17476,
+      "within_deadline": 17476,
+      "within_deadline_pct": 100.0,
+      "p50_ms": 0.395,
+      "p95_ms": 1.156,
+      "p99_ms": 26.996
+     }
+    },
+    "mean_resident_mib": 20.9,
+    "peak_resident_mib": 22.2,
+    "mean_memcg_mib": 15.9,
+    "peak_memcg_mib": 16.0,
+    "useful_work_per_gib": 1105780.4,
+    "restores": 0,
+    "restore_p95_ms": null,
+    "demotions": 0,
+    "snapshot_bytes_written": 0,
+    "swap_pages_in": 8080,
+    "swap_pages_out": 6833,
+    "warmup_swap_pages_out": 2286,
+    "advice": {
+     "open": 0,
+     "close": 0
+    },
+    "advice_errors": 0,
+    "reclaim": null,
+    "prefetch": null,
+    "major_faults": 6883,
+    "request_thread_major_faults": 6887,
+    "recording": {
+     "steps_per_tenant": 32,
+     "s": 0.54,
+     "swap_pages_in": 429,
+     "swap_pages_out": 4464,
+     "ws_pages_p50": 16,
+     "ws_pages_max": 16,
+     "ws_pages_min": 8
+    },
+    "revoked_residency": null,
+    "release": {
+     "skipped_reauthorized": 0,
+     "worker_errors": 0
+    },
+    "trace_start_wall": 1791741123.2609541,
+    "stall_seconds": 2,
+    "stall_episodes": 2,
+    "stall_buckets": [
+     10,
+     26
+    ],
+    "wall_s": 89.9,
+    "budget_mib": 16,
+    "seed": 615,
+    "order_in_cell": 1
+   }
+  ]
+ }
+}

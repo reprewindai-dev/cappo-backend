@@ -1,0 +1,151 @@
+{
+ "envelope": {
+  "alg": "Ed25519",
+  "key_id": "ce149b8514366095",
+  "payload": {
+   "kind": "veklom.vre0.envelope/v1",
+   "envelope_id": "fcacdaeb-2e65-4219-b885-f9329011c437",
+   "execution_id": "ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+   "scenario": "widened_boundary",
+   "role": "sibling",
+   "issued_at": 1791691196,
+   "expires_at": 1791691496,
+   "workload": {
+    "module": "sibling",
+    "module_sha256": "fcdff39cca8e6c69ae8bf7ca0742f15365ce7325d0232f81792554ee344e3fda",
+    "entry": "run"
+   },
+   "resources": {
+    "memory_max_bytes": 134217728,
+    "compute_fuel": 20000000000,
+    "wall_deadline_ms": 5000,
+    "output_max_bytes": 4096
+   },
+   "evidence_level": "E2"
+  },
+  "sig": "XSIkx7AKZvFLVJeFSTJHgvih5scRaut6sSlPyhjwImjMuGYqhS6BUfUHmXprPOvPZN4l0Vfz6Bz0T6XZaiBgBQ=="
+ },
+ "boundary": {
+  "kind": "veklom.vre0.boundary/v1",
+  "execution_id": "ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+  "envelope_digest": "1f9f6e24b8a64279538b9204148d20820480a3efe61621abece478937b9bddd2",
+  "substrate": {
+   "cgroup_version": 1,
+   "kernel": "6.18.44-fc-v114",
+   "boot_id": "d5d4b582-ad72-42c6-a121-c47d4a5b7db8"
+  },
+  "cgroup": {
+   "paths": {
+    "memory": "/sys/fs/cgroup/memory/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+    "cpuacct": "/sys/fs/cgroup/cpuacct/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163"
+   },
+   "relative_paths": {
+    "memory": "/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+    "cpuacct": "/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163"
+   },
+   "inodes": {
+    "memory": 14243,
+    "cpuacct": 5710
+   }
+  },
+  "readback": {
+   "memory_limit_bytes": 134217728,
+   "memory_plus_swap_limit_bytes": 134217728,
+   "oom_kill_disable": 0
+  },
+  "process": {
+   "pid": 3679,
+   "starttime_ticks": 151703,
+   "membership": {
+    "memory": {
+     "expected": "/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+     "observed": "/process_api/01a12906-f139-7261-80a6-853022adc5d7/claude-code-bash/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+     "match": true
+    },
+    "cpuacct": {
+     "expected": "/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+     "observed": "/vre0-20261011T035711Z/ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+     "match": true
+    }
+   }
+  },
+  "runtime": {
+   "pid": 3679,
+   "module_sha256": "fcdff39cca8e6c69ae8bf7ca0742f15365ce7325d0232f81792554ee344e3fda",
+   "fuel_set": 20000000000,
+   "output_max": 4096
+  },
+  "wall_deadline_ms_enforced": 5000,
+  "checks": {
+   "memory_not_widened": true,
+   "swap_not_widened": true,
+   "oom_kill_enabled": true,
+   "process_placed": true,
+   "process_is_spawned_child": true,
+   "module_matches_envelope": true,
+   "fuel_not_widened": true,
+   "output_not_widened": true
+  }
+ },
+ "evidence": {
+  "kind": "veklom.vre0.evidence/v1",
+  "execution_id": "ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+  "boundary_digest": "1353cae72103561d17dcafe32cda7a9ed0b2db58d574caf7cc5f8ab31dd198b4",
+  "refusal": null,
+  "released": true,
+  "released_wall_s": 1791691197,
+  "released_at_ns": 1517250540772,
+  "deadline_at_ns": 1522250540772,
+  "reaped_at_ns": 1517991565812,
+  "counters_before": {
+   "oom_kill": 0,
+   "limit_hits": 0,
+   "swap_limit_hits": 0,
+   "usage_bytes": 11714560,
+   "peak_bytes": 11714560,
+   "cpu_ns": 81069918
+  },
+  "counters_after": {
+   "oom_kill": 0,
+   "limit_hits": 0,
+   "swap_limit_hits": 0,
+   "usage_bytes": 802816,
+   "peak_bytes": 28491776,
+   "cpu_ns": 814747129
+  },
+  "supervisor_actions": [],
+  "wait_status": {
+   "exit_code": 0,
+   "signal": null
+  },
+  "runtime_report": {
+   "status": "returned",
+   "return_value": "7539926256355120515",
+   "fuel_remaining": 12499950846,
+   "fuel_consumed": 7500049154,
+   "output_bytes": 0
+  },
+  "untrusted_guest_output": "",
+  "untrusted_guest_output_bytes": 0,
+  "residual_procs": [],
+  "teardown": {
+   "memory": "removed",
+   "cpuacct": "removed"
+  },
+  "shim_stderr_tail": ""
+ },
+ "receipt": {
+  "alg": "Ed25519",
+  "key_id": "b7d2d0a1e520f863",
+  "payload": {
+   "kind": "veklom.vre0.receipt/v1",
+   "execution_id": "ddfaea6a-b38c-4248-be1c-b7ccc208c163",
+   "envelope_digest": "1f9f6e24b8a64279538b9204148d20820480a3efe61621abece478937b9bddd2",
+   "boundary_digest": "1353cae72103561d17dcafe32cda7a9ed0b2db58d574caf7cc5f8ab31dd198b4",
+   "evidence_digest": "90b848fbf36198d08ed17c22c905acce29d396164db9bdfc7e9db5ce3aac4c44",
+   "outcome": "COMPLETED",
+   "evidence_level": "E2"
+  },
+  "sig": "GFdDYrBfcCPTdNtPjq1LcN/1HJ+ZFgNNS8z59Dr+FD7F7UI+7JZMFNiopxfl2vz7owunjlJOSa2Vd2oNStF1DA=="
+ }
+}
