@@ -16,18 +16,12 @@ from sqlalchemy.orm import Session
 
 from cappo_backend.api.routers.capability_mount_router import get_registry
 from cappo_backend.authorization.errors import CappoAuthorizationError
-from cappo_backend.authorization.legacy_adapter import LegacyCredentialAdapter
+from cappo_backend.capability_mount.inference import package_allowed_providers
 from cappo_backend.capability_mount.models import Decision
 from cappo_backend.config import Settings, get_settings
 from cappo_backend.db.session import get_session
 from cappo_backend.identity.errors import IdentityValidationError
 from cappo_backend.identity.middleware import RouteClassification, WIDMiddlewareContext
-from cappo_backend.identity.models import (
-    AuthorityArtifact,
-    ExecutionContextToken,
-    WorkloadIdentityToken,
-    WorkloadProofToken,
-)
 from cappo_backend.identity.replay_cache import RedisReplayCache, ReplayCache
 from cappo_backend.identity.validator import IdentityValidator
 from cappo_backend.models.consequence_execution import build_intent_hash
@@ -348,13 +342,12 @@ async def _verify_exec_request_integrity(request: Request, public_key: str) -> N
             headers=request.headers,
             body=await request.body(),
             public_key_hex=public_key,
+            # The gatekeeper's signature is what makes the workload identity headers
+            # trustworthy. Authority is not a header: it comes from the capability lease.
             required_header_components={
                 "workload-identity",
                 "execution-context",
                 "workload-proof",
-                "veklom-authority",
-                "x-veklom-actor",
-                "x-veklom-nonce",
             },
         )
     except SignatureVerificationError as exc:
@@ -532,7 +525,6 @@ async def governed_exec(
         wit_payload = _get_b64_json(request.headers, "Workload-Identity")
         ect_payload = _get_b64_json(request.headers, "Execution-Context")
         wpt_payload = _get_b64_json(request.headers, "Workload-Proof")
-        authority_payload = None  # Deprecated client JSON authority format
 
     if hasattr(request.app.state, "redis_client") and request.app.state.redis_client:
         replay_cache = RedisReplayCache(request.app.state.redis_client)
@@ -544,47 +536,12 @@ async def governed_exec(
 
         replay_cache = MockReplayCache()
 
-    if not test_only_echo:
-        wid_validator = IdentityValidator("https://cappo.veklom.com", replay_cache)
-        wid_middleware = WIDMiddlewareContext(
-            RouteClassification.CONSEQUENCE,
-            wid_validator,
-        )
-        try:
-            wid_middleware.enforce(
-                route="/v1/exec",
-                method=request.method,
-                trace_id=request.headers.get("x-request-id", "unknown"),
-                htu=request.url.path,
-                body_hash=body_hash,
-                wit_payload=wit_payload,
-                ect_payload=ect_payload,
-                wpt_payload=wpt_payload,
-                # authority_payload=authority_payload, (Dropped: client authority is untrusted)
-            )
-            if authority_payload:
-                wit = WorkloadIdentityToken(**wit_payload) if wit_payload else None
-                ect = ExecutionContextToken(**ect_payload) if ect_payload else None
-                wpt = WorkloadProofToken(**wpt_payload) if wpt_payload else None
-                auth_kwargs = dict(authority_payload)
-                auth_kwargs.pop("_mock_hash", None)
-                auth = AuthorityArtifact(**auth_kwargs)
-                # Use Explicit Compatibility Adapter for Legacy Credentials
-                adapter = LegacyCredentialAdapter(db)
-                translated_lease_ref = adapter.translate(auth, wit, ect, wpt)
-                # If translation succeeds, we assign it so that it goes through the canonical lease path
-                body.capability_lease = translated_lease_ref
-        except IdentityValidationError as exc:
-            return JSONResponse(status_code=403, content=exc.to_evidence())
-        except CappoAuthorizationError as exc:
-            return JSONResponse(status_code=403, content=exc.to_evidence())
-
     from cappo_backend.core.capi_pipeline import enforce_capi_pipeline
 
     capi_public_key = (
         "" if test_only_echo else _resolve_capi_gatekeeper_public_key(settings, body)
     )
-    if not test_only_echo:
+    if capi_public_key:
         await _verify_exec_request_integrity(request, capi_public_key)
 
     capi_payload = _build_capi_payload(body)
@@ -638,6 +595,30 @@ async def governed_exec(
         db=db,
         workspace_id=str(canonical_workspace),
     )
+    if not test_only_echo:
+        # Consequence authority is the capability lease CAPPO just resolved from its
+        # own registry. Client-supplied authority is never read.
+        _, leased_record, _ = lease_context
+        wid_middleware = WIDMiddlewareContext(
+            RouteClassification.CONSEQUENCE,
+            IdentityValidator("https://cappo.veklom.com", replay_cache),
+        )
+        try:
+            wid_middleware.enforce(
+                route="/v1/exec",
+                method=request.method,
+                trace_id=request.headers.get("x-request-id", "unknown"),
+                htu=request.url.path,
+                body_hash=body_hash,
+                wit_payload=wit_payload,
+                ect_payload=ect_payload,
+                wpt_payload=wpt_payload,
+                lease_execution_id=leased_record.token.execution_id,
+            )
+        except IdentityValidationError as exc:
+            return JSONResponse(status_code=403, content=exc.to_evidence())
+        except CappoAuthorizationError as exc:
+            return JSONResponse(status_code=403, content=exc.to_evidence())
     if body.action == ACTIVATION_WRITE_ACTION and lease_context is None:
         raise HTTPException(
             status_code=403,
@@ -708,6 +689,11 @@ async def governed_exec(
             payload["scope"] = {
                 "tools": [action],
                 "allowed_effects": [action],
+                # Providers come from the trusted package definition, never the request;
+                # the executor refuses any provider outside this set.
+                "allowed_provider_set": package_allowed_providers(
+                    registry.packages.get(record.mount.package_ref)
+                ),
             }
             payload["capability_mount_id"] = lease_ref.mount_id
             payload["capability_receipt_id"] = lease_receipt_id
@@ -798,6 +784,9 @@ async def governed_exec(
             materialization_policy=MaterializationPolicy.EPHEMERAL if body.execution_mode == "ephemeral" else MaterializationPolicy.PERSISTENT,
             is_activation=is_activation_package,
             biscuit_token=biscuit_token,
+            # Same identity the mount bound the Biscuit to (capability_mount/service.py):
+            # the verified workload SPIFFE ID, else the authenticated principal.
+            caller_spiffe_id=request.scope.get("caller_spiffe_id") or principal,
         )
         
         result = _execute_run(orchestrator, ctx, db, replay_cache=replay_cache)
