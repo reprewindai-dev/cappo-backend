@@ -1268,7 +1268,8 @@ separately.
 
 - That the runtime measured honestly. The issuer key is the runtime's, and
   the witness checks history, not memory. This is evidence level E2: the
-  supervisor is trusted.
+  supervisor is trusted. "Independent residency audit" below adds a second
+  observer for this.
 - Anything about copies of tenant state outside the governed region.
 - Behaviour on WSL2 / cgroup v2.
 
@@ -1397,9 +1398,375 @@ holds under the amended rules.
 **Reporting rule:** missing runs, OOM kills, invalid evidence or fewer than
 12 wins stay part of the result. No seeds are replaced or added.
 
+**Where it runs (2026-10-12, before any run):**
+`.github/workflows/vre15-transfer.yml` runs the unchanged
+`scripts/vre15_transfer.sh` on a GitHub-hosted `ubuntu-24.04` runner.
+
+Why that machine:
+- It uses cgroup v2 and gives root through sudo.
+- It serves nothing.
+- Nobody involved in this work controls its kernel.
+
+The workflow:
+1. records the machine (kernel, cgroup, MGLRU, swap, CPU and memory);
+2. runs the check script;
+3. runs the transfer test;
+4. re-verifies every new evidence bundle from an empty directory;
+5. uploads the complete run directory and log as an artifact, kept 90
+   days.
+
+It is never run on the self-hosted runner. The rules above are unchanged.
+
+### Amendment 2 (2026-10-18, before any run with seeds 801–815)
+
+Due diligence found that a checkpoint was not crash-atomic. At the owner's
+decision, it was fixed before the transfer test: `revoke.revoke` now writes
+through a redo log (see "Due diligence" below). The transfer test therefore
+measures the fixed mechanism. Each revocation now does one more write of
+every modified page and three more syncs.
+
+Nothing else changes: the arms, settings, seeds 801–815, the T1 and T2
+rules of Amendment 1, the self-test and the reporting rule. The manifest
+records the commit, as before. No run with these seeds has happened yet,
+because the runner is blocked by Actions billing.
+
 ### Still untested
 
 - Workloads that touch most of their state per request, and authority gaps
   long enough for swap to matter more than reclaim.
 - Other hosts. The noise above may be specific to this VM's storage and
   reclaim behaviour.
+
+## Independent residency audit
+
+The evidence above is the runtime's own measurement, signed with the
+runtime's key (E2). The auditor adds a second observer that does not rely
+on it.
+
+### What the auditor is
+
+`vre15/audit.py` runs as its own process, outside the tenant cgroup. It
+imports nothing from the runtime, and its Ed25519 key exists only in its
+memory. Every 250 ms it:
+
+1. reads `/proc/<runtime>/maps` and finds each tenant's region as the
+   kernel lists it: the mappings of that tenant's image file;
+2. reads `/proc/<runtime>/pagemap` over those mappings and counts private
+   pages, meaning copy-on-write copies or swapped pages. That is tenant
+   state the image does not hold;
+3. appends a hash-chained record of the sweep. When the runtime's request
+   loop ends, it seals and signs the log.
+
+The runtime contributes only a clock file: when the trace started and when
+the request loop ended. The auditor records when each appeared, and the
+verifier rejects a declared time more than 1 s from when it appeared.
+
+`verify_evidence.py --audit` joins the log with the authority schedule and
+the revocation records, offline and still standalone:
+
+| Verdict | When |
+|---|---|
+| `REJECTED_RESIDENCY_CONTRADICTED` | A sweep that ran wholly after a record said "released" saw private pages of that tenant before its next window. |
+| `REJECTED_RESIDENCY_OUTLIVED_AUTHORITY` | Private pages were seen more than 1 s (`GRACE_S`) after a window ended and before the next one began. |
+| `REJECTED_AUDIT_*` | The log is broken, unsealed, signed by an unpinned key, ends early, or its schedule differs from the records. |
+| `VALID`, profile `W1+A1` | None of the above. |
+
+Private pages before a tenant's first window are reported, not rejected,
+because the journal makes no claim about them. `--audit-only` reads a log
+on its own, for an arm with no journal.
+
+**Independence.** The observation is independent: the kernel's page
+tables, read by another process under another key. Administrative control
+is not: same machine, same root, same author. That is E3, not E4.
+
+### Tests
+
+`tests/test_vre15_audit.py` runs four small runtimes. Each is a real
+process with one region mapped over its image, watched by a real auditor
+process. Only the honest one verifies.
+
+| Runtime | Behaviour | Verdict |
+|---|---|---|
+| honest | revokes at window end (`revoke.py`) and journals it | `VALID L1+A1`; the gap was watched |
+| liar | writes pages back but keeps them, then signs "0 held" | the journal alone verifies `VALID`; with the audit, `REJECTED_RESIDENCY_CONTRADICTED` (5 private pages) |
+| late | revokes honestly 1.3 s after the window ends | `REJECTED_RESIDENCY_OUTLIVED_AUTHORITY` |
+| never | never revokes, no journal (control) | `--audit-only`: private state outside authority |
+
+The tests also cover:
+- tampering (erased observations, a missing seal, a foreign key, no log);
+- the CLI run from an empty directory;
+- the pre-registered analyzer below, on synthetic manifests.
+
+### Smoke run (exploratory): seed 990, 30 s, 16 MiB
+
+Run with `--policies mapped mapped-ckpt --record-ws --probe-revoked
+--evidence --audit`. It is not kept, because seed 990 is not part of any
+test.
+
+| Arm | Checkable gaps after authority | Watched | With private pages | Gaps before first authority with private pages (of 196 checkable) |
+|---|---|---|---|---|
+| mapped (no revocation) | 141 | 141 | 172 gaps, counted over all gaps including short ones (the checkable-only count was added after this run) | 294 of all gaps |
+| mapped-ckpt | 143 | 143 | 0; bundle `VALID W1+A1`, 300 revocations | 293 of all gaps |
+
+Sweeps took 4 ms (p50), 15 ms at most, which is about 1.6% of one CPU.
+
+What it suggests, pending the test below:
+- The auditor tells the arms apart after authority ends.
+- Neither arm is clean before a tenant's first window. Reading
+  `host.py`, the likely cause is `--record-ws`: warm-up runs every tenant
+  under no authority, and that state stays private until the tenant's
+  first revocation. If so, residency follows authority only from the first
+  revocation on. That is a gap in the mechanism, found by the auditor and
+  not by the runtime's own evidence.
+
+## Pre-registered: independent residency audit (fixed before the run)
+
+Written and committed before any audited run with these seeds.
+
+- **Where:** this repository's cloud host, cgroup v1. The audit tests the
+  evidence, not the kernel, so v1 is enough. The transfer test still needs
+  cgroup v2.
+- **Settings:** 16 MiB, informative trace, 300 tenants, 90 s at 250 req/s;
+  `--probe-revoked --rotate-order --evidence --audit`. Sweep period
+  250 ms, grace 1 s; a gap counts as checkable when it is at least 1 s
+  long after the grace.
+- **Seeds:** 991–995. These are fresh and not 801–815.
+- **Run 1:** `--record-ws`, policies mapped and mapped-ckpt (10 runs).
+- **Run 2:** without `--record-ws`, mapped-ckpt only (5 runs).
+
+**Hypotheses**
+
+| Hypothesis | Claim | Confirmed only if, in every one of the 5 seeds |
+|---|---|---|
+| A1 | Under an independent observer, mapped-ckpt keeps no private state after authority. | Run 1's mapped-ckpt bundle verifies `VALID W1+A1`, it has at least 100 checkable gaps after authority, and every one of them was watched. |
+| A2 | The auditor sees the control's retained state, so A1 cannot be a blind auditor. | Run 1's mapped run has at least 100 checkable gaps after authority, and private pages in at least 50% of them. |
+| A3 | Warm-up state precedes authority, and `--record-ws` is the cause. | In run 1, both arms show private pages in at least 50% of checkable gaps before the first window. In run 2, mapped-ckpt shows none in any gap before the first window and verifies `VALID W1+A1`. |
+
+**Shared rules**
+- A run that is missing, duplicated, killed or OOM-killed fails the
+  hypothesis it belongs to.
+- Parameters that differ from the above fail all three.
+
+**Analysis:** `python -m vre15.audit_prereg <run 1 manifest> <run 2 manifest>`.
+
+**Reporting rule:** every outcome is reported as it comes out. If A3's
+second half fails, the cause is something other than `--record-ws` and
+stays open.
+
+**What this cannot show, whatever the outcome:**
+- state outside the image mappings;
+- anything done by a process with the same root privileges;
+- behaviour on cgroup v2.
+
+**If A3 holds, the fix is a separate, pre-registered step:** check out
+every tenant that has no authority at trace start, which is a revocation
+at t = 0. Pre-registration T1/T2 tests the H15 mechanism as committed, so
+the transfer test runs unchanged.
+
+
+### Result: runs `20261012T104244Z` (run 1) and `20261012T110108Z` (run 2)
+
+Both runs used commit `f96adba`, with tracked files unmodified, on this
+repository's cloud host (cgroup v1). The verdict is from `python -m
+vre15.audit_prereg`, saved as `20261012T110108Z/audit-summary.json`. All
+15 runs exited 0, with no OOM kills, no integrity failures and no
+authority violations.
+
+| Hypothesis | Outcome | Per seed (991–995) |
+|---|---|---|
+| A1: under the audit, mapped-ckpt keeps no private state after authority | **confirmed** | 5 of 5 |
+| A2: the auditor sees the control's retained state | **confirmed** | 5 of 5 |
+| A3: warm-up state precedes authority, and `--record-ws` is the cause | **confirmed** | 5 of 5 |
+
+**Run 1 (with `--record-ws`).**
+- **mapped-ckpt:**
+  - every bundle verifies `VALID W1+A1`, with 412–440 revocations per seed;
+  - 383–409 checkable gaps after authority per seed, all watched;
+  - no private page in any of them, and 0 records contradicted.
+- **mapped (control):** private pages in every checkable gap after authority, 100% on every seed.
+- **Before the first window (both arms):** private pages in every checkable gap, 290–294 per seed.
+
+**Run 2 (without `--record-ws`, mapped-ckpt).**
+- 300 gaps before the first window per seed, none with a private page.
+- Every bundle verifies `VALID W1+A1`.
+- After authority: the same 383–409 checkable gaps, all watched and all clean.
+- The revocation counts match run 1 seed for seed.
+
+**Reported, not deciding.**
+- **Sweeps:** 360 per run. Each took 3.8–4.5 ms at p50 and at most 55 ms.
+- **Interactive deadlines:** 99.76–99.99% met in all 15 runs.
+- **Interactive p99:**
+  - mapped: 1.7–2.7 ms;
+  - mapped-ckpt in run 1: 5.2–7.7 ms;
+  - mapped-ckpt in run 2: 4.4–25.1 ms, the high end at seed 994.
+
+Single runs are noisy here, so no claim is made about cost.
+
+**What this establishes**, for the image-backed regions on this host:
+- **Mechanism, A1 and A2:** within 1 s of a window ending, mapped-ckpt
+  releases every page a tenant changed, until its next window. This is
+  read from the kernel by a process that is neither the runtime nor its
+  key holder.
+- **Evidence:** none of the runtime's 2,138 signed release records
+  (5 seeds × 412–440, run 1) was contradicted.
+- **Auditor:** the same auditor sees retained state when it is there. In
+  the control it found private pages in 100% of checkable gaps, so a clean
+  result is not a blind one.
+
+This is E3, not E4: the observer is independent, but administrative
+control is not.
+
+**What it found that the runtime's own evidence could not:** with
+`--record-ws`, every tenant holds private state from warm-up until its
+first revocation. That is state with no tenant authority, and the journal
+never covers it. Run 2 confirms the cause: without the warm-up recording,
+the gap is empty. So "residency follows authority" holds from a tenant's
+first revocation on, not from trace start, whenever setup writes tenant
+memory.
+
+**Not changed by this result:**
+- The transfer test (T1/T2) still tests the H15 mechanism as committed.
+- The fix (a revocation at t = 0 for every tenant without authority) is
+  the next step and gets its own pre-registration.
+- Nothing here is about cgroup v2.
+
+## Due diligence (2026-10-18)
+
+The question asked: is VRE-1.5 complete, stress-tested and safe, or is it
+marketing? Everything below was checked on the bytes that are on GitHub,
+not on a working copy.
+
+### Checked
+
+- **A clean clone** of `claude/epic-clarke-jnefup` at `297bf99`, in a new
+  virtual environment, imports its own code. `scripts/vre15_check.sh`:
+  32 passed, 1 skipped (the swap test needs `--with-swap`). All 11
+  committed bundles verify from an empty directory: one `VALID W1` and ten
+  `VALID W1+A1` with their auditor logs.
+- **Changes by other agents:**
+  - Antigravity made one commit touching VRE code, `4a4a5de` on
+    `claude/live-residency-demo`, unmerged. It adds `vre15/live/`, a
+    browser demo, and changes nothing in the mechanism, the evidence code
+    or any result. No other branch changes VRE code that this branch lacks.
+- **The demo (label: DEMO), as written:**
+  - its page counts are the runtime's own measurement (E2, no auditor);
+  - "writes without authority are refused" is the demo server's own check
+    in Python. The memory itself stays writable, so the kernel does not
+    enforce the refusal;
+  - it listens on `0.0.0.0` without authentication, so anyone who can
+    reach the port can grant or revoke.
+
+  It says it uses a demo supervisor and key, not CAPPO, which is accurate.
+  It should not run on a public address as it is.
+
+### Found: a checkpoint was not crash-atomic (new; fixed the same day, see below)
+
+`revoke.revoke` writes modified pages into the image one run at a time,
+then syncs. A process killed between those writes leaves the image torn:
+some pages of the new state, some of the old. No receipt is written and
+nothing records that the image is torn.
+
+In a real process killed at its 3rd and at its 6th page write (of 8), the
+image held 2 and 5 of the 8 new pages. Without the kill, it held 8 of 8.
+`tests/test_vre15_crash.py` recorded this at the time as
+`xfail(strict=True)`.
+
+**What it affects:**
+- The claim "state preserved exactly" holds for every completed run. It
+  does not hold across a crash during a revocation.
+- None of the measured results change. No run crashed, and every run
+  checked integrity against a reference replay.
+
+**Fix (2026-10-18), at the owner's decision to fix before the transfer
+test.** `revoke.revoke` now writes the modified pages through a redo log:
+1. it writes `<image>.redo.tmp`, fsyncs it, renames it to `<image>.redo`
+   and fsyncs the directory. The log therefore exists complete or not at
+   all, and is checked by its own SHA-256;
+2. it writes the pages into the image and runs `fdatasync`;
+3. it removes the log and fsyncs the directory;
+4. it remaps and pages out, as before.
+
+`revoke.recover(image)` replays a complete log and discards a partial one.
+It runs in `map_image`, and in `host.py` before every image is mapped.
+When it replays a log, it returns that log's receipt, so a supervisor can
+record the reconciliation instead of losing it. The receipt digest is
+computed exactly as before, so all committed evidence stays comparable.
+
+`tests/test_vre15_crash.py` now kills a real process at each step and
+checks the image after recovery:
+
+| Killed | Image after recovery |
+|---|---|
+| while writing the log | old state (8 of 8 old pages) |
+| before the log is renamed into place | old |
+| after 2, and after 5, of 8 image writes (torn on disk until recovered) | new (8 of 8) |
+| after the image sync, before the log is removed | new |
+| no crash | new, and no log is left |
+
+`map_image` recovers before mapping, and a damaged log is refused with the
+image left untouched.
+
+**Limits of the fix:**
+- A crash after recovery replays a log but before a journal record exists
+  leaves no record in that run's journal. `recover` returns the receipt,
+  but nothing in this repository writes it to a journal yet.
+- Power loss is not simulated. The design relies on fsync and rename
+  ordering, which is standard, but only process kills were tested.
+- **Cost:** one more write of every modified page, plus three more syncs,
+  per revocation. It is measured below.
+
+### Where VRE-1.5 stands
+
+| Claim | Status | Grade / label |
+|---|---|---|
+| Fewer missed deadlines than native kernel paging (the performance thesis) | **Disconfirmed** in every pre-registered test | — |
+| Authority enforced: 0 requests served outside authority | Observed in every run | E2, VERIFIED_REPO |
+| State preserved exactly | Observed in every completed run. Across a crash mid-revocation: torn before the fix, whole old or new after it, under process kills in tests. | E2, VERIFIED_REPO; crash: tested in unit tests only |
+| Revoked state leaves memory (H15), and an outside observer agrees (A1, A2) | Confirmed by pre-registered tests | E3, VERIFIED_REPO, on this cloud host (cgroup v1) |
+| Private state before a tenant's first authority | A real gap, confirmed (A3). The fix is not yet made. | E3 |
+| Each revocation is signed, witnessed and verifies offline | Observed. Tamper and liar cases rejected in tests. | Artifact integrity, not behaviour |
+| The same holds on WSL2 / cgroup v2, where production runs | **Not measured.** GitHub Actions billing blocks the runner. | UNVERIFIED |
+| The live demo | A demo | DEMO |
+
+**Not shown anywhere:**
+- E4: enforcement at a real sink, with independent readback, under an
+  adversarial condition;
+- independence of administrative control: the auditor shares the machine
+  and root with the runtime;
+- state outside the image mappings;
+- long endurance runs (runs here last 90 s);
+- crash safety under power loss: only process kills were tested.
+
+Per `00_VEKLOM_BIBLE.md`, none of this supports "100% production ready".
+
+### After the fix: runs `20261018T002424Z` and `20261018T002629Z` (exploratory)
+
+These are exploratory runs, not pre-registered, on commit `f008a7b` with
+tracked files unmodified, on this cloud host (cgroup v1). The settings
+match the earlier committed runs, so the comparison is like for like:
+- `20261018T002424Z` repeats `20261011T231257Z`: seed 402, `--evidence`;
+- `20261018T002629Z` repeats run 1 of the audit test for seeds 991–992,
+  with `--audit`.
+
+**Behaviour is unchanged:**
+- Every bundle verifies (`VALID W1`, and `VALID W1+A1` with the audit),
+  with the same revocation counts: 415, 436 and 426.
+- 0 integrity failures and 0 authority violations.
+- The auditor watched every checkable gap after authority (399 of 399 and
+  392 of 392) and found no private page and no contradicted record.
+- **The checkpoint digest sequence is identical to the run before the fix,
+  for all three seeds.** The fix changes how state reaches the image, not
+  what reaches it.
+
+**Cost (single runs, so only indicative):**
+
+| Run | Seed | Checkpoint p50 | Checkpoint max | Lag p50 | Lag max | Interactive deadlines met | p99 | Nothing resident at 5 s |
+|---|---|---|---|---|---|---|---|---|
+| before fix (`20261011T231257Z`) | 402 | 2.7 ms | 8.2 ms | 7 ms | 72 ms | 99.75% | 16.4 ms | 94.8% |
+| after fix (`20261018T002424Z`) | 402 | 4.4 ms | 43.6 ms | 9 ms | 89 ms | 99.83% | 9.0 ms | 91.9% |
+| before fix (`20261012T104244Z`) | 991 / 992 | 2.3 / 2.4 ms | 108 / 11 ms | 5 / 6 ms | 110 / 53 ms | 99.93 / 99.85% | 5.2 / 5.9 ms | 93.0 / 92.5% |
+| after fix (`20261018T002629Z`) | 991 / 992 | 4.2 / 4.2 ms | 108 / 109 ms | 7 / 8 ms | 110 / 113 ms | 99.98 / 99.98% | 7.6 / 7.6 ms | 96.1 / 95.8% |
+
+A checkpoint takes about 1.8 ms longer at the median, as expected from the
+extra write and syncs. Revocation lag rises by about 2 ms at the median.
+Deadlines met stay within the run-to-run noise already documented here.

@@ -12,7 +12,8 @@
 #                                       # 256 MiB swap file that is removed afterwards
 #
 # What runs:
-#   1. tests/test_vre15.py, tests/test_vre15_revoke.py, tests/test_vre15_evidence.py
+#   1. tests/test_vre15.py, tests/test_vre15_revoke.py, tests/test_vre15_evidence.py,
+#      tests/test_vre15_audit.py, tests/test_vre15_crash.py (a known defect, xfail)
 #   2. vre15/verify_evidence.py on every committed evidence bundle, copied into an
 #      empty directory with only its trust store, the way a third party would run it.
 set -euo pipefail
@@ -65,16 +66,23 @@ if (( with_swap )); then
 fi
 
 echo "== tests"
-"$py" -m pytest -q -rs tests/test_vre15.py tests/test_vre15_revoke.py tests/test_vre15_evidence.py
+"$py" -m pytest -q -rs tests/test_vre15.py tests/test_vre15_revoke.py tests/test_vre15_evidence.py \
+  tests/test_vre15_audit.py tests/test_vre15_crash.py
 
 echo "== offline verification of committed evidence bundles"
 status=0
 for bundle in vre15/runs/*/*.evidence.json; do
   trust="${bundle%.evidence.json}.trust.json"
   dir="$(mktemp -d)"
+  audit="${bundle%.evidence.json}.audit.jsonl"
   cp vre15/verify_evidence.py "$bundle" "$trust" "$dir/"
+  extra=()
+  if [[ -f "$audit" ]]; then
+    cp "$audit" "$dir/"
+    extra=(--audit "$(basename "$audit")" --require-audit)
+  fi
   if (cd "$dir" && "$OLDPWD/$py" -I verify_evidence.py "$(basename "$bundle")" "$(basename "$trust")" \
-        --require-witness > verdict.json); then
+        --require-witness ${extra[@]+"${extra[@]}"} > verdict.json); then
     "$py" - "$dir/verdict.json" "$bundle" <<'PY'
 import json, sys
 v = json.load(open(sys.argv[1]))

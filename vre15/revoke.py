@@ -17,6 +17,18 @@ authority ends, `revoke`:
    (resident or in swap) from the process;
 4. asks the kernel to page out the now-clean file pages (MADV_PAGEOUT).
 
+Crash safety: the write-back in step 2 goes through a redo log. The
+modified pages are first written to `<image>.redo`, which is synced and only
+then renamed into place, so a log either exists complete or not at all.
+Then the image is updated and synced, and the log removed. `recover(image)`
+(called by `map_image`, and by anything that maps an image) replays a
+complete log left by a crash. Whatever point a process dies at, the image
+after recovery holds either the whole old state or the whole new state,
+never a mix (tests/test_vre15_crash.py kills a real process at each step).
+A crash before the receipt is returned means no receipt was issued:
+`recover` returns the receipt of what it replayed, so a supervisor can
+record it (reconciliation, not silence).
+
 Invariant, checked by `held_privately` and the tests: after `revoke`,
 - no page of the region is present in or swapped from this process's page
   tables;
@@ -107,10 +119,97 @@ def _check(base, length):
         raise RegionError(0, "governed region must be page-aligned and non-empty")
 
 
+REDO_MAGIC = b"VRE15REDO1"
+
+
+def _redo_path(image) -> str:
+    return os.fspath(image) + ".redo"
+
+
+def _fsync_dir(path) -> None:
+    fd = os.open(os.path.dirname(os.path.abspath(path)) or ".", os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _encode_redo(length: int, runs) -> bytes:
+    """MAGIC, region length, run count, then (first, count, bytes) per run,
+    then SHA-256 of everything before it."""
+    body = bytearray(REDO_MAGIC + struct.pack("<QI", length, len(runs)))
+    for first, count, data in runs:
+        body += struct.pack("<II", first, count) + data
+    return bytes(body) + hashlib.sha256(body).digest()
+
+
+def _decode_redo(raw: bytes, length: int):
+    """The runs of a complete, intact log; None for anything else."""
+    head = len(REDO_MAGIC) + 12
+    if len(raw) < head + 32 or not raw.startswith(REDO_MAGIC):
+        return None
+    body, tail = raw[:-32], raw[-32:]
+    if hashlib.sha256(body).digest() != tail:
+        return None
+    n_len, n = struct.unpack_from("<QI", body, len(REDO_MAGIC))
+    if n_len != length:
+        return None
+    runs, off = [], head
+    for _ in range(n):
+        first, count = struct.unpack_from("<II", body, off)
+        off += 8
+        data = body[off:off + count * PAGE]
+        if len(data) != count * PAGE or (first + count) * PAGE > length:
+            return None
+        runs.append((first, count, data))
+        off += count * PAGE
+    return runs if off == len(body) else None
+
+
+def _apply(fd, runs) -> str:
+    h = hashlib.sha256()
+    for first, count, data in runs:
+        os.pwrite(fd, data, first * PAGE)
+        h.update(struct.pack("<II", first, count))
+        h.update(data)
+    return h.hexdigest()
+
+
+def recover(image):
+    """Finish a checkpoint a crash interrupted. A complete redo log next to
+    `image` is applied and synced, then removed; a partial one (never
+    renamed into place) is discarded, since the image was not touched.
+    Returns the Receipt of what was replayed, or None if nothing was."""
+    redo = _redo_path(image)
+    tmp = redo + ".tmp"
+    if os.path.exists(tmp):
+        os.unlink(tmp)                                  # crash while writing the log: image untouched
+    if not os.path.exists(redo):
+        return None
+    t0 = time.perf_counter()
+    with open(redo, "rb") as f:
+        raw = f.read()
+    fd = os.open(image, os.O_RDWR)
+    try:
+        runs = _decode_redo(raw, os.fstat(fd).st_size)
+        if runs is None:
+            raise RegionError(0, f"redo log {redo} is damaged; the image was not changed by it")
+        digest = _apply(fd, runs)
+        os.fdatasync(fd)
+    finally:
+        os.close(fd)
+    os.unlink(redo)
+    _fsync_dir(redo)
+    return Receipt(sum(c for _, c, _ in runs), digest, (time.perf_counter() - t0) * 1000, 0,
+                   tuple((first, count) for first, count, _ in runs))
+
+
 def map_image(base, length, image):
     """Map `image` copy-on-write over [base, base+length). The image's size
-    must equal the region's, so no part of the region falls outside it."""
+    must equal the region's, so no part of the region falls outside it.
+    A checkpoint interrupted by a crash is finished first (`recover`)."""
     _check(base, length)
+    recover(image)
     fd = os.open(image, os.O_RDONLY)
     try:
         if os.fstat(fd).st_size != length:
@@ -127,22 +226,33 @@ def revoke(base, length, image):
     _check(base, length)
     t0 = time.perf_counter()
     dirty = modified_pages(base, length)
-    h = hashlib.sha256()
+    runs = [(first, count, ctypes.string_at(base + first * PAGE, count * PAGE))
+            for first, count in runs_of(dirty)]
     fd = os.open(image, os.O_RDWR)
     try:
         if os.fstat(fd).st_size != length:
             raise RegionError(0, "image size does not match the region")
-        for first, count in runs_of(dirty):
-            data = ctypes.string_at(base + first * PAGE, count * PAGE)
-            os.pwrite(fd, data, first * PAGE)
-            h.update(struct.pack("<II", first, count))
-            h.update(data)
-        if dirty:
+        if runs:
+            # Redo log first: synced, then renamed into place, so it exists
+            # complete or not at all. Only then is the image touched.
+            redo = _redo_path(image)
+            tmp = redo + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(_encode_redo(length, runs))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, redo)
+            _fsync_dir(redo)
+            digest = _apply(fd, runs)
             os.fdatasync(fd)
+            os.unlink(redo)
+            _fsync_dir(redo)
+        else:
+            digest = hashlib.sha256().hexdigest()
         if _libc.mmap(base, length, PROT_RW, MAP_PRIVATE | MAP_FIXED, fd, 0) != base:
             raise RegionError(ctypes.get_errno(), "remap after checkpoint failed")
     finally:
         os.close(fd)
     err = 0 if _libc.madvise(base, length, MADV_PAGEOUT) == 0 else ctypes.get_errno()
-    return Receipt(len(dirty), h.hexdigest(), (time.perf_counter() - t0) * 1000, err,
+    return Receipt(len(dirty), digest, (time.perf_counter() - t0) * 1000, err,
                    tuple((first, count) for first, count in runs_of(dirty)))

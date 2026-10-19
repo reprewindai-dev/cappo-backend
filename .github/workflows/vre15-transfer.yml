@@ -1,0 +1,77 @@
+# Pre-registered VRE-1.5 transfer test on cgroup v2 (vre15/README.md,
+# "Pre-registered: transfer to WSL2 / cgroup v2", as amended before any run).
+#
+# Runs on a GitHub-hosted Ubuntu runner: cgroup v2, root via sudo, serves
+# nothing. Never on the self-hosted runner: the test drops the page cache for
+# the whole kernel 30 times and keeps memory under pressure for over an hour.
+#
+# Triggers: manual dispatch (once this file is on main), or a push to the
+# working branch that changes this file. Not on every push: one run costs
+# about 1.5 runner-hours.
+name: VRE-1.5 transfer test (cgroup v2)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/epic-clarke-jnefup]
+    paths: [.github/workflows/vre15-transfer.yml]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash        # -eo pipefail: a failing step is not hidden by `| tee`
+
+concurrency:
+  group: vre15-transfer
+  cancel-in-progress: false
+
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Machine
+        run: |
+          uname -a
+          stat -fc %T /sys/fs/cgroup
+          cat /sys/fs/cgroup/cgroup.controllers
+          cat /sys/kernel/mm/lru_gen/enabled 2>/dev/null || echo "no MGLRU"
+          cat /proc/swaps
+          nproc; free -m; df -h / /tmp
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Checks (tests, committed evidence offline)
+        run: scripts/vre15_check.sh
+
+      - name: Transfer run (selftest, 30 pre-registered runs, verdict)
+        run: sudo scripts/vre15_transfer.sh 2>&1 | tee transfer.log
+
+      - name: Re-verify the run's evidence bundles from an empty directory
+        if: always()
+        run: |
+          run_dir="$(sed -n 's/^run written to //p' transfer.log | tail -1)"
+          [ -n "$run_dir" ] || { echo "no run directory"; exit 1; }
+          echo "RUN_DIR=$run_dir" >> "$GITHUB_ENV"
+          status=0
+          for b in "$run_dir"/*.evidence.json; do
+            d="$(mktemp -d)"; cp vre15/verify_evidence.py "$b" "${b%.evidence.json}.trust.json" "$d/"
+            (cd "$d" && "$GITHUB_WORKSPACE/.venv/bin/python" -I verify_evidence.py "$(basename "$b")" \
+               "$(basename "${b%.evidence.json}.trust.json")" --require-witness) || status=1
+          done
+          exit $status
+
+      - name: Upload the complete run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vre15-transfer-${{ github.run_id }}
+          path: |
+            ${{ env.RUN_DIR }}
+            transfer.log
+          if-no-files-found: warn
+          retention-days: 90
